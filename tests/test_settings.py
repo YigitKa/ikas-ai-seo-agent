@@ -77,3 +77,15 @@ def test_parse_bool_env_supports_multiple_truthy_values(monkeypatch):
 
     monkeypatch.setenv("DRY_RUN", "false")
     assert settings._parse_bool_env("DRY_RUN", default=True) is False
+
+
+def test_parse_store_languages_prefers_store_languages_key(monkeypatch):
+    monkeypatch.setenv("STORE_LANGUAGES", "tr, en, de")
+    monkeypatch.setenv("STORE_LANGUAGE", "fr")
+    assert settings._parse_store_languages() == ["tr", "en", "de"]
+
+
+def test_parse_store_languages_falls_back_to_store_language(monkeypatch):
+    monkeypatch.delenv("STORE_LANGUAGES", raising=False)
+    monkeypatch.setenv("STORE_LANGUAGE", "fr, es")
+    assert settings._parse_store_languages() == ["fr", "es"]

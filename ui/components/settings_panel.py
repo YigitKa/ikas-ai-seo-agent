@@ -40,11 +40,11 @@ class SettingsPanel(ctk.CTkToplevel):
                      font=ctk.CTkFont(size=16, weight="bold"),
                      text_color=COLORS["text_primary"]).pack(anchor="w", pady=(20, 10))
 
-        self._language_var = ctk.StringVar(value=config.store_language)
-        ctk.CTkLabel(main, text="Dil:", text_color=COLORS["text_secondary"]).pack(anchor="w", pady=(5, 0))
-        ctk.CTkSegmentedButton(
-            main, values=["tr", "en"], variable=self._language_var,
-        ).pack(fill="x", pady=5)
+        self._languages = self._add_field(
+            main,
+            "Magaza Dilleri (virgul ile):",
+            ",".join(config.store_languages),
+        )
 
         self._keywords = self._add_field(main, "Hedef Keywordler (virgul ile):",
                                           ",".join(config.seo_target_keywords))
@@ -91,7 +91,7 @@ class SettingsPanel(ctk.CTkToplevel):
                 "client_secret": self._client_secret.get(),
                 "api_key": self._api_key.get(),
                 "model": self._model_var.get(),
-                "language": self._language_var.get(),
+                "languages": self._languages.get(),
                 "keywords": self._keywords.get(),
                 "dry_run": self._dry_run_var.get(),
             })

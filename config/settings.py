@@ -53,6 +53,17 @@ def _parse_bool_env(name: str, default: bool) -> bool:
     return normalized in {"1", "true", "yes", "on"}
 
 
+def _parse_store_languages() -> list[str]:
+    # New preferred key: STORE_LANGUAGES=tr,en,de
+    raw = os.getenv("STORE_LANGUAGES", "").strip()
+    # Backward compatibility: STORE_LANGUAGE can now be either single or comma-separated.
+    if not raw:
+        raw = os.getenv("STORE_LANGUAGE", "tr")
+
+    languages = [lang.strip().lower() for lang in raw.split(",") if lang.strip()]
+    return languages or ["tr"]
+
+
 def get_config() -> AppConfig:
     global _config
     if _config is not None:
@@ -64,6 +75,7 @@ def get_config() -> AppConfig:
     keywords = [k.strip() for k in keywords_raw.split(",") if k.strip()]
 
     store_name = os.getenv("IKAS_STORE_NAME", "")
+    store_languages = _parse_store_languages()
 
     _config = AppConfig(
         ikas_store_name=store_name,
@@ -71,7 +83,8 @@ def get_config() -> AppConfig:
         ikas_client_secret=os.getenv("IKAS_CLIENT_SECRET", ""),
         ikas_api_url=f"https://{store_name}.myikas.com/api/admin/graphql" if store_name else "",
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
-        store_language=os.getenv("STORE_LANGUAGE", "tr"),
+        store_language=store_languages[0],
+        store_languages=store_languages,
         seo_target_keywords=keywords,
         dry_run=_parse_bool_env("DRY_RUN", default=True),
         log_level=os.getenv("LOG_LEVEL", "INFO"),

@@ -58,6 +58,7 @@ class AppConfig(BaseModel):
     ikas_api_url: str = ""
     anthropic_api_key: str = ""
     store_language: str = "tr"
+    store_languages: List[str] = Field(default_factory=lambda: ["tr"])
     seo_target_keywords: List[str] = Field(default_factory=list)
     dry_run: bool = True
     log_level: str = "INFO"
