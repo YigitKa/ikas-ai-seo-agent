@@ -19,13 +19,13 @@ class IkasClient:
                 name
                 description
                 translations { locale name description }
-                metaData { title description }
-                tags
+                metaData { pageTitle description }
+                tags { id name }
                 categories { name }
-                variants { price sku }
-                status
+                variants { prices { sellPrice } sku }
             }
-            pagination { totalCount page pageSize }
+            count
+            hasNext
         }
     }
     """
@@ -38,11 +38,10 @@ class IkasClient:
                 name
                 description
                 translations { locale name description }
-                metaData { title description }
-                tags
+                metaData { pageTitle description }
+                tags { id name }
                 categories { name }
-                variants { price sku }
-                status
+                variants { prices { sellPrice } sku }
             }
         }
     }
@@ -54,7 +53,7 @@ class IkasClient:
             id
             name
             description
-            metaData { title description }
+            metaData { pageTitle description }
         }
     }
     """
@@ -190,16 +189,24 @@ class IkasClient:
         if "tr" not in translations and isinstance(description, str) and description.strip():
             translations["tr"] = description
 
+        # tags may be returned as objects {id, name} or plain strings
+        raw_tags = data.get("tags") or []
+        tags = [t["name"] if isinstance(t, dict) else t for t in raw_tags]
+
+        # prices is a list of ProductPrice objects; take sellPrice from the first entry
+        prices = first_variant.get("prices") or []
+        price = prices[0].get("sellPrice") if prices else first_variant.get("price")
+
         return Product(
             id=data["id"],
             name=data.get("name", ""),
             description=description if isinstance(description, str) else "",
             description_translations=translations,
-            meta_title=meta.get("title"),
+            meta_title=meta.get("pageTitle") or meta.get("title"),
             meta_description=meta.get("description"),
-            tags=data.get("tags") or [],
+            tags=tags,
             category=categories[0]["name"] if categories else None,
-            price=first_variant.get("price"),
+            price=price,
             sku=first_variant.get("sku"),
             status=data.get("status", "active"),
         )
@@ -212,16 +219,15 @@ class IkasClient:
         while True:
             data = await self._graphql(
                 self.PRODUCTS_QUERY,
-                {"pagination": {"page": page, "pageSize": page_size}},
+                {"pagination": {"page": page, "limit": page_size}},
             )
-            product_list = data["listProduct"]["data"]
-            pagination = data["listProduct"]["pagination"]
+            result = data["listProduct"]
+            product_list = result["data"]
 
             for item in product_list:
                 all_products.append(self._parse_product(item))
 
-            total = pagination["totalCount"]
-            if len(all_products) >= total or len(all_products) >= limit:
+            if not result.get("hasNext") or len(all_products) >= limit:
                 break
             page += 1
 
@@ -263,7 +269,7 @@ class IkasClient:
         if "meta_title" in updates or "meta_description" in updates:
             input_data["metaData"] = {}
             if "meta_title" in updates:
-                input_data["metaData"]["title"] = updates["meta_title"]
+                input_data["metaData"]["pageTitle"] = updates["meta_title"]
             if "meta_description" in updates:
                 input_data["metaData"]["description"] = updates["meta_description"]
 
