@@ -1,4 +1,5 @@
 import asyncio
+import io
 import logging
 import threading
 from typing import Optional
@@ -15,6 +16,12 @@ from ui.components.product_table import ProductTable
 from ui.components.score_card import ScoreCard
 from ui.components.settings_panel import SettingsPanel
 from ui.themes.dark import COLORS
+
+try:
+    from PIL import Image
+    _PIL_AVAILABLE = True
+except ImportError:
+    _PIL_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +41,7 @@ class App(ctk.CTk):
         self._selected_score: Optional[SeoScore] = None
         self._products_data: list[tuple[Product, SeoScore | None]] = []
         self._filter_var = ctk.StringVar(value="all")
+        self._total_count: int = 0
 
         self._build_toolbar()
         self._build_main_area()
@@ -98,11 +106,14 @@ class App(ctk.CTk):
         middle = ctk.CTkFrame(main, fg_color=COLORS["bg_secondary"], corner_radius=10)
         middle.grid(row=0, column=1, sticky="nsew", padx=5)
 
+        self._product_image_label = ctk.CTkLabel(middle, text="", image=None)
+        self._product_image_label.pack(padx=10, pady=(10, 2))
+
         self._product_info = ctk.CTkLabel(
             middle, text="Urun secin", font=ctk.CTkFont(size=14, weight="bold"),
             text_color=COLORS["text_primary"], wraplength=250,
         )
-        self._product_info.pack(padx=10, pady=10)
+        self._product_info.pack(padx=10, pady=(2, 5))
 
         self._score_card = ScoreCard(middle)
         self._score_card.pack(fill="x", padx=10, pady=5)
@@ -133,10 +144,16 @@ class App(ctk.CTk):
         self._status_label.configure(text=text)
 
     def _update_stats(self) -> None:
-        total = len(self._products_data)
+        listed = len(self._products_data)
         analyzed = sum(1 for _, s in self._products_data if s)
         pending = len(db.get_pending_suggestions())
-        self._stats_label.configure(text=f"Toplam: {total} | Analiz: {analyzed} | Bekleyen: {pending}")
+        if self._total_count > 0 and self._total_count != listed:
+            total_str = f"Toplam: {listed}/{self._total_count}"
+        else:
+            total_str = f"Toplam: {listed}"
+        self._stats_label.configure(
+            text=f"{total_str} | Analiz: {analyzed} | Bekleyen: {pending}"
+        )
 
     def _run_async(self, coro, callback=None) -> None:
         def runner():
@@ -150,14 +167,20 @@ class App(ctk.CTk):
 
         def on_done(products):
             config = get_config()
+            self._total_count = self._manager._ikas.total_count
             self._products_data = []
             for p in products:
                 score = analyze_product(p, config.seo_target_keywords)
                 db.save_score(score)
                 self._products_data.append((p, score))
-            self._product_table.set_products(self._products_data)
+            self._product_table.set_products(self._products_data, self._total_count)
             self._update_stats()
-            self._set_status(f"{len(products)} urun yuklendi")
+            if self._total_count > len(products):
+                self._set_status(
+                    f"{len(products)} urun yuklendi (toplam {self._total_count} urun mevcut)"
+                )
+            else:
+                self._set_status(f"{len(products)} urun yuklendi")
 
         self._run_async(self._manager.fetch_products(), on_done)
 
@@ -166,7 +189,10 @@ class App(ctk.CTk):
         self._selected_product = product
         self._selected_score = score
 
-        self._product_info.configure(text=f"{product.name}\n\nKategori: {product.category or '-'}\nSKU: {product.sku or '-'}")
+        self._product_info.configure(
+            text=f"{product.name}\n\nKategori: {product.category or '-'}\nSKU: {product.sku or '-'}"
+        )
+        self._load_product_image(product.image_url)
 
         if score:
             self._score_card.set_score(score)
@@ -176,6 +202,25 @@ class App(ctk.CTk):
             self._diff_viewer.show_suggestion(suggestions[0])
         else:
             self._diff_viewer.clear()
+
+    def _load_product_image(self, url: Optional[str]) -> None:
+        self._product_image_label.configure(image=None, text="")
+        if not _PIL_AVAILABLE or not url:
+            return
+
+        def fetch():
+            try:
+                import httpx
+                response = httpx.get(url, timeout=10, follow_redirects=True)
+                response.raise_for_status()
+                img = Image.open(io.BytesIO(response.content)).convert("RGBA")
+                img.thumbnail((160, 160), Image.LANCZOS)
+                ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=img.size)
+                self.after(0, lambda: self._product_image_label.configure(image=ctk_img, text=""))
+            except Exception:
+                pass
+
+        threading.Thread(target=fetch, daemon=True).start()
 
     def _analyze_selected(self) -> None:
         if not self._selected_product:
@@ -236,20 +281,20 @@ class App(ctk.CTk):
     def _on_search(self, event=None) -> None:
         query = self._search_entry.get()
         if query:
-            self._product_table.filter_products(query)
+            self._product_table.filter_products(query, self._total_count)
         else:
-            self._product_table.set_products(self._products_data)
+            self._product_table.set_products(self._products_data, self._total_count)
 
     def _on_filter_change(self, value: str) -> None:
         if value == "Tumu":
-            self._product_table.set_products(self._products_data)
+            self._product_table.set_products(self._products_data, self._total_count)
         elif value == "Dusuk Skor":
             filtered = [(p, s) for p, s in self._products_data if s and s.total_score < 70]
-            self._product_table.set_products(filtered)
+            self._product_table.set_products(filtered, self._total_count)
         elif value == "Bekleyen":
             pending_ids = {s.product_id for s in db.get_pending_suggestions()}
             filtered = [(p, s) for p, s in self._products_data if p.id in pending_ids]
-            self._product_table.set_products(filtered)
+            self._product_table.set_products(filtered, self._total_count)
 
     def _update_ai_button_state(self) -> None:
         config = get_config()

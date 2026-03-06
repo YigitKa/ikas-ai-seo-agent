@@ -23,6 +23,7 @@ class IkasClient:
                 tags { id name }
                 categories { name }
                 variants { prices { sellPrice } sku }
+                images { id order fileUrl }
             }
             count
             hasNext
@@ -42,6 +43,7 @@ class IkasClient:
                 tags { id name }
                 categories { name }
                 variants { prices { sellPrice } sku }
+                images { id order fileUrl }
             }
         }
     }
@@ -74,6 +76,7 @@ class IkasClient:
         self._token: Optional[str] = None
         self._semaphore = asyncio.Semaphore(5)
         self._client: Optional[httpx.AsyncClient] = None
+        self.total_count: int = 0
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -197,6 +200,16 @@ class IkasClient:
         prices = first_variant.get("prices") or []
         price = prices[0].get("sellPrice") if prices else first_variant.get("price")
 
+        # Extract first image URL, sorted by order
+        raw_images = data.get("images") or []
+        image_url: Optional[str] = None
+        if raw_images:
+            sorted_images = sorted(
+                [img for img in raw_images if isinstance(img, dict)],
+                key=lambda x: x.get("order", 0),
+            )
+            image_url = sorted_images[0].get("fileUrl") if sorted_images else None
+
         return Product(
             id=data["id"],
             name=data.get("name", ""),
@@ -209,12 +222,14 @@ class IkasClient:
             price=price,
             sku=first_variant.get("sku"),
             status=data.get("status", "active"),
+            image_url=image_url,
         )
 
     async def get_products(self, limit: int = 50, offset: int = 0) -> List[Product]:
         all_products: List[Product] = []
         page = 1
         page_size = min(limit, 50)
+        self.total_count = 0
 
         while True:
             data = await self._graphql(
@@ -223,6 +238,9 @@ class IkasClient:
             )
             result = data["listProduct"]
             product_list = result["data"]
+
+            if page == 1:
+                self.total_count = result.get("count", 0)
 
             for item in product_list:
                 all_products.append(self._parse_product(item))
