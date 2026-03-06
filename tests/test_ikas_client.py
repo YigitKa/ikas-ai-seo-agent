@@ -59,7 +59,11 @@ def test_product_model_full():
     assert len(p.tags) == 2
 
 
-def test_parse_product_translations():
+def test_parse_product_translations(monkeypatch):
+    monkeypatch.setenv("IKAS_STORE_NAME", "demo-store")
+    monkeypatch.setenv("IKAS_CLIENT_ID", "demo-client")
+    monkeypatch.setenv("IKAS_CLIENT_SECRET", "demo-secret")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-demo")
     client = IkasClient()
     parsed = client._parse_product({
         "id": "prod_tr_en",

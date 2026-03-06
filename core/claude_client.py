@@ -86,7 +86,8 @@ class ClaudeClient:
 
     def _get_system_prompt(self) -> str:
         config = get_config()
-        if config.store_language == "tr":
+        languages = {lang.lower() for lang in config.store_languages}
+        if "tr" in languages:
             return SYSTEM_PROMPT_TR
         return SYSTEM_PROMPT_EN
 
