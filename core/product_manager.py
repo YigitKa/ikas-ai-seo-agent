@@ -3,7 +3,7 @@ import logging
 from typing import List, Optional
 
 from config.settings import get_config
-from core.claude_client import ClaudeClient
+from core.ai_client import BaseAIClient, create_ai_client
 from core.ikas_client import IkasClient
 from core.models import Product, SeoScore, SeoSuggestion
 from core.seo_analyzer import analyze_product
@@ -13,10 +13,16 @@ logger = logging.getLogger(__name__)
 
 
 class ProductManager:
-    def __init__(self, model: str = "claude-haiku-4-5-20251001") -> None:
+    def __init__(self) -> None:
         self._ikas = IkasClient()
-        self._claude = ClaudeClient(model=model)
         self._config = get_config()
+        self._ai: BaseAIClient = create_ai_client(self._config)
+
+    def reload_ai_client(self) -> None:
+        """Recreate AI client after config change."""
+        from config.settings import get_config as _get
+        self._config = _get()
+        self._ai = create_ai_client(self._config)
 
     async def fetch_products(self, limit: int = 100) -> List[Product]:
         products = await self._ikas.get_products(limit=limit)
@@ -52,7 +58,7 @@ class ProductManager:
         self,
         products_with_scores: List[tuple[Product, SeoScore]],
     ) -> List[SeoSuggestion]:
-        suggestions = self._claude.rewrite_products_batch(products_with_scores)
+        suggestions = self._ai.rewrite_products_batch(products_with_scores)
         for s in suggestions:
             db.save_suggestion(s)
         logger.info(f"Generated {len(suggestions)} suggestions")
@@ -104,7 +110,7 @@ class ProductManager:
         db.update_suggestion_status(product_id, "rejected")
 
     def get_token_usage(self) -> dict:
-        return self._claude.total_tokens
+        return self._ai.total_tokens
 
     async def test_connection(self) -> bool:
         return await self._ikas.test_connection()
