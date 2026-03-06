@@ -114,7 +114,7 @@ def get_config() -> AppConfig:
         ikas_store_name=store_name,
         ikas_client_id=os.getenv("IKAS_CLIENT_ID", ""),
         ikas_client_secret=os.getenv("IKAS_CLIENT_SECRET", ""),
-        ikas_api_url=f"https://{store_name}.myikas.com/api/admin/graphql" if store_name else "",
+        ikas_api_url="https://api.myikas.com/api/v1/admin/graphql",
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
         store_language=store_languages[0],
         store_languages=store_languages,
