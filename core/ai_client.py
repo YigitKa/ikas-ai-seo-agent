@@ -65,6 +65,51 @@ Su alanlari optimize et ve JSON olarak dondur:
     "suggested_meta_description": "..."
 }}"""
 
+# Per-field prompt templates – smaller context, single field output
+FIELD_PROMPT_TEMPLATES = {
+    "name": """Urun Adi: {name}
+Kategori: {category}
+Hedef Keywordler: {keywords}
+
+Bu urunun adini SEO icin optimize et. Dogal ve aranabilir bir isim olustur.
+SADECE JSON dondur:
+{{"suggested_name": "..."}}""",
+
+    "meta_title": """Urun Adi: {name}
+Kategori: {category}
+Hedef Keywordler: {keywords}
+
+Bu urun icin SEO uyumlu meta title yaz. Max 60 karakter, marka adiyla bitir.
+SADECE JSON dondur:
+{{"suggested_meta_title": "..."}}""",
+
+    "meta_desc": """Urun Adi: {name}
+Mevcut Aciklama: {description_short}
+Hedef Keywordler: {keywords}
+
+Bu urun icin SEO uyumlu meta description yaz. Max 155 karakter, CTA icermeli.
+SADECE JSON dondur:
+{{"suggested_meta_description": "..."}}""",
+
+    "desc_tr": """Urun Adi: {name}
+Mevcut Turkce Aciklama: {description}
+Kategori: {category}
+Hedef Keywordler: {keywords}
+
+Bu urunun Turkce aciklamasini SEO icin optimize et. 200-400 kelime, dogal satis dili.
+SADECE JSON dondur:
+{{"suggested_description": "..."}}""",
+
+    "desc_en": """Urun Adi: {name}
+Mevcut Ingilizce Aciklama: {description_en}
+Kategori: {category}
+Hedef Keywordler: {keywords}
+
+Rewrite the English product description for SEO. 200-400 words, natural sales language.
+Return ONLY JSON:
+{{"suggested_description_en": "..."}}""",
+}
+
 # Default models per provider
 DEFAULT_MODELS = {
     "anthropic": "claude-haiku-4-5-20251001",
@@ -93,23 +138,161 @@ def _get_system_prompt(config: AppConfig) -> str:
     return SYSTEM_PROMPT_EN
 
 
-def _parse_response_text(raw_text: str) -> dict:
-    """Strip markdown fences and parse JSON from AI response."""
+def _is_placeholder_json(data: dict) -> bool:
+    """Check if parsed JSON contains only placeholder values like '...' or empty strings."""
+    if not isinstance(data, dict) or not data:
+        return True
+    str_values = [v for v in data.values() if isinstance(v, str)]
+    if not str_values:
+        return False
+    return all(v.strip().strip('"').strip("'") in ("...", "\u2026", "") for v in str_values)
+
+
+def _extract_thinking(raw_text: str) -> tuple[str, str]:
+    """Extract thinking/reasoning content from AI response.
+
+    Returns (thinking_text, remaining_text) where remaining_text
+    should contain the JSON result.
+    """
+    import re as _re
+
     text = raw_text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        text = "\n".join(lines)
+    thinking_parts: list[str] = []
+
+    # 1) Extract <think>...</think> XML blocks
+    think_xml_matches = list(_re.finditer(r"<think>([\s\S]*?)</think>", text))
+    for m in think_xml_matches:
+        thinking_parts.append(m.group(1).strip())
+    text = _re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
+
+    # 2) If text starts with JSON or markdown fence, no thinking preamble
+    stripped = text.lstrip()
+    if stripped.startswith("{") or stripped.startswith("[") or stripped.startswith("```"):
+        return "\n\n".join(thinking_parts), text
+
+    # 3) Text has non-JSON preamble (model is thinking/reasoning).
+    #    Find the last valid non-placeholder JSON object and treat
+    #    everything before it as thinking text.
+    json_obj_pattern = _re.compile(r"\{[^{}]*\}")  # non-nested JSON objects
+    all_json_matches = list(json_obj_pattern.finditer(text))
+
+    for m in reversed(all_json_matches):
+        candidate = m.group(0)
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict) and not _is_placeholder_json(parsed):
+                before = text[:m.start()].strip()
+                if before:
+                    thinking_parts.append(before)
+                return "\n\n".join(thinking_parts), text[m.start():]
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+    # 4) No valid non-placeholder JSON found.
+    #    If text is clearly all reasoning (long and no usable JSON), mark as thinking.
+    if len(text) > 200:
+        thinking_parts.append(text)
+        return "\n\n".join(thinking_parts), ""
+
+    return "\n\n".join(thinking_parts), text
+
+
+def _parse_response_text(raw_text: str) -> tuple[dict, str]:
+    """Strip markdown fences / thinking blocks / stray text and extract JSON from AI response.
+
+    Returns (parsed_dict, thinking_text).
+    """
+    import re as _re
+
+    # First extract thinking content
+    thinking_text, text = _extract_thinking(raw_text)
+
+    if not text.strip():
+        logger.error(f"No JSON content after stripping thinking (thinking length: {len(thinking_text)})")
+        raise ValueError(
+            "AI yaniti JSON icerik uretmeden tamamlandi (muhtemelen token limiti). "
+            "Max Tokens degerini artirin veya Thinking Mode'u kapatin."
+        )
+
+    # 1) Strip markdown code fences (```json ... ``` or ``` ... ```)
+    fence_match = _re.search(r"```(?:json)?\s*\n([\s\S]*?)```", text)
+    if fence_match:
+        text = fence_match.group(1).strip()
+
+    # 2) Try direct parse first
     try:
-        return json.loads(text)
+        parsed = json.loads(text)
+        if _is_placeholder_json(parsed):
+            raise json.JSONDecodeError("placeholder JSON", text, 0)
+        return parsed, thinking_text
     except json.JSONDecodeError:
-        logger.error(f"Failed to parse AI response as JSON: {text[:200]}")
-        raise ValueError("AI response was not valid JSON")
+        pass
+
+    # 3) Find individual non-nested { ... } blocks (last match first)
+    json_obj_matches = list(_re.finditer(r"\{[^{}]*\}", text))
+    for m in reversed(json_obj_matches):
+        candidate = m.group(0)
+        try:
+            parsed = json.loads(candidate)
+            if not _is_placeholder_json(parsed):
+                return parsed, thinking_text
+        except json.JSONDecodeError:
+            continue
+
+    # 4) Fallback: greedy { ... } for nested JSON
+    brace_match = _re.search(r"\{[\s\S]*\}", text)
+    if brace_match:
+        candidate = brace_match.group(0)
+        try:
+            parsed = json.loads(candidate)
+            if not _is_placeholder_json(parsed):
+                return parsed, thinking_text
+        except json.JSONDecodeError:
+            pass
+
+    logger.error(f"Failed to parse AI response as JSON: {text[:300]}")
+    raise ValueError("AI yaniti gecerli JSON degil. Model farkli formatta yanit dondu.")
 
 
-def _build_suggestion(product: Product, result: dict) -> SeoSuggestion:
+# Mapping from field key to the JSON key in the response
+FIELD_RESULT_KEYS = {
+    "name": "suggested_name",
+    "meta_title": "suggested_meta_title",
+    "meta_desc": "suggested_meta_description",
+    "desc_tr": "suggested_description",
+    "desc_en": "suggested_description_en",
+}
+
+
+def _build_field_prompt(field: str, product: Product, keywords: List[str], desc_limit: int = 800) -> str:
+    """Build a small prompt for a single field rewrite."""
+    import re as _re
+
+    template = FIELD_PROMPT_TEMPLATES.get(field)
+    if not template:
+        raise ValueError(f"Unknown field: {field}")
+
+    raw_desc = product.description[:desc_limit]
+    raw_desc = _re.sub(r"<[^>]+>", " ", raw_desc)
+    raw_desc = _re.sub(r"\s+", " ", raw_desc).strip()
+
+    raw_desc_en = product.description_translations.get("en", "")[:desc_limit]
+    raw_desc_en = _re.sub(r"<[^>]+>", " ", raw_desc_en)
+    raw_desc_en = _re.sub(r"\s+", " ", raw_desc_en).strip()
+
+    kw_str = ", ".join(keywords) if keywords else "Belirtilmemis"
+
+    return template.format(
+        name=product.name,
+        description=raw_desc,
+        description_short=raw_desc[:200],
+        description_en=raw_desc_en,
+        category=product.category or "Belirtilmemis",
+        keywords=kw_str,
+    )
+
+
+def _build_suggestion(product: Product, result: dict, thinking_text: str = "") -> SeoSuggestion:
     return SeoSuggestion(
         product_id=product.id,
         original_name=product.name,
@@ -122,6 +305,7 @@ def _build_suggestion(product: Product, result: dict) -> SeoSuggestion:
         suggested_meta_title=result.get("suggested_meta_title", ""),
         original_meta_description=product.meta_description,
         suggested_meta_description=result.get("suggested_meta_description", ""),
+        thinking_text=thinking_text,
         status="pending",
     )
 
@@ -135,6 +319,17 @@ class BaseAIClient:
         score: SeoScore,
         target_keywords: Optional[List[str]] = None,
     ) -> SeoSuggestion:
+        raise NotImplementedError
+
+    def rewrite_field(
+        self,
+        field: str,
+        product: Product,
+        score: SeoScore,
+        target_keywords: Optional[List[str]] = None,
+    ) -> str | tuple[str, str]:
+        """Rewrite a single field and return the new value as plain text,
+        or (value, thinking_text) tuple when thinking mode is on."""
         raise NotImplementedError
 
     def rewrite_products_batch(
@@ -164,6 +359,10 @@ class NoneAIClient(BaseAIClient):
             "AI provider 'none' secildi. Yeniden yazma icin Ayarlar'dan bir provider secin."
         )
 
+    def rewrite_field(self, field, product, score, target_keywords=None):
+        raise RuntimeError(
+            "AI provider 'none' secildi. Yeniden yazma icin Ayarlar'dan bir provider secin."
+        )
 
 class AnthropicAIClient(BaseAIClient):
     def __init__(self, config: AppConfig) -> None:
@@ -233,8 +432,32 @@ class AnthropicAIClient(BaseAIClient):
             f"Anthropic API call: {response.usage.input_tokens} input, "
             f"{response.usage.output_tokens} output tokens"
         )
-        result = _parse_response_text(response.content[0].text)
-        return _build_suggestion(product, result)
+        result, thinking_text = _parse_response_text(response.content[0].text)
+        return _build_suggestion(product, result, thinking_text)
+
+    def rewrite_field(
+        self,
+        field: str,
+        product: Product,
+        score: SeoScore,
+        target_keywords: Optional[List[str]] = None,
+    ) -> str | tuple[str, str]:
+        keywords = target_keywords or self._config.seo_target_keywords
+        user_prompt = _build_field_prompt(field, product, keywords, desc_limit=2000)
+        response = self._client.messages.create(
+            model=self._model,
+            max_tokens=self._max_tokens,
+            system=_get_system_prompt(self._config),
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        self._total_input_tokens += response.usage.input_tokens
+        self._total_output_tokens += response.usage.output_tokens
+        result, thinking_text = _parse_response_text(response.content[0].text)
+        result_key = FIELD_RESULT_KEYS.get(field, field)
+        value = result.get(result_key, "")
+        if thinking_text:
+            return value, thinking_text
+        return value
 
 
 class OpenAICompatibleClient(BaseAIClient):
@@ -254,6 +477,11 @@ class OpenAICompatibleClient(BaseAIClient):
         else:
             base_url = PROVIDER_BASE_URLS.get(provider)
 
+        # Ensure /v1 suffix for OpenAI-compatible providers
+        if base_url and provider in ("ollama", "lm-studio", "openai") and not base_url.rstrip("/").endswith("/v1"):
+            base_url = base_url.rstrip("/") + "/v1"
+            logger.info(f"Auto-appended /v1 to base URL: {base_url}")
+
         # Ollama and LM Studio don't need a real API key
         api_key = config.ai_api_key or ("ollama" if provider in ("ollama", "lm-studio") else "no-key")
 
@@ -261,6 +489,47 @@ class OpenAICompatibleClient(BaseAIClient):
         self._model = config.ai_model_name or DEFAULT_MODELS.get(provider, "gpt-4o-mini")
         self._temperature = config.ai_temperature
         self._max_tokens = config.ai_max_tokens
+        # Token tracking
+        self._total_input_tokens = 0
+        self._total_output_tokens = 0
+        self._last_input_tokens = 0
+        self._last_output_tokens = 0
+
+    @property
+    def total_tokens(self) -> dict:
+        return {
+            "input": self._total_input_tokens,
+            "output": self._total_output_tokens,
+            "estimated_cost": 0.0,
+        }
+
+    @property
+    def last_usage(self) -> dict:
+        """Token usage of the most recent API call."""
+        return {
+            "input": self._last_input_tokens,
+            "output": self._last_output_tokens,
+        }
+
+    def _track_usage(self, response) -> None:
+        """Extract and accumulate token usage from an API response."""
+        usage = response.usage
+        if usage:
+            inp = getattr(usage, 'prompt_tokens', 0) or 0
+            out = getattr(usage, 'completion_tokens', 0) or 0
+            total = getattr(usage, 'total_tokens', 0) or 0
+            self._last_input_tokens = inp
+            self._last_output_tokens = out
+            self._total_input_tokens += inp
+            self._total_output_tokens += out
+            logger.info(
+                f"Token kullanimi: {inp} input + {out} output = {total} "
+                f"(toplam: {self._total_input_tokens}+{self._total_output_tokens})"
+            )
+        else:
+            self._last_input_tokens = 0
+            self._last_output_tokens = 0
+            logger.warning(f"{self._provider}: response.usage is None — token tracking unavailable")
 
     def rewrite_product(
         self,
@@ -269,30 +538,160 @@ class OpenAICompatibleClient(BaseAIClient):
         target_keywords: Optional[List[str]] = None,
     ) -> SeoSuggestion:
         keywords = target_keywords or self._config.seo_target_keywords
+
+        # Local providers have smaller context windows – truncate more aggressively
+        is_local = self._provider in ("ollama", "lm-studio")
+        desc_limit = 800 if is_local else 2000
+        thinking_mode = self._config.ai_thinking_mode
+        max_tokens = self._max_tokens
+
+        # Strip HTML tags from descriptions to save tokens
+        import re as _re
+        raw_desc = product.description[:desc_limit]
+        raw_desc = _re.sub(r"<[^>]+>", " ", raw_desc)
+        raw_desc = _re.sub(r"\s+", " ", raw_desc).strip()
+
+        raw_desc_en = product.description_translations.get("en", "")[:desc_limit]
+        raw_desc_en = _re.sub(r"<[^>]+>", " ", raw_desc_en)
+        raw_desc_en = _re.sub(r"\s+", " ", raw_desc_en).strip()
+
         user_prompt = USER_PROMPT_TEMPLATE.format(
             name=product.name,
-            description=product.description[:2000],
-            description_en=product.description_translations.get("en", "")[:2000],
+            description=raw_desc,
+            description_en=raw_desc_en,
             category=product.category or "Belirtilmemis",
-            issues="; ".join(score.issues) if score.issues else "Yok",
+            issues="; ".join(score.issues[:5]) if score.issues else "Yok",
             keywords=", ".join(keywords) if keywords else "Belirtilmemis",
         )
-        response = self._client.chat.completions.create(
+        # Build messages; for local providers suppress thinking unless thinking_mode is on
+        system_content = _get_system_prompt(self._config)
+        if is_local and not thinking_mode:
+            system_content += (
+                "\n\nONEMLI: Dusunme surecini YAZMA. Dogrudan JSON ciktisi ver, "
+                "baska hicbir sey yazma. /no_think"
+            )
+
+        create_kwargs = dict(
             model=self._model,
-            max_tokens=self._max_tokens,
+            max_tokens=max_tokens,
             temperature=self._temperature,
             messages=[
-                {"role": "system", "content": _get_system_prompt(self._config)},
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": user_prompt},
             ],
         )
+
+        # response_format is unreliable on local servers (LM Studio rejects json_object)
+        # so we skip it entirely and rely on robust response parsing instead
+
+        try:
+            response = self._client.chat.completions.create(**create_kwargs)
+        except Exception as api_err:
+            logger.error(f"{self._provider} API request failed: {api_err}")
+            raise
+
+        self._track_usage(response)
         logger.info(
             f"{self._provider} API call: "
-            f"{response.usage.prompt_tokens if response.usage else '?'} input tokens"
+            f"{self._last_input_tokens} input, {self._last_output_tokens} output tokens "
+            f"(total: {self._total_input_tokens}+{self._total_output_tokens})"
         )
-        raw_text = response.choices[0].message.content or ""
-        result = _parse_response_text(raw_text)
-        return _build_suggestion(product, result)
+
+        # Check for truncation — model ran out of tokens
+        finish_reason = getattr(response.choices[0], "finish_reason", None) if response.choices else None
+        if finish_reason == "length":
+            logger.warning(
+                f"{self._provider}: Response truncated (max_tokens={max_tokens} reached). "
+                "Consider increasing Max Tokens or disabling Thinking Mode."
+            )
+
+        # Defensive checks for LM Studio / Ollama responses
+        if not response.choices:
+            logger.error(f"{self._provider} returned no choices. Full response: {response}")
+            raise ValueError(f"{self._provider} yanit dondurmedi (choices bos)")
+
+        message = response.choices[0].message
+        if message is None:
+            logger.error(f"{self._provider} returned None message")
+            raise ValueError(f"{self._provider} yanit mesaji bos")
+
+        raw_text = message.content or ""
+        if not raw_text.strip():
+            logger.error(f"{self._provider} returned empty content")
+            raise ValueError(f"{self._provider} bos icerik dondu")
+
+        logger.debug(f"{self._provider} raw response: {raw_text[:500]}")
+        result, thinking_text = _parse_response_text(raw_text)
+        return _build_suggestion(product, result, thinking_text)
+
+    def rewrite_field(
+        self,
+        field: str,
+        product: Product,
+        score: SeoScore,
+        target_keywords: Optional[List[str]] = None,
+    ) -> str | tuple[str, str]:
+        keywords = target_keywords or self._config.seo_target_keywords
+        is_local = self._provider in ("ollama", "lm-studio")
+        desc_limit = 800 if is_local else 2000
+        thinking_mode = self._config.ai_thinking_mode
+        max_tokens = self._max_tokens
+
+        user_prompt = _build_field_prompt(field, product, keywords, desc_limit)
+
+        system_content = _get_system_prompt(self._config)
+        if is_local and not thinking_mode:
+            system_content += (
+                "\n\nONEMLI: Dusunme surecini YAZMA. Dogrudan JSON ciktisi ver, "
+                "baska hicbir sey yazma. /no_think"
+            )
+
+        create_kwargs = dict(
+            model=self._model,
+            max_tokens=max_tokens,
+            temperature=self._temperature,
+            messages=[
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+
+        try:
+            response = self._client.chat.completions.create(**create_kwargs)
+        except Exception as api_err:
+            logger.error(f"{self._provider} field rewrite failed: {api_err}")
+            raise
+
+        self._track_usage(response)
+        logger.info(
+            f"{self._provider} field '{field}': "
+            f"{self._last_input_tokens} input, {self._last_output_tokens} output tokens "
+            f"(total: {self._total_input_tokens}+{self._total_output_tokens})"
+        )
+
+        # Check for truncation
+        finish_reason = getattr(response.choices[0], "finish_reason", None) if response.choices else None
+        if finish_reason == "length":
+            logger.warning(
+                f"{self._provider}: Field '{field}' response truncated (max_tokens={max_tokens}). "
+                "Consider increasing Max Tokens or disabling Thinking Mode."
+            )
+
+        if not response.choices:
+            raise ValueError(f"{self._provider} yanit dondurmedi (choices bos)")
+
+        message = response.choices[0].message
+        raw_text = (message.content or "") if message else ""
+        if not raw_text.strip():
+            raise ValueError(f"{self._provider} bos icerik dondu")
+
+        logger.debug(f"{self._provider} field '{field}' response: {raw_text[:300]}")
+        result, thinking_text = _parse_response_text(raw_text)
+        result_key = FIELD_RESULT_KEYS.get(field, field)
+        value = result.get(result_key, "")
+        if thinking_text:
+            return value, thinking_text
+        return value
 
 
 def create_ai_client(config: AppConfig) -> BaseAIClient:

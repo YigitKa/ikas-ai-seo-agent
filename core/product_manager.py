@@ -24,11 +24,11 @@ class ProductManager:
         self._config = _get()
         self._ai = create_ai_client(self._config)
 
-    async def fetch_products(self, limit: int = 100) -> List[Product]:
-        products = await self._ikas.get_products(limit=limit)
+    async def fetch_products(self, limit: int = 50, page: int = 1) -> List[Product]:
+        products = await self._ikas.get_products(limit=limit, page=page)
         for p in products:
             db.save_product(p)
-        logger.info(f"Fetched and cached {len(products)} products")
+        logger.info(f"Fetched and cached {len(products)} products (page {page})")
         return products
 
     async def fetch_product(self, product_id: str) -> Optional[Product]:
@@ -111,6 +111,10 @@ class ProductManager:
 
     def get_token_usage(self) -> dict:
         return self._ai.total_tokens
+
+    def get_last_token_usage(self) -> dict:
+        """Token usage of the most recent API call."""
+        return getattr(self._ai, 'last_usage', {"input": 0, "output": 0})
 
     async def test_connection(self) -> bool:
         return await self._ikas.test_connection()

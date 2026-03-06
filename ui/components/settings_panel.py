@@ -115,6 +115,13 @@ class SettingsPanel(ctk.CTkToplevel):
         self._max_tokens.insert(0, str(config.ai_max_tokens))
         self._max_tokens.grid(row=1, column=1, sticky="ew", padx=(10, 0))
 
+        self._thinking_mode_var = ctk.BooleanVar(value=config.ai_thinking_mode)
+        ctk.CTkCheckBox(
+            main, text="AI Thinking Mode (düşünme zinciri)",
+            variable=self._thinking_mode_var,
+            text_color=COLORS["text_secondary"],
+        ).pack(anchor="w", pady=(10, 0))
+
         # ── General ───────────────────────────────────────────────────────────
         self._section(main, "Genel Ayarlar", top_pad=20)
         self._languages = self._field(main, "Magaza Dilleri (virgul ile):", ",".join(config.store_languages))
@@ -264,7 +271,7 @@ class SettingsPanel(ctk.CTkToplevel):
 
         elif provider == "ollama":
             config = self._config
-            self._base_url_entry = self._inner_field(self._provider_frame, "Base URL:", config.ai_base_url or "http://localhost:11434")
+            self._base_url_entry = self._inner_field(self._provider_frame, "Base URL:", config.ai_base_url or "http://localhost:11434/v1")
 
             # Discovery button + status
             disc_frame = ctk.CTkFrame(self._provider_frame, fg_color="transparent")
@@ -292,7 +299,7 @@ class SettingsPanel(ctk.CTkToplevel):
         elif provider == "lm-studio":
             config = self._config
             self._base_url_entry = self._inner_field(
-                self._provider_frame, "Base URL:", config.ai_base_url or "http://localhost:1234"
+                self._provider_frame, "Base URL:", config.ai_base_url or "http://localhost:1234/v1"
             )
 
             # Discovery button + status
@@ -438,6 +445,7 @@ class SettingsPanel(ctk.CTkToplevel):
             "ai_model_name": model,
             "ai_temperature": temperature,
             "ai_max_tokens": max_tokens,
+            "ai_thinking_mode": self._thinking_mode_var.get(),
             "languages": self._languages.get(),
             "keywords": self._keywords.get(),
             "dry_run": self._dry_run_var.get(),

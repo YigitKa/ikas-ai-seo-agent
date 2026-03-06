@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -22,8 +24,7 @@ class IkasClient:
                 metaData { pageTitle description }
                 tags { id name }
                 categories { name }
-                variants { prices { sellPrice } sku }
-                images { id order fileUrl }
+                variants { prices { sellPrice } sku images { imageId order fileName isMain } }
             }
             count
             hasNext
@@ -42,8 +43,7 @@ class IkasClient:
                 metaData { pageTitle description }
                 tags { id name }
                 categories { name }
-                variants { prices { sellPrice } sku }
-                images { id order fileUrl }
+                variants { prices { sellPrice } sku images { imageId order fileName isMain } }
             }
         }
     }
@@ -74,6 +74,7 @@ class IkasClient:
     def __init__(self) -> None:
         self._config = get_config()
         self._token: Optional[str] = None
+        self._merchant_id: Optional[str] = None
         self._semaphore = asyncio.Semaphore(5)
         self._client: Optional[httpx.AsyncClient] = None
         self.total_count: int = 0
@@ -109,7 +110,10 @@ class IkasClient:
                 response.raise_for_status()
                 data = response.json()
                 self._token = data["access_token"]
-                logger.info("ikas authentication successful")
+                self._merchant_id = data.get("merchantId") or data.get("merchant_id")
+                if not self._merchant_id:
+                    self._merchant_id = self._extract_merchant_id_from_jwt(self._token)
+                logger.info("ikas authentication successful (merchant=%s)", self._merchant_id)
                 return self._token
             except httpx.HTTPError as e:
                 logger.warning(f"Auth attempt {attempt + 1} failed: {e}")
@@ -119,6 +123,32 @@ class IkasClient:
                     raise
 
         raise RuntimeError("Authentication failed after 3 attempts")
+
+    @staticmethod
+    def _extract_merchant_id_from_jwt(token: str) -> Optional[str]:
+        """Decode JWT payload (without verification) to extract merchantId."""
+        try:
+            parts = token.split(".")
+            if len(parts) < 2:
+                return None
+            # Add padding for base64
+            payload_b64 = parts[1]
+            payload_b64 += "=" * (-len(payload_b64) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+            merchant_id = (
+                payload.get("merchantId")
+                or payload.get("merchant_id")
+                or payload.get("mid")
+                or payload.get("sub")
+            )
+            if merchant_id:
+                logger.debug("Extracted merchantId from JWT: %s", merchant_id)
+            else:
+                logger.warning("Could not find merchantId in JWT payload: %s", list(payload.keys()))
+            return merchant_id
+        except Exception as e:
+            logger.warning("Failed to decode JWT for merchantId: %s", e)
+            return None
 
     async def _graphql(self, query: str, variables: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         async with self._semaphore:
@@ -175,6 +205,26 @@ class IkasClient:
 
         return {}
 
+    def _build_image_url(self, image_data: Dict[str, Any]) -> Optional[str]:
+        """Build a usable image URL from ikas ProductImage fields.
+        
+        Format: https://cdn.myikas.com/images/{merchantId}/{imageId}/3840/{fileName || 'image.webp'}
+        """
+        file_name = image_data.get("fileName") or "image.webp"
+        image_id = image_data.get("imageId") or ""
+
+        # fileName may already be a full URL
+        if file_name.startswith("http"):
+            return file_name
+
+        if image_id and self._merchant_id:
+            return f"https://cdn.myikas.com/images/{self._merchant_id}/{image_id}/3840/{file_name}"
+
+        if image_id:
+            return f"https://cdn.myikas.com/images/{image_id}/3840/{file_name}"
+
+        return None
+
     def _parse_product(self, data: Dict[str, Any]) -> Product:
         variants = data.get("variants") or data.get("productVariants") or []
         first_variant = variants[0] if variants else {}
@@ -200,15 +250,27 @@ class IkasClient:
         prices = first_variant.get("prices") or []
         price = prices[0].get("sellPrice") if prices else first_variant.get("price")
 
-        # Extract first image URL, sorted by order
-        raw_images = data.get("images") or []
+        # Extract image URLs from variants, sorted by order
+        raw_images: list = []
+        for v in variants:
+            for img in (v.get("images") or []):
+                if isinstance(img, dict):
+                    raw_images.append(img)
         image_url: Optional[str] = None
+        image_urls: list[str] = []
         if raw_images:
-            sorted_images = sorted(
-                [img for img in raw_images if isinstance(img, dict)],
-                key=lambda x: x.get("order", 0),
-            )
-            image_url = sorted_images[0].get("fileUrl") if sorted_images else None
+            sorted_images = sorted(raw_images, key=lambda x: x.get("order", 0))
+            # Prefer isMain image if available
+            main_images = [img for img in sorted_images if img.get("isMain")]
+            chosen = main_images[0] if main_images else sorted_images[0]
+            image_url = self._build_image_url(chosen)
+            # Build all unique image URLs
+            seen: set[str] = set()
+            for img_data in sorted_images:
+                url = self._build_image_url(img_data)
+                if url and url not in seen:
+                    seen.add(url)
+                    image_urls.append(url)
 
         return Product(
             id=data["id"],
@@ -223,33 +285,40 @@ class IkasClient:
             sku=first_variant.get("sku"),
             status=data.get("status", "active"),
             image_url=image_url,
+            image_urls=image_urls,
         )
 
-    async def get_products(self, limit: int = 50, offset: int = 0) -> List[Product]:
+    async def get_products(self, limit: int = 50, page: int = 1) -> List[Product]:
         all_products: List[Product] = []
-        page = 1
         page_size = min(limit, 50)
         self.total_count = 0
 
-        while True:
+        # Calculate API pages: UI page 1 with limit 50 => API page 1
+        # UI page 2 with limit 50 => API page 2, etc.
+        api_page = page
+        remaining = limit
+
+        while remaining > 0:
+            fetch_size = min(remaining, page_size)
             data = await self._graphql(
                 self.PRODUCTS_QUERY,
-                {"pagination": {"page": page, "limit": page_size}},
+                {"pagination": {"page": api_page, "limit": fetch_size}},
             )
             result = data["listProduct"]
             product_list = result["data"]
 
-            if page == 1:
+            if api_page == page:
                 self.total_count = result.get("count", 0)
 
             for item in product_list:
                 all_products.append(self._parse_product(item))
 
-            if not result.get("hasNext") or len(all_products) >= limit:
+            remaining -= len(product_list)
+            if not result.get("hasNext") or not product_list:
                 break
-            page += 1
+            api_page += 1
 
-        return all_products[:limit]
+        return all_products
 
     async def get_product_by_id(self, product_id: str) -> Optional[Product]:
         data = await self._graphql(

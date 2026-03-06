@@ -127,6 +127,7 @@ def get_config() -> AppConfig:
         ai_model_name=os.getenv("AI_MODEL_NAME", ""),
         ai_temperature=_parse_float_env("AI_TEMPERATURE", 0.7),
         ai_max_tokens=_parse_int_env("AI_MAX_TOKENS", 2000),
+        ai_thinking_mode=_parse_bool_env("AI_THINKING_MODE", default=False),
     )
     return _config
 
@@ -163,6 +164,7 @@ def save_config_to_env(values: dict) -> None:
         "ai_model_name": "AI_MODEL_NAME",
         "ai_temperature": "AI_TEMPERATURE",
         "ai_max_tokens": "AI_MAX_TOKENS",
+        "ai_thinking_mode": "AI_THINKING_MODE",
         "languages": "STORE_LANGUAGES",
         "keywords": "SEO_TARGET_KEYWORDS",
         "dry_run": "DRY_RUN",

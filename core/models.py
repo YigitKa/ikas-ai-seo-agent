@@ -17,6 +17,7 @@ class Product(BaseModel):
     sku: Optional[str] = None
     status: str = "active"
     image_url: Optional[str] = None
+    image_urls: List[str] = Field(default_factory=list)
 
 
 class SeoScore(BaseModel):
@@ -48,6 +49,7 @@ class SeoSuggestion(BaseModel):
     suggested_meta_title: str = ""
     original_meta_description: Optional[str] = None
     suggested_meta_description: str = ""
+    thinking_text: str = ""
     status: str = "pending"
     created_at: datetime = Field(default_factory=datetime.now)
 
@@ -71,3 +73,4 @@ class AppConfig(BaseModel):
     ai_model_name: str = ""
     ai_temperature: float = 0.7
     ai_max_tokens: int = 2000
+    ai_thinking_mode: bool = False
