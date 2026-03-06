@@ -56,9 +56,17 @@ class AppConfig(BaseModel):
     ikas_client_id: str = ""
     ikas_client_secret: str = ""
     ikas_api_url: str = ""
+    # Legacy Anthropic key (backward compat)
     anthropic_api_key: str = ""
     store_language: str = "tr"
     store_languages: List[str] = Field(default_factory=lambda: ["tr"])
     seo_target_keywords: List[str] = Field(default_factory=list)
     dry_run: bool = True
     log_level: str = "INFO"
+    # Multi-provider AI settings
+    ai_provider: str = "none"  # anthropic | openai | gemini | openrouter | ollama | custom | none
+    ai_api_key: str = ""
+    ai_base_url: str = ""
+    ai_model_name: str = ""
+    ai_temperature: float = 0.7
+    ai_max_tokens: int = 2000

@@ -47,7 +47,7 @@ class App(ctk.CTk):
                        fg_color=COLORS["accent"]).pack(side="left", padx=5, pady=5)
         ctk.CTkButton(toolbar, text="Secilileri Analiz Et", command=self._analyze_selected,
                        fg_color=COLORS["bg_card"]).pack(side="left", padx=5, pady=5)
-        ctk.CTkButton(toolbar, text="Claude ile Yeniden Yaz", command=self._rewrite_selected,
+        ctk.CTkButton(toolbar, text="AI ile Yeniden Yaz", command=self._rewrite_selected,
                        fg_color=COLORS["bg_card"]).pack(side="left", padx=5, pady=5)
         ctk.CTkButton(toolbar, text="Onayla ve Uygula", command=self._apply_approved,
                        fg_color=COLORS["success"]).pack(side="left", padx=5, pady=5)
@@ -184,10 +184,11 @@ class App(ctk.CTk):
         if not self._selected_product or not self._selected_score:
             self._set_status("Once urun secin ve analiz edin")
             return
-        self._set_status("Claude ile yeniden yaziliyor...")
+        config = get_config()
+        self._set_status(f"AI ile yeniden yaziliyor ({config.ai_provider})...")
 
         def do_rewrite():
-            suggestion = self._manager._claude.rewrite_product(
+            suggestion = self._manager._ai.rewrite_product(
                 self._selected_product, self._selected_score
             )
             db.save_suggestion(suggestion)
@@ -196,7 +197,9 @@ class App(ctk.CTk):
         def on_done(suggestion):
             self._diff_viewer.show_suggestion(suggestion)
             usage = self._manager.get_token_usage()
-            self._set_status(f"Rewrite tamamlandi | Maliyet: ${usage['estimated_cost']}")
+            cost = usage.get("estimated_cost", 0)
+            cost_str = f" | Maliyet: ${cost}" if cost else ""
+            self._set_status(f"Rewrite tamamlandi{cost_str}")
 
         threading.Thread(target=lambda: self.after(0, lambda: on_done(do_rewrite())), daemon=True).start()
 
@@ -243,7 +246,15 @@ class App(ctk.CTk):
 
     def _open_settings(self) -> None:
         config = get_config()
-        SettingsPanel(self, config)
+        SettingsPanel(self, config, on_save=self._on_settings_save)
+
+    def _on_settings_save(self, values: dict) -> None:
+        from config.settings import save_config_to_env
+        save_config_to_env(values)
+        # Reload AI client with new config
+        self._manager.reload_ai_client()
+        config = get_config()
+        self._set_status(f"Ayarlar kaydedildi | AI: {config.ai_provider}")
 
 
 def launch() -> None:

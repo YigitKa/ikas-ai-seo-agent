@@ -16,7 +16,6 @@ REQUIRED_ENV_VARS = {
     "IKAS_STORE_NAME": "ikas magaza alt alani (ornek: my-store)",
     "IKAS_CLIENT_ID": "ikas OAuth2 Client ID",
     "IKAS_CLIENT_SECRET": "ikas OAuth2 Client Secret",
-    "ANTHROPIC_API_KEY": "Anthropic API anahtari (sk-ant-...)",
 }
 
 
@@ -64,6 +63,36 @@ def _parse_store_languages() -> list[str]:
     return languages or ["tr"]
 
 
+def _detect_default_provider() -> str:
+    """Auto-detect provider from legacy env vars for backward compatibility."""
+    if os.getenv("AI_PROVIDER", "").strip():
+        return os.getenv("AI_PROVIDER", "").strip().lower()
+    # Backward compat: if only ANTHROPIC_API_KEY is set, default to anthropic
+    if os.getenv("ANTHROPIC_API_KEY", "").strip():
+        return "anthropic"
+    return "none"
+
+
+def _parse_float_env(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw.strip())
+    except ValueError:
+        return default
+
+
+def _parse_int_env(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return default
+
+
 def get_config() -> AppConfig:
     global _config
     if _config is not None:
@@ -77,6 +106,10 @@ def get_config() -> AppConfig:
     store_name = os.getenv("IKAS_STORE_NAME", "")
     store_languages = _parse_store_languages()
 
+    provider = _detect_default_provider()
+    # ai_api_key: prefer AI_API_KEY, fall back to ANTHROPIC_API_KEY for compat
+    ai_api_key = os.getenv("AI_API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", "")
+
     _config = AppConfig(
         ikas_store_name=store_name,
         ikas_client_id=os.getenv("IKAS_CLIENT_ID", ""),
@@ -88,6 +121,12 @@ def get_config() -> AppConfig:
         seo_target_keywords=keywords,
         dry_run=_parse_bool_env("DRY_RUN", default=True),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
+        ai_provider=provider,
+        ai_api_key=ai_api_key,
+        ai_base_url=os.getenv("AI_BASE_URL", ""),
+        ai_model_name=os.getenv("AI_MODEL_NAME", ""),
+        ai_temperature=_parse_float_env("AI_TEMPERATURE", 0.7),
+        ai_max_tokens=_parse_int_env("AI_MAX_TOKENS", 2000),
     )
     return _config
 
@@ -95,3 +134,69 @@ def get_config() -> AppConfig:
 def reset_config() -> None:
     global _config
     _config = None
+
+
+def save_config_to_env(values: dict) -> None:
+    """Persist settings dict to .env file and reset the in-memory config cache."""
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+
+    # Read existing lines
+    existing: dict[str, str] = {}
+    lines: list[str] = []
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                stripped = line.rstrip("\n")
+                if "=" in stripped and not stripped.startswith("#"):
+                    key, _, val = stripped.partition("=")
+                    existing[key.strip()] = val
+                lines.append(stripped)
+
+    # Mapping from settings dict keys to .env variable names
+    key_map = {
+        "store_name": "IKAS_STORE_NAME",
+        "client_id": "IKAS_CLIENT_ID",
+        "client_secret": "IKAS_CLIENT_SECRET",
+        "ai_provider": "AI_PROVIDER",
+        "ai_api_key": "AI_API_KEY",
+        "ai_base_url": "AI_BASE_URL",
+        "ai_model_name": "AI_MODEL_NAME",
+        "ai_temperature": "AI_TEMPERATURE",
+        "ai_max_tokens": "AI_MAX_TOKENS",
+        "languages": "STORE_LANGUAGES",
+        "keywords": "SEO_TARGET_KEYWORDS",
+        "dry_run": "DRY_RUN",
+    }
+
+    updates: dict[str, str] = {}
+    for settings_key, env_key in key_map.items():
+        if settings_key in values:
+            val = values[settings_key]
+            if isinstance(val, bool):
+                val = "true" if val else "false"
+            updates[env_key] = str(val)
+
+    # Update or append
+    written_keys: set[str] = set()
+    new_lines: list[str] = []
+    for line in lines:
+        if "=" in line and not line.startswith("#"):
+            key = line.partition("=")[0].strip()
+            if key in updates:
+                new_lines.append(f"{key}={updates[key]}")
+                written_keys.add(key)
+                continue
+        new_lines.append(line)
+
+    for env_key, val in updates.items():
+        if env_key not in written_keys:
+            new_lines.append(f"{env_key}={val}")
+
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(new_lines))
+        if new_lines and not new_lines[-1].endswith("\n"):
+            f.write("\n")
+
+    # Reload env and reset config cache
+    load_dotenv(env_path, override=True)
+    reset_config()
