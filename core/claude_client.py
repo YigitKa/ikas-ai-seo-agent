@@ -40,7 +40,8 @@ Rules:
 Return ONLY JSON, nothing else."""
 
 USER_PROMPT_TEMPLATE = """Urun Adi: {name}
-Mevcut Aciklama: {description}
+Mevcut Turkce Aciklama: {description}
+Mevcut Ingilizce Aciklama: {description_en}
 Kategori: {category}
 Mevcut SEO Sorunlari: {issues}
 Hedef Keywordler: {keywords}
@@ -49,6 +50,7 @@ Su alanlari optimize et ve JSON olarak dondur:
 {{
     "suggested_name": "...",
     "suggested_description": "...",
+    "suggested_description_en": "...",
     "suggested_meta_title": "...",
     "suggested_meta_description": "..."
 }}"""
@@ -100,6 +102,7 @@ class ClaudeClient:
         user_prompt = USER_PROMPT_TEMPLATE.format(
             name=product.name,
             description=product.description[:2000],
+            description_en=(product.description_translations.get("en", "")[:2000]),
             category=product.category or "Belirtilmemis",
             issues="; ".join(score.issues) if score.issues else "Yok",
             keywords=", ".join(keywords) if keywords else "Belirtilmemis",
@@ -141,6 +144,8 @@ class ClaudeClient:
             suggested_name=result.get("suggested_name"),
             original_description=product.description,
             suggested_description=result.get("suggested_description", ""),
+            original_description_en=product.description_translations.get("en", ""),
+            suggested_description_en=result.get("suggested_description_en", ""),
             original_meta_title=product.meta_title,
             suggested_meta_title=result.get("suggested_meta_title", ""),
             original_meta_description=product.meta_description,

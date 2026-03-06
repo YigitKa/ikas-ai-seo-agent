@@ -101,6 +101,36 @@ def analyze_description(product: Product) -> tuple[int, List[str], List[str]]:
     return max(score, 0), issues, suggestions
 
 
+
+
+def analyze_english_description(product: Product) -> tuple[int, List[str], List[str]]:
+    issues: List[str] = []
+    suggestions: List[str] = []
+
+    en_text = (product.description_translations or {}).get("en", "")
+    words = word_count(en_text)
+
+    if not en_text.strip():
+        return 0, ["Ingilizce aciklama eksik"], ["Urun icin Ingilizce aciklama ekleyin"]
+
+    score = 10
+
+    if words < 40:
+        score -= 6
+        issues.append(f"Ingilizce aciklama cok kisa ({words} kelime)")
+        suggestions.append("Ingilizce aciklamayi en az 120 kelimeye cikarin")
+    elif words < 120:
+        score -= 3
+        issues.append(f"Ingilizce aciklama kisa ({words} kelime)")
+        suggestions.append("Ingilizce aciklamayi 120+ kelimeye cikarin")
+
+    if any(ch in en_text for ch in "ğüşöçıİĞÜŞÖÇ"):
+        score -= 2
+        issues.append("Ingilizce aciklamada Turkce karakterler var")
+        suggestions.append("Ingilizce metni dil kontrolunden gecirin")
+
+    return max(score, 0), issues, suggestions
+
 def analyze_meta_title(product: Product) -> tuple[int, List[str], List[str]]:
     issues: List[str] = []
     suggestions: List[str] = []
@@ -205,13 +235,14 @@ def analyze_product(product: Product, target_keywords: List[str] | None = None) 
     title_score, title_issues, title_suggestions = analyze_title(product)
     desc_score, desc_issues, desc_suggestions = analyze_description(product)
     meta_score, meta_issues, meta_suggestions = analyze_meta_title(product)
+    en_desc_score, en_desc_issues, en_desc_suggestions = analyze_english_description(product)
     meta_desc_score, md_issues, md_suggestions = analyze_meta_description(product)
     kw_score, kw_issues, kw_suggestions = analyze_keywords(product, target_keywords)
 
-    all_issues = title_issues + desc_issues + meta_issues + md_issues + kw_issues
-    all_suggestions = title_suggestions + desc_suggestions + meta_suggestions + md_suggestions + kw_suggestions
+    all_issues = title_issues + desc_issues + en_desc_issues + meta_issues + md_issues + kw_issues
+    all_suggestions = title_suggestions + desc_suggestions + en_desc_suggestions + meta_suggestions + md_suggestions + kw_suggestions
 
-    total = title_score + desc_score + meta_score + meta_desc_score + kw_score
+    total = min(title_score + desc_score + en_desc_score + meta_score + meta_desc_score + kw_score, 100)
 
     return SeoScore(
         product_id=product.id,
@@ -219,6 +250,7 @@ def analyze_product(product: Product, target_keywords: List[str] | None = None) 
         title_score=title_score,
         description_score=desc_score,
         meta_score=meta_score,
+        english_description_score=en_desc_score,
         meta_desc_score=meta_desc_score,
         keyword_score=kw_score,
         issues=all_issues,

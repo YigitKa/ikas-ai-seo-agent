@@ -68,6 +68,14 @@ class ProductManager:
                 updates["name"] = suggestion.suggested_name
             if suggestion.suggested_description:
                 updates["description"] = suggestion.suggested_description
+
+            description_translations = {}
+            if suggestion.suggested_description:
+                description_translations["tr"] = suggestion.suggested_description
+            if suggestion.suggested_description_en:
+                description_translations["en"] = suggestion.suggested_description_en
+            if description_translations:
+                updates["description_translations"] = description_translations
             if suggestion.suggested_meta_title:
                 updates["meta_title"] = suggestion.suggested_meta_title
             if suggestion.suggested_meta_description:
