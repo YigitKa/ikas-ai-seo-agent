@@ -8,6 +8,7 @@ class Product(BaseModel):
     id: str
     name: str
     description: str = ""
+    description_translations: dict[str, str] = Field(default_factory=dict)
     meta_title: Optional[str] = None
     meta_description: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
@@ -22,6 +23,7 @@ class SeoScore(BaseModel):
     total_score: int = Field(ge=0, le=100)
     title_score: int = Field(ge=0, le=25)
     description_score: int = Field(ge=0, le=30)
+    english_description_score: int = Field(ge=0, le=10, default=0)
     meta_score: int = Field(ge=0, le=20)
     meta_desc_score: int = Field(ge=0, le=15)
     keyword_score: int = Field(ge=0, le=10)
@@ -39,6 +41,8 @@ class SeoSuggestion(BaseModel):
     suggested_name: Optional[str] = None
     original_description: str
     suggested_description: str = ""
+    original_description_en: str = ""
+    suggested_description_en: str = ""
     original_meta_title: Optional[str] = None
     suggested_meta_title: str = ""
     original_meta_description: Optional[str] = None

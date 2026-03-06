@@ -97,3 +97,18 @@ def test_needs_optimization():
     product = Product(id="low", name="x", description="y")
     score = analyze_product(product)
     assert score.needs_optimization is True
+
+
+def test_analyze_english_description_score():
+    product = Product(
+        id="bilingual",
+        name="Bilingual Product Name",
+        description="Turkce aciklama " * 40,
+        description_translations={"en": "English product description " * 60},
+        meta_title="Bilingual Product | Brand",
+        meta_description="Discover bilingual product details and shop now.",
+    )
+
+    score = analyze_product(product)
+    assert score.english_description_score > 0
+    assert score.total_score <= 100

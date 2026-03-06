@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from core.ikas_client import IkasClient
 from core.models import Product
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -56,3 +57,24 @@ def test_product_model_full():
     assert p.price == 99.99
     assert p.sku == "FP-001"
     assert len(p.tags) == 2
+
+
+def test_parse_product_translations():
+    client = IkasClient()
+    parsed = client._parse_product({
+        "id": "prod_tr_en",
+        "name": "Test",
+        "description": "Turkce aciklama",
+        "descriptionTranslations": [
+            {"locale": "tr", "value": "Turkce aciklama"},
+            {"locale": "en", "value": "English description"},
+        ],
+        "metaData": {"title": None, "description": None},
+        "tags": [],
+        "categories": [],
+        "productVariants": [],
+        "status": "active",
+    })
+
+    assert parsed.description_translations.get("en") == "English description"
+    assert parsed.description_translations.get("tr") == "Turkce aciklama"

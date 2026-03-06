@@ -39,6 +39,28 @@ ikas e-ticaret altyapisi kullanan magazalar icin Python tabanli SEO optimizasyon
                     +------------+
 ```
 
+## Yeni: Cift Dil (TR/EN) SEO Destegi
+
+Bu proje artik urun aciklamalarini hem Turkce hem Ingilizce olarak isleyebilir:
+
+- ikas GraphQL sorgularinda `descriptionTranslations` alani okunur.
+- Urun modeli icinde tum dil aciklamalari `description_translations` alaninda tutulur.
+- SEO skoruna ek olarak Ingilizce aciklama kalitesi icin `english_description_score` hesaplanir.
+- Toplam skor hesaplanirken TR + EN kalite sinyalleri birlikte degerlendirilir (ust sinir 100).
+- Claude rewrite akisinda hem TR hem EN aciklama baglami modele verilir ve EN onerisi de uretilir.
+- Uygulama asamasinda onaylanan onerilerde `tr` ve `en` aciklamalari birlikte guncellenebilir.
+
+### ikas'tan TR/EN aciklamalari okuma/guncelleme notu
+
+`core/ikas_client.py` icindeki akista:
+
+1. Okuma tarafinda `description` + `descriptionTranslations { locale value }` alanlari cekilir.
+2. Parse asamasinda liste/dict fark etmeksizin locale->text seklinde normalize edilir.
+3. Guncellemede `descriptionTranslations` payload'i gonderilir.
+4. Eger store schema'si bu alani kabul etmezse istemci otomatik fallback ile sadece varsayilan `description` guncellemesi yapar.
+
+Bu fallback mekanizmasi farkli ikas store surumleri/schemalari arasinda geriye donuk uyumluluk icin eklendi.
+
 ## Kurulum
 
 ```bash
@@ -111,6 +133,19 @@ UI 3 panelden olusur:
 - **Sol:** Urun listesi (arama + filtre + skor renk kodlamasi)
 - **Orta:** Secili urun detayi + SEO skor karti
 - **Sag:** Claude onerisi + diff gorunumu
+
+## SEO Skor Dagilimi
+
+Mevcut skor dagilimi:
+
+- Baslik: 25
+- Turkce aciklama: 30
+- Ingilizce aciklama: 10
+- Meta title: 20
+- Meta description: 15
+- Keyword uyumu: 10
+
+Toplam skor 100'e cap edilir.
 
 ## Testler
 
