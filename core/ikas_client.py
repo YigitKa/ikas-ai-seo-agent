@@ -130,6 +130,12 @@ class IkasClient:
                         json={"query": query, "variables": variables or {}},
                         headers={"Authorization": f"Bearer {token}"},
                     )
+                    if response.status_code >= 400:
+                        logger.error(
+                            "GraphQL request failed: status=%s body=%s",
+                            response.status_code,
+                            response.text,
+                        )
                     response.raise_for_status()
                     result = response.json()
 
