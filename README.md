@@ -2,6 +2,12 @@
 
 Python-based SEO optimization tool for ikas e-commerce stores. Analyzes product content, scores SEO quality, and uses Claude AI to generate optimized rewrites.
 
+## Giris: Sorun ve Cozum
+
+**Sorun:** ikas magazalarinda urun aciklamalari genellikle zamanla tutarsizlasir; SEO acisindan zayif, eksik anahtar kelimeli veya farkli dillerde dengesiz icerikler organik gorunurlugu dusurur.
+
+**Cozum:** ikas SEO Optimizer, urun iceriklerini otomatik analiz edip puanlar; Claude destekli yeniden yazim onerileri ile Turkce/Ingilizce aciklamalari SEO odakli, daha tutarli ve olceklenebilir bir sekilde iyilestirir.
+
 ## TR - Proje Aciklamasi
 
 ikas e-ticaret altyapisi kullanan magazalar icin Python tabanli SEO optimizasyon araci. Urun iceriklerini analiz eder, SEO kalitesini puanlar ve Claude AI ile optimize edilmis icerik uretir.
