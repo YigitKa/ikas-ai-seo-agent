@@ -18,11 +18,11 @@ class IkasClient:
                 id
                 name
                 description
-                descriptionTranslations { locale value }
+                translations { locale name description }
                 metaData { title description }
                 tags
                 categories { name }
-                productVariants { price sku }
+                variants { price sku }
                 status
             }
             pagination { totalCount page pageSize }
@@ -37,11 +37,11 @@ class IkasClient:
                 id
                 name
                 description
-                descriptionTranslations { locale value }
+                translations { locale name description }
                 metaData { title description }
                 tags
                 categories { name }
-                productVariants { price sku }
+                variants { price sku }
                 status
             }
         }
@@ -49,8 +49,8 @@ class IkasClient:
     """
 
     UPDATE_PRODUCT_MUTATION = """
-    mutation UpdateProduct($input: UpdateProductInput!) {
-        updateProduct(input: $input) {
+    mutation SaveProduct($input: ProductInput!) {
+        saveProduct(input: $input) {
             id
             name
             description
@@ -146,7 +146,8 @@ class IkasClient:
             raise RuntimeError("GraphQL request failed after 3 attempts")
 
     def _extract_translations(self, data: Dict[str, Any]) -> Dict[str, str]:
-        raw = data.get("descriptionTranslations") or data.get("translations") or {}
+        # ikas API returns translations as list of {locale, name, description}
+        raw = data.get("translations") or data.get("descriptionTranslations") or {}
 
         if isinstance(raw, dict):
             return {k: v for k, v in raw.items() if isinstance(v, str) and v.strip()}
@@ -157,7 +158,8 @@ class IkasClient:
                 if not isinstance(item, dict):
                     continue
                 locale = item.get("locale") or item.get("language")
-                value = item.get("value") or item.get("description")
+                # ikas translations use "description" field (not "value")
+                value = item.get("description") or item.get("value")
                 if isinstance(locale, str) and isinstance(value, str) and value.strip():
                     output[locale.lower()] = value
             return output
@@ -165,7 +167,7 @@ class IkasClient:
         return {}
 
     def _parse_product(self, data: Dict[str, Any]) -> Product:
-        variants = data.get("productVariants") or []
+        variants = data.get("variants") or data.get("productVariants") or []
         first_variant = variants[0] if variants else {}
         categories = data.get("categories") or []
         meta = data.get("metaData") or {}
@@ -243,8 +245,9 @@ class IkasClient:
             tr_description = translations.get("tr")
             if tr_description:
                 input_data["description"] = tr_description
-            input_data["descriptionTranslations"] = [
-                {"locale": locale, "value": text}
+            # ikas API expects translations as {locale, name?, description}
+            input_data["translations"] = [
+                {"locale": locale, "description": text}
                 for locale, text in translations.items()
                 if isinstance(text, str) and text.strip()
             ]
@@ -260,9 +263,9 @@ class IkasClient:
         try:
             await self._graphql(self.UPDATE_PRODUCT_MUTATION, {"input": input_data})
         except RuntimeError as exc:
-            if "descriptionTranslations" in input_data:
-                logger.warning("descriptionTranslations not accepted by API, retrying with default description only")
-                fallback_input = {k: v for k, v in input_data.items() if k != "descriptionTranslations"}
+            if "translations" in input_data:
+                logger.warning("translations not accepted by API, retrying with default description only")
+                fallback_input = {k: v for k, v in input_data.items() if k != "translations"}
                 await self._graphql(self.UPDATE_PRODUCT_MUTATION, {"input": fallback_input})
             else:
                 raise

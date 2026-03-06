@@ -328,11 +328,11 @@ Skor < 70 ise urun "optimizasyon gerekiyor" olarak isaretlenir.
 
 ## Cift Dil (TR/EN) Destegi
 
-- ikas GraphQL sorgularinda `descriptionTranslations { locale value }` alani okunur
+- ikas GraphQL sorgularinda `translations { locale name description }` alani okunur
 - SEO skoruna ek olarak Ingilizce aciklama kalitesi icin `english_description_score` hesaplanir
 - AI rewrite akisinda hem TR hem EN baglami modele verilir; EN onerisi de uretilir
 - Uygulama asamasinda `tr` ve `en` aciklamalari birlikte guncellenebilir
-- Eger store schema'si `descriptionTranslations` alanini desteklemiyorsa istemci fallback olarak sadece varsayilan `description` gunceller
+- Urun guncelleme sirasinda ceviriler `{ locale, description }` formatiyla `saveProduct` mutasyonu uzerinden gonderilir; API kabul etmezse istemci fallback olarak sadece varsayilan `description` gunceller
 
 ---
 
