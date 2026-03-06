@@ -13,6 +13,7 @@ PROVIDERS = [
     "gemini",
     "openrouter",
     "ollama",
+    "lm-studio",
     "custom",
 ]
 
@@ -23,6 +24,7 @@ PROVIDER_LABELS = {
     "gemini": "Google Gemini",
     "openrouter": "OpenRouter",
     "ollama": "Ollama (yerel)",
+    "lm-studio": "LM Studio (yerel)",
     "custom": "Custom OpenAI-compatible",
 }
 
@@ -68,6 +70,7 @@ class SettingsPanel(ctk.CTkToplevel):
 
         # Ollama model list (populated by discovery)
         self._ollama_models: list[str] = []
+        self._lm_studio_models: list[str] = []
 
         main = ctk.CTkScrollableFrame(self, fg_color=COLORS["bg_primary"])
         main.pack(fill="both", expand=True, padx=20, pady=20)
@@ -138,6 +141,15 @@ class SettingsPanel(ctk.CTkToplevel):
         # Draw initial provider fields
         self._on_provider_change(self._provider_var.get())
 
+        # Bring window to front
+        self.after(50, self._bring_to_front)
+
+    def _bring_to_front(self) -> None:
+        self.lift()
+        self.focus_force()
+        self.attributes("-topmost", True)
+        self.after(200, lambda: self.attributes("-topmost", False))
+
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _section(self, parent, text: str, top_pad: int = 0) -> None:
@@ -195,6 +207,8 @@ class SettingsPanel(ctk.CTkToplevel):
         self._model_entry = None
         self._ollama_model_var = None
         self._ollama_model_menu = None
+        self._lm_studio_model_var = None
+        self._lm_studio_model_menu = None
 
         pad = {"padx": 10, "pady": 5}
 
@@ -275,6 +289,35 @@ class SettingsPanel(ctk.CTkToplevel):
             )
             self._ollama_model_menu.pack(fill="x", padx=10, pady=2)
 
+        elif provider == "lm-studio":
+            config = self._config
+            self._base_url_entry = self._inner_field(
+                self._provider_frame, "Base URL:", config.ai_base_url or "http://localhost:1234"
+            )
+
+            # Discovery button + status
+            disc_frame = ctk.CTkFrame(self._provider_frame, fg_color="transparent")
+            disc_frame.pack(fill="x", padx=10, pady=5)
+            self._lm_studio_status = ctk.CTkLabel(disc_frame, text="", text_color=COLORS["text_secondary"])
+            self._lm_studio_status.pack(side="right", padx=5)
+            ctk.CTkButton(
+                disc_frame, text="Modelleri Tara", width=180,
+                fg_color=COLORS["accent"],
+                command=self._discover_lm_studio,
+            ).pack(side="left")
+
+            # Model dropdown
+            ctk.CTkLabel(self._provider_frame, text="Yuklu Model:", text_color=COLORS["text_secondary"]).pack(anchor="w", padx=10, pady=(4, 0))
+            initial = config.ai_model_name or ""
+            self._lm_studio_model_var = ctk.StringVar(value=initial)
+            self._lm_studio_model_menu = ctk.CTkOptionMenu(
+                self._provider_frame,
+                variable=self._lm_studio_model_var,
+                values=[initial] if initial else ["(once tara)"],
+                fg_color=COLORS["input_bg"],
+            )
+            self._lm_studio_model_menu.pack(fill="x", padx=10, pady=2)
+
         elif provider == "custom":
             config = self._config
             self._api_key_entry = self._inner_field(self._provider_frame, "API Key (opsiyonel):", config.ai_api_key, show="*")
@@ -316,6 +359,43 @@ class SettingsPanel(ctk.CTkToplevel):
     def _ollama_not_found(self, reason: str) -> None:
         self._ollama_status.configure(text=f"Bulunamadi: {reason[:40]}", text_color=COLORS["error"] if "error" in COLORS else "#ff6b6b")
 
+    # ── LM Studio discovery ───────────────────────────────────────────────────
+
+    def _discover_lm_studio(self) -> None:
+        base_url = (self._base_url_entry.get().rstrip("/") if self._base_url_entry else "http://localhost:1234")
+        self._lm_studio_status.configure(text="Kontrol ediliyor...", text_color=COLORS["warning"])
+
+        def _check():
+            try:
+                import httpx
+                r = httpx.get(f"{base_url}/v1/models", timeout=5)
+                if r.status_code == 200:
+                    data = r.json()
+                    models = [m["id"] for m in data.get("data", [])]
+                    self.after(0, lambda: self._lm_studio_found(models))
+                else:
+                    self.after(0, lambda: self._lm_studio_not_found(f"HTTP {r.status_code}"))
+            except Exception as exc:
+                self.after(0, lambda: self._lm_studio_not_found(str(exc)))
+
+        threading.Thread(target=_check, daemon=True).start()
+
+    def _lm_studio_found(self, models: list) -> None:
+        self._lm_studio_models = models
+        if models:
+            self._lm_studio_model_menu.configure(values=models)
+            self._lm_studio_model_var.set(models[0])
+            self._lm_studio_status.configure(text=f"Bulundu! {len(models)} model", text_color=COLORS["success"])
+        else:
+            self._lm_studio_model_menu.configure(values=["(model yok)"])
+            self._lm_studio_status.configure(text="Bagli, model yok", text_color=COLORS["warning"])
+
+    def _lm_studio_not_found(self, reason: str) -> None:
+        self._lm_studio_status.configure(
+            text=f"Bulunamadi: {reason[:40]}",
+            text_color=COLORS.get("error", "#ff6b6b"),
+        )
+
     # ── Save / Test ───────────────────────────────────────────────────────────
 
     def _collect_provider_key(self) -> str:
@@ -326,6 +406,8 @@ class SettingsPanel(ctk.CTkToplevel):
         provider = self._collect_provider_key()
         if provider == "ollama":
             return self._ollama_model_var.get() if self._ollama_model_var else ""
+        elif provider == "lm-studio":
+            return self._lm_studio_model_var.get() if self._lm_studio_model_var else ""
         elif provider == "custom":
             return self._model_entry.get() if self._model_entry else ""
         else:
