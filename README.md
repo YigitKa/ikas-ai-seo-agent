@@ -90,6 +90,7 @@ Uygulama artik birden fazla AI saglayicisini desteklemektedir. Ayarlar ekraninda
 | `gemini` | Google Gemini (OpenAI uyumlu endpoint) | API Key |
 | `openrouter` | OpenRouter uzerinden herhangi bir model | API Key |
 | `ollama` | Yerel Ollama kurulumu, internet gerekmez | — |
+| `lm-studio` | Yerel LM Studio kurulumu, internet gerekmez | — |
 | `custom` | Herhangi bir OpenAI uyumlu endpoint | Opsiyonel |
 
 ### Provider'a Gore API Key ve URL
@@ -101,6 +102,7 @@ Uygulama artik birden fazla AI saglayicisini desteklemektedir. Ayarlar ekraninda
 | `gemini` | [aistudio.google.com](https://aistudio.google.com) | (otomatik) |
 | `openrouter` | [openrouter.ai/keys](https://openrouter.ai/keys) | (otomatik) |
 | `ollama` | gereksiz | `http://localhost:11434` |
+| `lm-studio` | gereksiz | `http://localhost:1234` |
 | `custom` | endpoint sahibinden | sizin URL'iniz |
 
 ### Varsayilan Modeller
@@ -112,6 +114,7 @@ Uygulama artik birden fazla AI saglayicisini desteklemektedir. Ayarlar ekraninda
 | `gemini` | `gemini-1.5-flash` |
 | `openrouter` | `openai/gpt-4o-mini` |
 | `ollama` | `llama3.2` |
+| `lm-studio` | ayarlar ekranindan taranir |
 
 ---
 
@@ -131,7 +134,7 @@ Uygulama acilisinda `.env` dosyasi okunur. Zorunlu alanlar bos ise uygulama term
 
 | Parametre | Zorunlu | Aciklama | Varsayilan |
 |---|---|---|---|
-| `AI_PROVIDER` | Hayir | `none` / `anthropic` / `openai` / `gemini` / `openrouter` / `ollama` / `custom` | `none` (ANTHROPIC_API_KEY varsa `anthropic`) |
+| `AI_PROVIDER` | Hayir | `none` / `anthropic` / `openai` / `gemini` / `openrouter` / `ollama` / `lm-studio` / `custom` | `none` (ANTHROPIC_API_KEY varsa `anthropic`) |
 | `AI_API_KEY` | Provider'a gore | Secilen provider'in API anahtari | — |
 | `AI_BASE_URL` | Opsiyonel | Ozel endpoint URL'i (ollama veya custom icin) | Provider varsayilani |
 | `AI_MODEL_NAME` | Opsiyonel | Kullanilacak model adi | Provider varsayilani |
@@ -183,6 +186,11 @@ AI_MODEL_NAME=claude-haiku-4-5-20251001
 # AI_BASE_URL=http://localhost:11434
 # AI_MODEL_NAME=llama3.2
 
+## LM Studio (yerel, internet gerekmez)
+# AI_PROVIDER=lm-studio
+# AI_BASE_URL=http://localhost:1234
+# AI_MODEL_NAME=qwen2.5-7b-instruct
+
 ## Custom OpenAI-uyumlu endpoint
 # AI_PROVIDER=custom
 # AI_API_KEY=...
@@ -200,7 +208,9 @@ DRY_RUN=true
 
 ---
 
-## Ollama Kurulumu (Yerel Model)
+## Yerel Model Kullanimi
+
+### Ollama
 
 Ollama ile internet baglantisi olmadan yerel bir model kullanabilirsiniz.
 
@@ -227,6 +237,26 @@ AI_MODEL_NAME=llama3.2
 
 Uygulama icerisinde **Ayarlar > AI Provider > Ollama** secip **"Ollama Bulundu mu?"** butonuna basarak kurulu modelleri otomatik kesfedebilirsiniz.
 
+### LM Studio
+
+LM Studio ile Qwen, Mistral, Llama gibi modelleri yerel olarak calistirup kullanabilirsiniz.
+
+```bash
+# 1. LM Studio'yu yukle
+#    https://lmstudio.ai adresinden isletim sisteminize gore indirin
+
+# 2. LM Studio icerisinden bir model indir (ornegin Qwen2.5)
+
+# 3. LM Studio'da Local Server'i baslat (varsayilan port: 1234)
+
+# 4. .env dosyasini duzenle
+AI_PROVIDER=lm-studio
+AI_BASE_URL=http://localhost:1234
+AI_MODEL_NAME=qwen2.5-7b-instruct   # yuklediginiz modelin adi
+```
+
+Uygulama icerisinde **Ayarlar > AI Provider > LM Studio (yerel)** secip **"Modelleri Tara"** butonuna basarak sunucuda aktif modelleri otomatik kesfedebilirsiniz.
+
 ---
 
 ## Desktop UI Kullanimi
@@ -242,7 +272,7 @@ python main.py --ui   # acikca UI modu
 |---|---|
 | Urunleri Cek | ikas API'den urunleri ceker ve SEO puanlarini hesaplar |
 | Secilileri Analiz Et | Secili urunu kural tabanli analiz eder |
-| AI ile Yeniden Yaz | Secili urun icin AI'a yeniden yazim onerisi urettirir |
+| AI ile Yeniden Yaz | Secili urun icin AI'a yeniden yazim onerisi urettirir (AI provider secili degilse pasif) |
 | Onayla ve Uygula | Onaylanan onerileri ikas'a gonderir (DRY_RUN=false gerekli) |
 | Ayarlar | Provider ve API ayarlarini acar |
 
@@ -255,8 +285,10 @@ python main.py --ui   # acikca UI modu
 1. **Ayarlar** butonuna basin
 2. **AI Provider** alaninda istediginiz saglayiciy secin
 3. Provider'a ozgu alanlari doldurun (API Key, Model, vb.)
-4. Ollama icin **"Ollama Bulundu mu?"** butonuyla kurulu modelleri listeleyin
+4. Ollama icin **"Ollama Bulundu mu?"**, LM Studio icin **"Modelleri Tara"** butonuyla kurulu modelleri listeleyin
 5. **Kaydet**'e basin — ayarlar `.env` dosyasina yazilir ve uygulama yeniden baslatma gerekmeksizin guncellenir
+
+> **Not:** ikas baglantisi yapilandirildiktan sonra AI provider secilmemisse uygulama otomatik olarak **analiz moduna** gecer. "AI ile Yeniden Yaz" butonu, Ayarlar'dan bir provider secilene kadar pasif kalir.
 
 ---
 
