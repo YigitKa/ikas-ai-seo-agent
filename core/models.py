@@ -16,6 +16,7 @@ class Product(BaseModel):
     price: Optional[float] = None
     sku: Optional[str] = None
     status: str = "active"
+    image_url: Optional[str] = None
 
 
 class SeoScore(BaseModel):
