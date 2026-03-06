@@ -88,6 +88,27 @@ cp .env.example .env
 3. Yeni bir OAuth2 uygulamasi olusturun
 4. Client ID ve Client Secret degerlerini `.env` dosyasina yapistin
 
+## .env Parametreleri (Kullanilan Tum Ayarlar)
+
+Uygulama acilisinda `.env` dosyasi okunur. Asagidaki alanlardan **zorunlu** olanlar bos ise uygulama calisirken kullanicidan interaktif olarak istenir (TTY yoksa hata verir).
+
+| Parametre | Zorunlu | Aciklama | Olasi Deger/Format | Varsayilan |
+|---|---|---|---|---|
+| `IKAS_STORE_NAME` | Evet | ikas magaza alt alani; API URL bu degerden olusturulur. | `my-store` (sadece subdomain, `https://` olmadan) | Yok |
+| `IKAS_CLIENT_ID` | Evet | ikas OAuth2 istemci kimligi. | ikas panelinden alinan metin degeri | Yok |
+| `IKAS_CLIENT_SECRET` | Evet | ikas OAuth2 istemci gizli anahtari. | ikas panelinden alinan gizli deger | Yok |
+| `ANTHROPIC_API_KEY` | Evet | Claude API anahtari. | `sk-ant-...` formatinda anahtar | Yok |
+| `STORE_LANGUAGE` | Hayir | Magaza varsayilan dili (analiz/rewrite baglami). | ISO dil kodu (`tr`, `en`, `de` vb.) | `tr` |
+| `SEO_TARGET_KEYWORDS` | Hayir | Anahtar kelime listesi; virgul ile ayrilir. | `kadin ayakkabi,spor ayakkabi,deri` | Bos liste |
+| `DRY_RUN` | Hayir | `apply` asamasinda gercek guncelleme yapilsin mi. | `true/false`, `1/0`, `yes/no`, `on/off` | `true` |
+| `LOG_LEVEL` | Hayir | Uygulama log seviyesi. | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` | `INFO` |
+
+### Eksik ayarlari calisma aninda isteme davranisi
+
+- Zorunlu alanlardan biri eksikse uygulama terminalde sizden degeri ister.
+- `IKAS_CLIENT_SECRET` ve `ANTHROPIC_API_KEY` girisleri guvenlik icin maskeli alinır.
+- Uygulama TTY olmayan bir ortamda (or. non-interactive pipeline) calisiyorsa, eksik zorunlu alanlar icin acik hata verir ve durur.
+
 ## CLI Kullanim
 
 ```bash
