@@ -1,0 +1,54 @@
+[
+  {
+    "id": "prod_001",
+    "name": "El Yapimi Seramik Kupa",
+    "description": "Bu guzel seramik kupa, el yapimi olarak uretilmistir. Gunluk kullanim icin idealdir. Bulaşık makinesine uygundur.",
+    "metaData": {
+      "title": null,
+      "description": null
+    },
+    "tags": ["seramik", "kupa", "el yapimi"],
+    "categories": [{"name": "Mutfak"}],
+    "productVariants": [{"price": 149.90, "sku": "SRM-001"}],
+    "status": "active"
+  },
+  {
+    "id": "prod_002",
+    "name": "Organik Pamuklu T-Shirt - Beyaz Unisex Kisa Kollu Yazlik Tisort Modeli",
+    "description": "<p>Organik pamuktan uretilmis, cildinize dost t-shirt. %100 organik pamuk kullanilmistir. Nefes alabilen kumasiyla yaz gunleri icin idealdir. Farkli bedenlerde mevcuttur. Makine yikamaya uygundur. Dogal boyama teknikleri kullanilmistir. Cevre dostu uretim sureci ile imal edilmistir.</p><p>Bu urun, surdurulebilir moda anlayisiyla tasarlanmistir. Her yas grubuna uygun kesim secenekleri sunulmaktadir. Renk secenekleri arasinda beyaz, siyah ve gri bulunmaktadir.</p>",
+    "metaData": {
+      "title": "Organik T-Shirt | ModaMarka",
+      "description": "En kaliteli organik pamuklu t-shirt modellerini kesfet. Hemen incele ve siparis ver."
+    },
+    "tags": ["t-shirt", "organik", "pamuk", "unisex"],
+    "categories": [{"name": "Giyim"}],
+    "productVariants": [{"price": 299.90, "sku": "TSH-002"}],
+    "status": "active"
+  },
+  {
+    "id": "prod_003",
+    "name": "LAPTOP CANTASI",
+    "description": "laptop cantasi",
+    "metaData": {
+      "title": null,
+      "description": null
+    },
+    "tags": [],
+    "categories": [{"name": "Aksesuar"}],
+    "productVariants": [{"price": 450.00, "sku": "LC-003"}],
+    "status": "active"
+  },
+  {
+    "id": "prod_004",
+    "name": "Dogal Tas Kolye",
+    "description": "<p>Dogal taslardan el yapimi kolye. Her biri benzersizdir ve dogal tas desenleriyle one cikar. Nikel icermeyen metal kullanilmistir. Zincir uzunlugu ayarlanabilir. Ozel kutusunda teslim edilir.</p>",
+    "metaData": {
+      "title": "Dogal Tas Kolye - El Yapimi Taki",
+      "description": "Benzersiz dogal tas kolye modelleri. El yapimi, nikel icerikli degil."
+    },
+    "tags": ["kolye", "taki", "dogal tas", "el yapimi"],
+    "categories": [{"name": "Taki"}],
+    "productVariants": [{"price": 189.90, "sku": "KLY-004"}],
+    "status": "active"
+  }
+]
