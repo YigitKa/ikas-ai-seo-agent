@@ -22,8 +22,7 @@ class IkasClient:
                 metaData { pageTitle description }
                 tags { id name }
                 categories { name }
-                variants { prices { sellPrice } sku }
-                images { id order fileUrl }
+                variants { prices { sellPrice } sku imageUrl }
             }
             count
             hasNext
@@ -42,8 +41,7 @@ class IkasClient:
                 metaData { pageTitle description }
                 tags { id name }
                 categories { name }
-                variants { prices { sellPrice } sku }
-                images { id order fileUrl }
+                variants { prices { sellPrice } sku imageUrl }
             }
         }
     }
@@ -200,15 +198,8 @@ class IkasClient:
         prices = first_variant.get("prices") or []
         price = prices[0].get("sellPrice") if prices else first_variant.get("price")
 
-        # Extract first image URL, sorted by order
-        raw_images = data.get("images") or []
-        image_url: Optional[str] = None
-        if raw_images:
-            sorted_images = sorted(
-                [img for img in raw_images if isinstance(img, dict)],
-                key=lambda x: x.get("order", 0),
-            )
-            image_url = sorted_images[0].get("fileUrl") if sorted_images else None
+        # Extract image URL from the first variant's imageUrl field
+        image_url: Optional[str] = first_variant.get("imageUrl") or None
 
         return Product(
             id=data["id"],
