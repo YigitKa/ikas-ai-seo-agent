@@ -97,11 +97,12 @@ class IkasClient:
             try:
                 response = await client.post(
                     auth_url,
-                    json={
+                    data={
                         "grant_type": "client_credentials",
                         "client_id": self._config.ikas_client_id,
                         "client_secret": self._config.ikas_client_secret,
                     },
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
                 )
                 response.raise_for_status()
                 data = response.json()
