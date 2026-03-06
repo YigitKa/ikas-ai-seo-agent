@@ -6,6 +6,7 @@ Providers:
   - gemini     : Google Gemini via OpenAI-compatible endpoint
   - openrouter : OpenRouter (any model)
   - ollama     : Local Ollama (OpenAI-compatible)
+  - lm-studio  : LM Studio local server (OpenAI-compatible)
   - custom     : Any OpenAI-compatible endpoint
   - none       : Analysis only, raises error if rewrite is attempted
 """
@@ -71,6 +72,7 @@ DEFAULT_MODELS = {
     "gemini": "gemini-1.5-flash",
     "openrouter": "openai/gpt-4o-mini",
     "ollama": "llama3.2",
+    "lm-studio": "local-model",
     "custom": "gpt-3.5-turbo",
 }
 
@@ -80,6 +82,7 @@ PROVIDER_BASE_URLS = {
     "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
     "openrouter": "https://openrouter.ai/api/v1",
     "ollama": "http://localhost:11434/v1",
+    "lm-studio": "http://localhost:1234/v1",
 }
 
 
@@ -251,8 +254,8 @@ class OpenAICompatibleClient(BaseAIClient):
         else:
             base_url = PROVIDER_BASE_URLS.get(provider)
 
-        # Ollama doesn't need a real API key
-        api_key = config.ai_api_key or ("ollama" if provider == "ollama" else "no-key")
+        # Ollama and LM Studio don't need a real API key
+        api_key = config.ai_api_key or ("ollama" if provider in ("ollama", "lm-studio") else "no-key")
 
         self._client = OpenAI(api_key=api_key, base_url=base_url)
         self._model = config.ai_model_name or DEFAULT_MODELS.get(provider, "gpt-4o-mini")
@@ -300,7 +303,7 @@ def create_ai_client(config: AppConfig) -> BaseAIClient:
         return NoneAIClient()
     elif provider == "anthropic":
         return AnthropicAIClient(config)
-    elif provider in ("openai", "gemini", "openrouter", "ollama", "custom"):
+    elif provider in ("openai", "gemini", "openrouter", "ollama", "lm-studio", "custom"):
         return OpenAICompatibleClient(config, provider)
     else:
         logger.warning(f"Unknown AI provider '{provider}', defaulting to NoneAIClient")

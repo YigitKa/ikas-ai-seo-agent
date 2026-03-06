@@ -38,6 +38,12 @@ class App(ctk.CTk):
         self._build_toolbar()
         self._build_main_area()
         self._build_status_bar()
+        self._update_ai_button_state()
+
+        # Auto-open settings on first launch (no ikas config) or if AI not configured
+        config = get_config()
+        if not config.ikas_store_name or not config.ikas_client_id:
+            self.after(300, self._open_settings)
 
     def _build_toolbar(self) -> None:
         toolbar = ctk.CTkFrame(self, fg_color=COLORS["bg_secondary"], height=50)
@@ -47,8 +53,9 @@ class App(ctk.CTk):
                        fg_color=COLORS["accent"]).pack(side="left", padx=5, pady=5)
         ctk.CTkButton(toolbar, text="Secilileri Analiz Et", command=self._analyze_selected,
                        fg_color=COLORS["bg_card"]).pack(side="left", padx=5, pady=5)
-        ctk.CTkButton(toolbar, text="AI ile Yeniden Yaz", command=self._rewrite_selected,
-                       fg_color=COLORS["bg_card"]).pack(side="left", padx=5, pady=5)
+        self._rewrite_btn = ctk.CTkButton(toolbar, text="AI ile Yeniden Yaz", command=self._rewrite_selected,
+                                           fg_color=COLORS["bg_card"])
+        self._rewrite_btn.pack(side="left", padx=5, pady=5)
         ctk.CTkButton(toolbar, text="Onayla ve Uygula", command=self._apply_approved,
                        fg_color=COLORS["success"]).pack(side="left", padx=5, pady=5)
 
@@ -244,6 +251,19 @@ class App(ctk.CTk):
             filtered = [(p, s) for p, s in self._products_data if p.id in pending_ids]
             self._product_table.set_products(filtered)
 
+    def _update_ai_button_state(self) -> None:
+        config = get_config()
+        ikas_configured = bool(config.ikas_store_name and config.ikas_client_id)
+        ai_configured = config.ai_provider != "none"
+
+        if ikas_configured and not ai_configured:
+            self._rewrite_btn.configure(state="disabled", fg_color=COLORS["border"],
+                                        text="AI ile Yeniden Yaz (provider sec)")
+            self._set_status("Analiz modu — AI yeniden yazma icin Ayarlar'dan provider secin")
+        else:
+            self._rewrite_btn.configure(state="normal", fg_color=COLORS["bg_card"],
+                                        text="AI ile Yeniden Yaz")
+
     def _open_settings(self) -> None:
         config = get_config()
         SettingsPanel(self, config, on_save=self._on_settings_save)
@@ -254,6 +274,7 @@ class App(ctk.CTk):
         # Reload AI client with new config
         self._manager.reload_ai_client()
         config = get_config()
+        self._update_ai_button_state()
         self._set_status(f"Ayarlar kaydedildi | AI: {config.ai_provider}")
 
 
