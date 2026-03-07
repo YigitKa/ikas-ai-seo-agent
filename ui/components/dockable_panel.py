@@ -54,7 +54,7 @@ class DockablePanel(ctk.CTkFrame):
 
         self._title_label = ctk.CTkLabel(
             self._header, text=title,
-            font=ctk.CTkFont(size=11, weight="bold"),
+            font=ctk.CTkFont(size=13, weight="bold"),
             text_color=COLORS["text_primary"],
         )
         self._title_label.pack(side="left", padx=6, pady=3)

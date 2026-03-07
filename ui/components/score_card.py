@@ -10,7 +10,7 @@ class ScoreCard(ctk.CTkFrame):
 
         ctk.CTkLabel(
             self, text="SEO Skoru",
-            font=ctk.CTkFont(size=16, weight="bold"),
+            font=ctk.CTkFont(size=18, weight="bold"),
             text_color=COLORS["text_primary"],
         ).pack(padx=10, pady=(10, 5))
 
@@ -36,8 +36,8 @@ class ScoreCard(ctk.CTkFrame):
             row = ctk.CTkFrame(self._details_frame, fg_color="transparent")
             row.pack(fill="x", pady=2)
 
-            label = ctk.CTkLabel(row, text=f"{name}: -/{max_val}", width=140, anchor="w",
-                                 text_color=COLORS["text_secondary"], font=ctk.CTkFont(size=12))
+            label = ctk.CTkLabel(row, text=f"{name}: -/{max_val}", width=150, anchor="w",
+                                 text_color=COLORS["text_secondary"], font=ctk.CTkFont(size=13))
             label.pack(side="left")
 
             bar = ctk.CTkProgressBar(row, height=10, corner_radius=5)
@@ -48,7 +48,7 @@ class ScoreCard(ctk.CTkFrame):
 
         self._issues_label = ctk.CTkLabel(
             self, text="", wraplength=250, justify="left",
-            text_color=COLORS["text_secondary"], font=ctk.CTkFont(size=11),
+            text_color=COLORS["text_secondary"], font=ctk.CTkFont(size=12),
         )
         self._issues_label.pack(padx=10, pady=(5, 10), anchor="w")
 

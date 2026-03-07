@@ -26,9 +26,9 @@ _font_score: ctk.CTkFont | None = None
 def _get_fonts() -> tuple[ctk.CTkFont, ctk.CTkFont, ctk.CTkFont]:
     global _font_name, _font_cat, _font_score
     if _font_name is None:
-        _font_name = ctk.CTkFont(size=12, weight="bold")
-        _font_cat = ctk.CTkFont(size=10)
-        _font_score = ctk.CTkFont(size=13, weight="bold")
+        _font_name = ctk.CTkFont(size=14, weight="bold")
+        _font_cat = ctk.CTkFont(size=12)
+        _font_score = ctk.CTkFont(size=15, weight="bold")
     return _font_name, _font_cat, _font_score
 
 
@@ -65,7 +65,7 @@ class ProductTable(ctk.CTkScrollableFrame):
 
         self._count_label = ctk.CTkLabel(
             self._header_frame, text="",
-            font=ctk.CTkFont(size=11),
+            font=ctk.CTkFont(size=12),
             text_color=COLORS["text_secondary"],
         )
         self._count_label.pack(side="right", padx=8)
@@ -76,20 +76,20 @@ class ProductTable(ctk.CTkScrollableFrame):
 
         self._prev_btn = ctk.CTkButton(
             self._pagination_frame, text="< Onceki", width=80, height=28,
-            font=ctk.CTkFont(size=11), fg_color=COLORS["bg_card"],
+            font=ctk.CTkFont(size=12), fg_color=COLORS["bg_card"],
             command=self._go_prev_page, state="disabled",
         )
         self._prev_btn.pack(side="left", padx=5, pady=4)
 
         self._page_label = ctk.CTkLabel(
             self._pagination_frame, text="Sayfa 1/1",
-            font=ctk.CTkFont(size=11), text_color=COLORS["text_secondary"],
+            font=ctk.CTkFont(size=12), text_color=COLORS["text_secondary"],
         )
         self._page_label.pack(side="left", expand=True, padx=5, pady=4)
 
         self._next_btn = ctk.CTkButton(
             self._pagination_frame, text="Sonraki >", width=80, height=28,
-            font=ctk.CTkFont(size=11), fg_color=COLORS["bg_card"],
+            font=ctk.CTkFont(size=12), fg_color=COLORS["bg_card"],
             command=self._go_next_page, state="disabled",
         )
         self._next_btn.pack(side="right", padx=5, pady=4)
