@@ -135,6 +135,12 @@ class ProductManager:
         """Token usage of the most recent API call."""
         return getattr(self._ai, 'last_usage', {"input": 0, "output": 0})
 
+    def get_last_ai_meta(self) -> dict:
+        return getattr(self._ai, "last_response_meta", {})
+
+    def cancel_ai_request(self) -> bool:
+        return self._ai.cancel_active_request()
+
     async def test_connection(self) -> bool:
         return await self._ikas.test_connection()
 

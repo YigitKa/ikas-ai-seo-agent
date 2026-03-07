@@ -10,7 +10,13 @@ from typing import Callable, Optional
 import customtkinter as ctk
 
 from config.settings import get_config
+from core.ai_client import (
+    build_en_translation_request,
+    build_field_rewrite_request,
+    build_product_rewrite_request,
+)
 from core.models import Product, SeoScore, SeoSuggestion
+from core.prompt_store import ensure_prompt_files
 from core.product_manager import ProductManager
 from data import db
 from ui.components.ai_chat_panel import AIChatPanel
@@ -55,6 +61,7 @@ class App(ctk.CTk):
         self._sash_set = False
         self.after(50, lambda: self.state("zoomed"))
         self.bind("<Configure>", self._on_configure)
+        ensure_prompt_files()
 
         self._manager = ProductManager()
         self._image_service = get_image_service()
@@ -70,6 +77,9 @@ class App(ctk.CTk):
         self._gallery_image_refs: list[ctk.CTkImage] = []
         self._gallery_thumbnails: list[ctk.CTkLabel] = []
         self._image_cache: dict[str, ctk.CTkImage | None] = {}
+        self._ai_job_seq = 0
+        self._active_ai_job: Optional[dict] = None
+        self._cancelled_ai_job_ids: set[int] = set()
 
         self._build_toolbar()
         self._build_status_bar()
@@ -86,10 +96,6 @@ class App(ctk.CTk):
         toolbar = ctk.CTkFrame(self, fg_color=COLORS["bg_secondary"], height=50)
         toolbar.pack(fill="x", padx=5, pady=5)
         ctk.CTkButton(toolbar, text="Urunleri Cek", command=self._fetch_products, fg_color=COLORS["accent"]).pack(side="left", padx=5, pady=5)
-        ctk.CTkButton(toolbar, text="Secilileri Analiz Et", command=self._analyze_selected, fg_color=COLORS["bg_card"]).pack(side="left", padx=5, pady=5)
-        self._rewrite_btn = ctk.CTkButton(toolbar, text="AI ile Yeniden Yaz", command=self._rewrite_selected, fg_color=COLORS["bg_card"])
-        self._rewrite_btn.pack(side="left", padx=5, pady=5)
-        ctk.CTkButton(toolbar, text="Onayla ve Uygula", command=self._apply_approved, fg_color=COLORS["success"]).pack(side="left", padx=5, pady=5)
         ctk.CTkSegmentedButton(toolbar, values=["Tumu", "Dusuk Skor", "Bekleyen", "Onayli"], variable=self._filter_var, command=self._on_filter_change).pack(side="right", padx=10, pady=5)
         ctk.CTkButton(toolbar, text="Ayarlar", width=80, command=self._open_settings, fg_color=COLORS["border"]).pack(side="right", padx=5, pady=5)
 
@@ -109,7 +115,14 @@ class App(ctk.CTk):
         self._product_table.pack(fill="both", expand=True, padx=5, pady=5)
 
         self._right_panel = DockablePanel(self._hpaned, title="Urun Detay & SEO")
-        self._diff_viewer = DiffViewer(self._right_panel.content, on_approve=self._on_approve, on_reject=self._on_reject, on_field_rewrite=self._rewrite_field)
+        self._diff_viewer = DiffViewer(
+            self._right_panel.content,
+            on_approve=self._on_approve,
+            on_reject=self._on_reject,
+            on_field_rewrite=self._rewrite_field,
+            on_product_rewrite=self._rewrite_selected,
+            on_translate_en=self._translate_selected_to_en,
+        )
         self._diff_viewer.pack(fill="both", expand=True)
 
         self._chat_panel = DockablePanel(self._hpaned, title="AI Chat")
@@ -299,6 +312,97 @@ class App(ctk.CTk):
 
         threading.Thread(target=thread_target, daemon=True).start()
 
+    def _format_prompt_display(self, request: dict) -> str:
+        system_prompt = (request.get("system_prompt") or "").strip()
+        user_prompt = (request.get("user_prompt") or "").strip()
+        parts = []
+        if system_prompt:
+            parts.append("[system]\n" + system_prompt)
+        if user_prompt:
+            parts.append("[user]\n" + user_prompt)
+        return "\n\n".join(parts).strip()
+
+    def _begin_ai_job(
+        self,
+        *,
+        field: str,
+        product_name: str,
+        prompt_text: str,
+        model_name: str,
+        work: Callable[[], object],
+        on_done: Callable[[object], None],
+        on_error: Callable[[Exception], None],
+    ) -> bool:
+        if self._active_ai_job is not None:
+            self._set_status("Calisan bir AI istegi var. Once Stop ile iptal edin.")
+            if field != "all":
+                self._diff_viewer.set_field_loading_done(field)
+            return False
+
+        self._ai_job_seq += 1
+        job_id = self._ai_job_seq
+        self._active_ai_job = {
+            "id": job_id,
+            "field": field,
+            "product_name": product_name,
+        }
+        self._ai_chat.start_thinking(
+            field,
+            product_name,
+            prompt=prompt_text,
+            model_name=model_name,
+            on_cancel=self._cancel_ai_job,
+        )
+
+        def wrapped_done(result: object) -> None:
+            if job_id in self._cancelled_ai_job_ids:
+                self._cancelled_ai_job_ids.discard(job_id)
+                return
+            if self._active_ai_job is None or self._active_ai_job.get("id") != job_id:
+                return
+            self._active_ai_job = None
+            on_done(result)
+
+        def wrapped_error(exc: Exception) -> None:
+            if job_id in self._cancelled_ai_job_ids:
+                self._cancelled_ai_job_ids.discard(job_id)
+                return
+            if self._active_ai_job is None or self._active_ai_job.get("id") != job_id:
+                return
+            self._active_ai_job = None
+            on_error(exc)
+
+        self._run_in_background(work, wrapped_done, wrapped_error)
+        return True
+
+    def _cancel_ai_job(self) -> None:
+        job = self._active_ai_job
+        if job is None:
+            return
+
+        job_id = int(job["id"])
+        field = str(job["field"])
+        self._cancelled_ai_job_ids.add(job_id)
+        self._active_ai_job = None
+
+        cancelled = False
+        try:
+            cancelled = self._manager.cancel_ai_request()
+        except Exception as exc:
+            logger.error("AI cancel failed: %s", exc)
+
+        if field != "all":
+            self._diff_viewer.set_field_loading_done(field)
+
+        reason = "Istek kullanici tarafindan durduruldu."
+        if cancelled:
+            reason += " Sunucu baglantisi kapatildi."
+        else:
+            reason += " Gec gelen sonuc yoksayilacak."
+        self._ai_chat.cancel_pending(reason=reason)
+        self._set_status(reason)
+        self._update_token_display()
+
     def _set_status(self, text: str) -> None:
         self._status_label.configure(text=text)
         self._log(text)
@@ -347,6 +451,7 @@ class App(ctk.CTk):
         self._selected_score = score
         self._diff_viewer.show_product_preview(product)
         self._load_product_gallery(product)
+        self._update_ai_button_state()
         if score is not None:
             self._diff_viewer.set_score(score)
         else:
@@ -358,6 +463,7 @@ class App(ctk.CTk):
         def on_suggestion_loaded(suggestion: object) -> None:
             if suggestion is not None and self._selected_product is not None and self._selected_product.id == product.id:
                 self._diff_viewer.show_suggestion(suggestion)
+            self._update_ai_button_state()
 
         self._run_in_background(load_latest_suggestion, on_suggestion_loaded)
 
@@ -466,19 +572,16 @@ class App(ctk.CTk):
     def _rewrite_selected(self) -> None:
         if self._selected_product is None or self._selected_score is None:
             self._set_status("Once urun secin ve analiz edin")
+            self._diff_viewer.set_product_action_loading_done("rewrite")
             return
 
         config = get_config()
         product = self._selected_product
         score = self._selected_score
         self._set_status(f"AI ile yeniden yaziliyor ({config.ai_provider})...")
-        prompt_summary = (
-            f"Urun: {product.name}\n"
-            f"Kategori: {product.category or 'Belirtilmemis'}\n"
-            f"Sorunlar: {'; '.join(score.issues[:5]) if score.issues else 'Yok'}\n"
-            f"Provider: {config.ai_provider} | Model: {config.ai_model_name}"
-        )
-        self._ai_chat.start_thinking("all", product.name)
+        request = build_product_rewrite_request(config, config.ai_provider, product, score)
+        prompt_text = self._format_prompt_display(request)
+        model_name = config.ai_model_name or config.ai_provider
 
         def do_rewrite():
             suggestion = self._manager._ai.rewrite_product(product, score)
@@ -488,6 +591,7 @@ class App(ctk.CTk):
         def on_done(result: object) -> None:
             suggestion = result
             self._diff_viewer.show_suggestion(suggestion)
+            self._diff_viewer.set_product_action_loading_done("rewrite")
             last = self._manager.get_last_token_usage()
             cost = self._manager.get_token_usage().get("estimated_cost", 0)
             cost_text = f" | Maliyet: ${cost}" if cost else ""
@@ -504,15 +608,109 @@ class App(ctk.CTk):
             if suggestion.suggested_description:
                 result_dict["suggested_description"] = suggestion.suggested_description[:200] + "..."
 
-            self._ai_chat.complete_entry(field="all", product_name=product.name, prompt=prompt_summary, thinking=suggestion.thinking_text or "", result=json.dumps(result_dict, ensure_ascii=False, indent=2))
+            meta = self._manager.get_last_ai_meta()
+            self._ai_chat.complete_entry(
+                field="all",
+                product_name=product.name,
+                prompt=prompt_text,
+                thinking=suggestion.thinking_text or "",
+                result=json.dumps(result_dict, ensure_ascii=False, indent=2),
+                model_name=model_name,
+                meta=meta,
+            )
             self._update_token_display()
 
         def on_error(exc: Exception) -> None:
             self._set_status(f"AI Hata: {exc}")
-            self._ai_chat.complete_entry(field="all", product_name=product.name, prompt=prompt_summary, error=str(exc))
+            self._diff_viewer.set_product_action_loading_done("rewrite")
+            self._ai_chat.complete_entry(
+                field="all",
+                product_name=product.name,
+                prompt=prompt_text,
+                error=str(exc),
+                model_name=model_name,
+                meta=self._manager.get_last_ai_meta(),
+            )
             self._update_token_display()
 
-        self._run_in_background(do_rewrite, on_done, on_error)
+        started = self._begin_ai_job(
+            field="all",
+            product_name=product.name,
+            prompt_text=prompt_text,
+            model_name=model_name,
+            work=do_rewrite,
+            on_done=on_done,
+            on_error=on_error,
+        )
+        if not started:
+            self._diff_viewer.set_product_action_loading_done("rewrite")
+
+    def _translate_selected_to_en(self) -> None:
+        if self._selected_product is None:
+            self._set_status("Once urun secin")
+            self._diff_viewer.set_product_action_loading_done("translate")
+            return
+
+        product = self._selected_product
+        if not (product.description or product.description_translations.get("tr", "")):
+            self._set_status("Ceviri icin Turkce aciklama bulunamadi")
+            self._diff_viewer.set_product_action_loading_done("translate")
+            return
+
+        config = get_config()
+        request = build_en_translation_request(config, config.ai_provider, product)
+        prompt_text = self._format_prompt_display(request)
+        model_name = config.ai_model_name or config.ai_provider
+        self._set_status(f"AI ile ceviri yapiliyor ({config.ai_provider})...")
+
+        def do_translate():
+            result = self._manager._ai.translate_description_to_en(product)
+            if isinstance(result, tuple):
+                return result
+            return result, ""
+
+        def on_done(result: object) -> None:
+            value, thinking_text = result
+            self._diff_viewer.set_field_value("desc_en", value)
+            self._diff_viewer.set_field_loading_done("desc_en")
+            self._diff_viewer.set_product_action_loading_done("translate")
+            self._set_status("Ingilizce ceviri hazir")
+            self._ai_chat.complete_entry(
+                field="desc_en",
+                product_name=product.name,
+                prompt=prompt_text,
+                thinking=thinking_text,
+                result=value,
+                model_name=model_name,
+                meta=self._manager.get_last_ai_meta(),
+            )
+            self._update_token_display()
+
+        def on_error(exc: Exception) -> None:
+            self._set_status(f"AI Ceviri Hata: {exc}")
+            self._diff_viewer.set_field_loading_done("desc_en")
+            self._diff_viewer.set_product_action_loading_done("translate")
+            self._ai_chat.complete_entry(
+                field="desc_en",
+                product_name=product.name,
+                prompt=prompt_text,
+                error=str(exc),
+                model_name=model_name,
+                meta=self._manager.get_last_ai_meta(),
+            )
+            self._update_token_display()
+
+        started = self._begin_ai_job(
+            field="desc_en",
+            product_name=product.name,
+            prompt_text=prompt_text,
+            model_name=model_name,
+            work=do_translate,
+            on_done=on_done,
+            on_error=on_error,
+        )
+        if not started:
+            self._diff_viewer.set_product_action_loading_done("translate")
 
     def _rewrite_field(self, field: str) -> None:
         if self._selected_product is None or self._selected_score is None:
@@ -532,12 +730,9 @@ class App(ctk.CTk):
         product = self._selected_product
         score = self._selected_score
         self._set_status(f"{field_label} AI ile yaziliyor ({config.ai_provider})...")
-        prompt_summary = (
-            f"Alan: {field_label}\n"
-            f"Urun: {product.name}\n"
-            f"Provider: {config.ai_provider} | Model: {config.ai_model_name}"
-        )
-        self._ai_chat.start_thinking(field, product.name)
+        request = build_field_rewrite_request(config, config.ai_provider, field, product)
+        prompt_text = self._format_prompt_display(request)
+        model_name = config.ai_model_name or config.ai_provider
 
         def do_rewrite():
             result = self._manager._ai.rewrite_field(field, product, score)
@@ -550,16 +745,39 @@ class App(ctk.CTk):
             self._diff_viewer.set_field_value(field, value)
             self._diff_viewer.set_field_loading_done(field)
             self._set_status(f"{field_label} yazildi")
-            self._ai_chat.complete_entry(field=field, product_name=product.name, prompt=prompt_summary, thinking=thinking_text, result=value)
+            self._ai_chat.complete_entry(
+                field=field,
+                product_name=product.name,
+                prompt=prompt_text,
+                thinking=thinking_text,
+                result=value,
+                model_name=model_name,
+                meta=self._manager.get_last_ai_meta(),
+            )
             self._update_token_display()
 
         def on_error(exc: Exception) -> None:
             self._set_status(f"AI Hata ({field_label}): {exc}")
             self._diff_viewer.set_field_loading_done(field)
-            self._ai_chat.complete_entry(field=field, product_name=product.name, prompt=prompt_summary, error=str(exc))
+            self._ai_chat.complete_entry(
+                field=field,
+                product_name=product.name,
+                prompt=prompt_text,
+                error=str(exc),
+                model_name=model_name,
+                meta=self._manager.get_last_ai_meta(),
+            )
             self._update_token_display()
 
-        self._run_in_background(do_rewrite, on_done, on_error)
+        self._begin_ai_job(
+            field=field,
+            product_name=product.name,
+            prompt_text=prompt_text,
+            model_name=model_name,
+            work=do_rewrite,
+            on_done=on_done,
+            on_error=on_error,
+        )
 
     def _apply_approved(self) -> None:
         self._set_status("Onaylanmis oneriler kontrol ediliyor...")
@@ -654,11 +872,12 @@ class App(ctk.CTk):
         config = get_config()
         ikas_configured = bool(config.ikas_store_name and config.ikas_client_id)
         ai_configured = config.ai_provider != "none"
+        has_product = self._selected_product is not None
         if ikas_configured and not ai_configured:
-            self._rewrite_btn.configure(state="disabled", fg_color=COLORS["border"], text="AI ile Yeniden Yaz (provider sec)")
+            self._diff_viewer.set_ai_enabled(False)
             self._set_status("Analiz modu - AI yeniden yazma icin Ayarlar'dan provider secin")
         else:
-            self._rewrite_btn.configure(state="normal", fg_color=COLORS["bg_card"], text="AI ile Yeniden Yaz")
+            self._diff_viewer.set_ai_enabled(ai_configured and has_product)
 
     def _open_settings(self) -> None:
         config = get_config()

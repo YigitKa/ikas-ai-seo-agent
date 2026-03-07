@@ -4,6 +4,13 @@ import threading
 
 import customtkinter as ctk
 
+from core.prompt_store import (
+    get_prompt_editor_groups,
+    get_prompt_editor_meta,
+    load_prompt_template,
+    reset_prompt_template,
+    save_prompt_template,
+)
 from ui.themes.dark import COLORS
 
 PROVIDERS = [
@@ -62,11 +69,12 @@ class SettingsPanel(ctk.CTkToplevel):
     def __init__(self, master, config, on_save=None, **kwargs):
         super().__init__(master, **kwargs)
         self.title("Ayarlar")
-        self.geometry("560x820")
+        self.geometry("900x920")
         self.resizable(True, True)
         self.configure(fg_color=COLORS["bg_primary"])
         self._on_save = on_save
         self._config = config
+        self._prompt_editors: dict[str, ctk.CTkTextbox] = {}
 
         # Ollama model list (populated by discovery)
         self._ollama_models: list[str] = []
@@ -126,13 +134,22 @@ class SettingsPanel(ctk.CTkToplevel):
         self._section(main, "Genel Ayarlar", top_pad=20)
         self._languages = self._field(main, "Magaza Dilleri (virgul ile):", ",".join(config.store_languages))
         self._keywords = self._field(main, "Hedef Keywordler (virgul ile):", ",".join(config.seo_target_keywords))
-
         self._dry_run_var = ctk.BooleanVar(value=config.dry_run)
         ctk.CTkCheckBox(
             main, text="Dry Run (ikas'a yazma)",
             variable=self._dry_run_var,
             text_color=COLORS["text_secondary"],
         ).pack(anchor="w", pady=10)
+
+        self._section(main, "AI Promptlari", top_pad=20)
+        ctk.CTkLabel(
+            main,
+            text="Aciklama ve ceviri promptlarini burada duzenleyebilirsin. Kaydedilen degisiklikler bir sonraki AI isteginde kullanilir.",
+            text_color=COLORS["text_secondary"],
+            wraplength=820,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 8))
+        self._build_prompt_editor(main)
 
         # ── Buttons ───────────────────────────────────────────────────────────
         btn_frame = ctk.CTkFrame(main, fg_color="transparent")
@@ -196,6 +213,122 @@ class SettingsPanel(ctk.CTkToplevel):
 
     def _set_status(self, text: str, color: str = "text_secondary") -> None:
         self._status_label.configure(text=text, text_color=COLORS[color])
+
+    def _build_prompt_editor(self, parent) -> None:
+        container = ctk.CTkFrame(parent, fg_color=COLORS["bg_secondary"], corner_radius=10)
+        container.pack(fill="both", expand=True, pady=(0, 8))
+
+        tabs = ctk.CTkTabview(container, fg_color=COLORS["bg_secondary"], segmented_button_fg_color=COLORS["input_bg"])
+        tabs.pack(fill="both", expand=True, padx=10, pady=10)
+
+        for group_label, prompt_keys in get_prompt_editor_groups():
+            tab = tabs.add(group_label)
+            for prompt_key in prompt_keys:
+                self._add_prompt_editor_card(tab, prompt_key)
+
+        actions = ctk.CTkFrame(container, fg_color="transparent")
+        actions.pack(fill="x", padx=10, pady=(0, 10))
+        ctk.CTkButton(
+            actions,
+            text="Promptlari Kaydet",
+            fg_color=COLORS["accent"],
+            command=self._save_prompt_templates,
+        ).pack(side="right")
+        ctk.CTkButton(
+            actions,
+            text="Tumunu Varsayilana Don",
+            fg_color=COLORS["border"],
+            hover_color=COLORS["bg_card"],
+            command=self._reset_all_prompt_editors,
+        ).pack(side="right", padx=(0, 8))
+
+    def _add_prompt_editor_card(self, parent, prompt_key: str) -> None:
+        meta = get_prompt_editor_meta(prompt_key)
+        card = ctk.CTkFrame(parent, fg_color=COLORS["bg_primary"], corner_radius=8)
+        card.pack(fill="both", expand=True, padx=8, pady=(8, 0))
+
+        header = ctk.CTkFrame(card, fg_color="transparent")
+        header.pack(fill="x", padx=10, pady=(10, 4))
+        ctk.CTkLabel(
+            header,
+            text=str(meta["title"]),
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=COLORS["text_primary"],
+        ).pack(side="left")
+        ctk.CTkButton(
+            header,
+            text="Varsayilan",
+            width=92,
+            height=28,
+            fg_color=COLORS["border"],
+            hover_color=COLORS["bg_card"],
+            command=lambda key=prompt_key: self._reset_prompt_editor(key),
+        ).pack(side="right")
+
+        ctk.CTkLabel(
+            card,
+            text=str(meta["description"]),
+            text_color=COLORS["text_secondary"],
+            wraplength=760,
+            justify="left",
+        ).pack(anchor="w", padx=10)
+
+        variables = tuple(meta.get("variables", ()))
+        if variables:
+            variable_text = ", ".join(f"{{{{{name}}}}}" for name in variables)
+            ctk.CTkLabel(
+                card,
+                text=f"Kullanilabilir degiskenler: {variable_text}",
+                text_color=COLORS["text_secondary"],
+                wraplength=760,
+                justify="left",
+            ).pack(anchor="w", padx=10, pady=(4, 0))
+
+        textbox = ctk.CTkTextbox(
+            card,
+            height=int(meta.get("height", 150)),
+            fg_color=COLORS["input_bg"],
+            text_color=COLORS["text_primary"],
+            font=ctk.CTkFont(family="Consolas", size=12),
+            wrap="word",
+        )
+        textbox.pack(fill="both", expand=True, padx=10, pady=(8, 10))
+        textbox.insert("1.0", load_prompt_template(prompt_key))
+        self._prompt_editors[prompt_key] = textbox
+
+    def _save_prompt_templates(self, show_status: bool = True) -> bool:
+        try:
+            for prompt_key, textbox in self._prompt_editors.items():
+                save_prompt_template(prompt_key, textbox.get("1.0", "end-1c"))
+        except Exception as exc:
+            if show_status:
+                self._set_status(f"Promptlar kaydedilemedi: {exc}", "warning")
+            return False
+        if show_status:
+            self._set_status("Promptlar kaydedildi.", "success")
+        return True
+
+    def _reset_prompt_editor(self, prompt_key: str) -> None:
+        try:
+            reset_prompt_template(prompt_key)
+            textbox = self._prompt_editors[prompt_key]
+            textbox.delete("1.0", "end")
+            textbox.insert("1.0", load_prompt_template(prompt_key))
+            meta = get_prompt_editor_meta(prompt_key)
+            self._set_status(f"{meta['title']} varsayilana donduruldu.", "success")
+        except Exception as exc:
+            self._set_status(f"Prompt sifirlanamadi: {exc}", "warning")
+
+    def _reset_all_prompt_editors(self) -> None:
+        try:
+            for prompt_key in self._prompt_editors:
+                reset_prompt_template(prompt_key)
+                textbox = self._prompt_editors[prompt_key]
+                textbox.delete("1.0", "end")
+                textbox.insert("1.0", load_prompt_template(prompt_key))
+            self._set_status("Tum promptlar varsayilana donduruldu.", "success")
+        except Exception as exc:
+            self._set_status(f"Promptlar sifirlanamadi: {exc}", "warning")
 
     # ── Provider change ───────────────────────────────────────────────────────
 
@@ -421,6 +554,9 @@ class SettingsPanel(ctk.CTkToplevel):
             return self._model_var.get() if self._model_var else ""
 
     def _save(self) -> None:
+        if not self._save_prompt_templates(show_status=False):
+            return
+
         provider = self._collect_provider_key()
         api_key = self._api_key_entry.get() if self._api_key_entry else ""
         base_url = self._base_url_entry.get() if self._base_url_entry else ""
@@ -457,7 +593,7 @@ class SettingsPanel(ctk.CTkToplevel):
             # Default: persist to .env
             from config.settings import save_config_to_env
             save_config_to_env(payload)
-            self._set_status("Ayarlar kaydedildi.", "success")
+            self._set_status("Ayarlar ve promptlar kaydedildi.", "success")
 
         self.destroy()
 

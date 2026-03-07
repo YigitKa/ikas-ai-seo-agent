@@ -1,0 +1,8 @@
+Urun Adi: {{name}}
+Mevcut Turkce Aciklama: {{description}}
+Kategori: {{category}}
+Hedef Keywordler: {{keywords}}
+
+Bu urunun Turkce aciklamasini SEO icin optimize et. 200-400 kelime, dogal satis dili.
+SADECE JSON dondur:
+{"suggested_description": "..."}

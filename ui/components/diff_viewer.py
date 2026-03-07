@@ -142,11 +142,22 @@ class _CollapsibleField(ctk.CTkFrame):
 
 
 class DiffViewer(ctk.CTkFrame):
-    def __init__(self, master, on_approve=None, on_reject=None, on_field_rewrite=None, **kwargs):
+    def __init__(
+        self,
+        master,
+        on_approve=None,
+        on_reject=None,
+        on_field_rewrite=None,
+        on_product_rewrite=None,
+        on_translate_en=None,
+        **kwargs,
+    ):
         super().__init__(master, fg_color=COLORS["bg_primary"], **kwargs)
         self._on_approve = on_approve
         self._on_reject = on_reject
         self._on_field_rewrite = on_field_rewrite
+        self._on_product_rewrite = on_product_rewrite
+        self._on_translate_en = on_translate_en
         self._current_suggestion: SeoSuggestion | None = None
 
         # ── Product Summary Header ──
@@ -235,6 +246,31 @@ class DiffViewer(ctk.CTkFrame):
 
         self.gallery_frame = ctk.CTkFrame(info_frame, fg_color="transparent", height=44)
         self.gallery_frame.pack(fill="x", pady=(4, 0))
+
+        action_row = ctk.CTkFrame(info_frame, fg_color="transparent")
+        action_row.pack(fill="x", pady=(8, 0))
+
+        self._rewrite_product_btn = ctk.CTkButton(
+            action_row,
+            text="AI ile yeniden yaz",
+            height=30,
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["bg_card"],
+            command=self._request_product_rewrite,
+            state="disabled",
+        )
+        self._rewrite_product_btn.pack(side="left", padx=(0, 8))
+
+        self._translate_en_btn = ctk.CTkButton(
+            action_row,
+            text="AI ile ceviri",
+            height=30,
+            fg_color=COLORS["bg_card"],
+            hover_color=COLORS["border"],
+            command=self._request_translate_en,
+            state="disabled",
+        )
+        self._translate_en_btn.pack(side="left")
 
         # ── Row 2: Full-width SEO Score Card ──
         score_card = ctk.CTkFrame(self._header_frame, fg_color=COLORS["bg_card"], corner_radius=8)
@@ -351,6 +387,19 @@ class DiffViewer(ctk.CTkFrame):
         if btn:
             btn.configure(state="normal", text="AI ile olustur")
 
+    def set_product_action_loading_done(self, action: str) -> None:
+        if action == "rewrite":
+            self._rewrite_product_btn.configure(state="normal", text="AI ile yeniden yaz")
+        elif action == "translate":
+            self._translate_en_btn.configure(state="normal", text="AI ile ceviri")
+
+    def set_ai_enabled(self, enabled: bool) -> None:
+        state = "normal" if enabled else "disabled"
+        self._rewrite_product_btn.configure(state=state)
+        self._translate_en_btn.configure(state=state)
+        for btn in self._field_buttons.values():
+            btn.configure(state=state)
+
     def set_field_value(self, field: str, value: str) -> None:
         self._set_field(self._fields_sugg, field, value)
         section = self._sections.get(field)
@@ -371,6 +420,8 @@ class DiffViewer(ctk.CTkFrame):
         self.set_product_info(product)
         desc_tr = _get_description_display(product.description, product.description_translations)
         desc_en = _get_en_description_display(product.description_translations)
+        self._rewrite_product_btn.configure(state="normal", text="AI ile yeniden yaz")
+        self._translate_en_btn.configure(state="normal", text="AI ile ceviri")
 
         self._set_field(self._fields_orig, "name", product.name)
         self._set_field(self._fields_orig, "meta_title", product.meta_title or "-")
@@ -416,6 +467,16 @@ class DiffViewer(ctk.CTkFrame):
         if self._on_reject and self._current_suggestion:
             self._on_reject(self._current_suggestion)
 
+    def _request_product_rewrite(self) -> None:
+        if self._on_product_rewrite:
+            self._rewrite_product_btn.configure(state="disabled", text="Yaziliyor...")
+            self._on_product_rewrite()
+
+    def _request_translate_en(self) -> None:
+        if self._on_translate_en:
+            self._translate_en_btn.configure(state="disabled", text="Ceviriliyor...")
+            self._on_translate_en()
+
     def clear(self) -> None:
         self._current_suggestion = None
         self._clear_fields(self._fields_orig)
@@ -424,3 +485,5 @@ class DiffViewer(ctk.CTkFrame):
         self._product_name_label.configure(text="Urun secin")
         self._product_detail_label.configure(text="")
         self.product_image_label.configure(image=None, text="Gorsel\nyok")
+        self._rewrite_product_btn.configure(state="disabled", text="AI ile yeniden yaz")
+        self._translate_en_btn.configure(state="disabled", text="AI ile ceviri")
