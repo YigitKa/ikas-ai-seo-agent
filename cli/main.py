@@ -57,22 +57,26 @@ def analyze(
 
     table = Table(title="SEO Analiz Sonuclari")
     table.add_column("ID", style="dim", max_width=12)
-    table.add_column("Urun Adi", max_width=40)
+    table.add_column("Urun Adi", max_width=30)
     table.add_column("Skor", justify="center")
     table.add_column("Baslik", justify="center")
     table.add_column("Aciklama", justify="center")
     table.add_column("Meta", justify="center")
+    table.add_column("Kalite", justify="center")
+    table.add_column("Teknik", justify="center")
     table.add_column("Sorunlar", max_width=40)
 
     for product, score in results:
         color = score_color(score.total_score)
         table.add_row(
             product.id[:12],
-            product.name[:40],
+            product.name[:30],
             f"[{color}]{score.total_score}[/{color}]",
             str(score.title_score),
             str(score.description_score),
             str(score.meta_score),
+            str(score.content_quality_score),
+            str(score.technical_seo_score),
             "; ".join(score.issues[:3]),
         )
 

@@ -226,15 +226,21 @@ Key Pydantic models:
 - `SeoSuggestion` — field, original_value, suggested_value, ai_provider, status (pending/approved/rejected)
 - `AppConfig` — mirrors all `.env` variables
 
-### `core/seo_analyzer.py` — SEO scoring rubric
+### `core/seo_analyzer.py` — SEO scoring rubric (modern algorithm)
+
+Scoring inspired by Ahrefs, Semrush, Yoast, Moz, and Screaming Frog.
+
 | Field | Max Points | Key checks |
 |---|---|---|
-| Title (TR) | 25 | Length 30–60 chars, keyword presence, no excessive caps |
-| Description (TR) | 30 | Min 150 chars, structured content, keyword density |
-| Description (EN) | 10 | Min 100 chars |
-| Meta Title | 20 | Length 50–60 chars, keyword presence |
-| Meta Description | 15 | Length 120–160 chars |
-| Keyword coverage | — | Bonus/penalty based on `SEO_TARGET_KEYWORDS` |
+| Title | 15 | Length 30–60 chars, no excessive caps, no special chars, power words |
+| Description (TR) | 20 | Min 150 words, paragraph structure, HTML elements (headings, lists, bold) |
+| Description (EN) | 5 | Min 100 words, no Turkish chars |
+| Meta Title | 15 | Length 50–60 chars, brand separator, differs from product title |
+| Meta Description | 10 | Length 120–160 chars, CTA presence |
+| Keyword Optimization | 10 | Target keywords in description/meta, category alignment, title-desc consistency |
+| Content Quality | 10 | Keyword stuffing detection (>5%), TTR vocabulary diversity, repeated n-grams, title-content coherence |
+| Technical SEO | 10 | Image count (ideal 3-5), tags (3-5), category, URL-friendly name, price |
+| Readability | 5 | Avg sentence length (15-25 words), sentence length variation, transition words |
 
 ### `core/ai_client.py` — supported providers
 | `AI_PROVIDER` value | SDK / Endpoint | Default model |
