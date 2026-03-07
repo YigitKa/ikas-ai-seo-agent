@@ -87,7 +87,7 @@ def rewrite(
     threshold: int = typer.Option(70, help="Yeniden yazma esik degeri"),
 ) -> None:
     """Claude ile SEO icerikleri yeniden yaz."""
-    manager = ProductManager(model=model)
+    manager = ProductManager()
     products = manager.get_cached_products()
 
     if not products:
@@ -151,8 +151,7 @@ def _interactive_approve(manager: ProductManager, suggestions: list) -> None:
 def apply() -> None:
     """Onaylanmis degisiklikleri ikas'a uygula."""
     manager = ProductManager()
-    suggestions = manager.get_pending_suggestions()
-    approved = [s for s in suggestions if s.status == "approved"]
+    approved = manager.get_approved_suggestions()
 
     if not approved:
         console.print("[yellow]Onaylanmis oneri yok. Once 'rewrite' komutunu calistirin.[/yellow]")

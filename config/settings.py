@@ -18,14 +18,22 @@ REQUIRED_ENV_VARS = {
     "IKAS_CLIENT_SECRET": "ikas OAuth2 Client Secret",
 }
 
+PROMPT_ONLY_ENV_VARS = {
+    "ANTHROPIC_API_KEY": "legacy Anthropic API key (opsiyonel, geriye donuk uyumluluk)",
+}
+
 
 def _prompt_for_missing_env_vars() -> None:
-    missing = [key for key in REQUIRED_ENV_VARS if not os.getenv(key, "").strip()]
+    missing_required = [key for key in REQUIRED_ENV_VARS if not os.getenv(key, "").strip()]
+    missing_prompt_only = [key for key in PROMPT_ONLY_ENV_VARS if not os.getenv(key, "").strip()]
+    missing = missing_required + missing_prompt_only
     if not missing:
         return
 
     if not sys.stdin.isatty():
-        missing_text = ", ".join(missing)
+        if not missing_required:
+            return
+        missing_text = ", ".join(missing_required)
         raise ValueError(
             f"Eksik zorunlu ortam degiskenleri: {missing_text}. "
             "Lutfen .env dosyasini doldurun veya interaktif terminalde uygulamayi calistirin.",
@@ -33,7 +41,7 @@ def _prompt_for_missing_env_vars() -> None:
 
     print("\n[Config] Bazi zorunlu ayarlar eksik. Devam etmek icin degerleri girin:")
     for key in missing:
-        desc = REQUIRED_ENV_VARS[key]
+        desc = REQUIRED_ENV_VARS.get(key) or PROMPT_ONLY_ENV_VARS[key]
         while True:
             prompt_text = f"{key} ({desc}): "
             value = getpass(prompt_text) if "SECRET" in key or "KEY" in key else input(prompt_text)

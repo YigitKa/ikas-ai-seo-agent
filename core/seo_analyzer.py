@@ -4,9 +4,13 @@ from typing import List
 
 from core.models import Product, SeoScore
 
+HTML_TAG_RE = re.compile(r"<[^>]+>")
+SPECIAL_CHAR_RE = re.compile(r"[!@#$%^&*()+=\[\]{};:'\"|<>?/\\~`]")
+PARAGRAPH_SPLIT_RE = re.compile(r"\n\s*\n|<br\s*/?>|</p>", re.IGNORECASE)
+
 
 def strip_html(text: str) -> str:
-    return re.sub(r"<[^>]+>", "", text).strip()
+    return HTML_TAG_RE.sub("", text).strip()
 
 
 def word_count(text: str) -> int:
@@ -47,7 +51,7 @@ def analyze_title(product: Product) -> tuple[int, List[str], List[str]]:
         issues.append("Urun adinda cok fazla buyuk harf kullanilmis")
         suggestions.append("Normal buyuk/kucuk harf kullanin")
 
-    special_chars = re.findall(r"[!@#$%^&*()+=\[\]{};:'\"|<>?/\\~`]", name)
+    special_chars = SPECIAL_CHAR_RE.findall(name)
     if special_chars:
         score -= 3
         issues.append(f"Urun adinda ozel karakterler var: {''.join(set(special_chars))}")
@@ -61,7 +65,8 @@ def analyze_description(product: Product) -> tuple[int, List[str], List[str]]:
     suggestions: List[str] = []
     raw = product.description or ""
     text = strip_html(raw)
-    words = word_count(raw)
+    word_list = text.lower().split()
+    words = len(word_list)
 
     if not text:
         return 0, ["Urun aciklamasi bos"], ["En az 150 kelimelik aciklama ekleyin"]
@@ -81,13 +86,12 @@ def analyze_description(product: Product) -> tuple[int, List[str], List[str]]:
         issues.append(f"Aciklama cok uzun ({words} kelime)")
         suggestions.append("Aciklamayi 500 kelimenin altina indirin")
 
-    paragraphs = [p.strip() for p in re.split(r"\n\s*\n|<br\s*/?>|</p>", raw) if p.strip()]
+    paragraphs = [p.strip() for p in PARAGRAPH_SPLIT_RE.split(raw) if p.strip()]
     if len(paragraphs) < 2 and words > 50:
         score -= 5
         issues.append("Aciklamada paragraf yapisi yok")
         suggestions.append("Aciklamayi paragraflara bolun")
 
-    word_list = text.lower().split()
     if word_list:
         counter = Counter(word_list)
         most_common_word, most_common_count = counter.most_common(1)[0]
@@ -108,7 +112,8 @@ def analyze_english_description(product: Product) -> tuple[int, List[str], List[
     suggestions: List[str] = []
 
     en_text = (product.description_translations or {}).get("en", "")
-    words = word_count(en_text)
+    cleaned_text = strip_html(en_text)
+    words = len(cleaned_text.split()) if cleaned_text else 0
 
     if not en_text.strip():
         return 0, ["Ingilizce aciklama eksik"], ["Urun icin Ingilizce aciklama ekleyin"]

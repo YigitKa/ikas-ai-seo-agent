@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import List, Optional
 
@@ -26,8 +25,7 @@ class ProductManager:
 
     async def fetch_products(self, limit: int = 50, page: int = 1) -> List[Product]:
         products = await self._ikas.get_products(limit=limit, page=page)
-        for p in products:
-            db.save_product(p)
+        db.save_products(products)
         logger.info(f"Fetched and cached {len(products)} products (page {page})")
         return products
 
@@ -40,17 +38,26 @@ class ProductManager:
     def get_cached_products(self) -> List[Product]:
         return db.get_all_products()
 
+    def score_products(self, products: List[Product]) -> List[tuple[Product, SeoScore]]:
+        scored_products: List[tuple[Product, SeoScore]] = []
+        scores: List[SeoScore] = []
+
+        for product in products:
+            score = analyze_product(product, self._config.seo_target_keywords)
+            scored_products.append((product, score))
+            scores.append(score)
+
+        db.save_scores(scores)
+        logger.info("Analyzed %s products", len(products))
+        return scored_products
+
     def analyze_products(
         self,
         products: List[Product],
         threshold: int = 100,
     ) -> List[tuple[Product, SeoScore]]:
-        results = []
-        for product in products:
-            score = analyze_product(product, self._config.seo_target_keywords)
-            db.save_score(score)
-            if score.total_score <= threshold:
-                results.append((product, score))
+        scored_products = self.score_products(products)
+        results = [(product, score) for product, score in scored_products if score.total_score <= threshold]
         logger.info(f"Analyzed {len(products)} products, {len(results)} below threshold {threshold}")
         return results
 
@@ -102,6 +109,18 @@ class ProductManager:
 
     def get_pending_suggestions(self) -> List[SeoSuggestion]:
         return db.get_pending_suggestions()
+
+    def get_approved_suggestions(self) -> List[SeoSuggestion]:
+        return db.get_approved_suggestions()
+
+    def get_pending_suggestion_count(self) -> int:
+        return db.count_suggestions("pending")
+
+    def get_suggestion_product_ids(self, status: str) -> set[str]:
+        return db.get_suggestion_product_ids(status)
+
+    def get_latest_suggestion(self, product_id: str) -> Optional[SeoSuggestion]:
+        return db.get_latest_suggestion_by_product(product_id)
 
     def approve_suggestion(self, product_id: str) -> None:
         db.update_suggestion_status(product_id, "approved")
