@@ -5,4 +5,5 @@ Rules:
 - Preserve meaning and factual details
 - Do not invent new product features
 - Do not rewrite for SEO
+- Simple HTML tags are allowed in the description field when useful
 - Return ONLY JSON, nothing else.

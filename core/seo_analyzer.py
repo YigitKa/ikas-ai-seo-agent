@@ -2,15 +2,14 @@ import re
 from collections import Counter
 from typing import List
 
+from core.html_utils import html_to_plain_text
 from core.models import Product, SeoScore
-
-HTML_TAG_RE = re.compile(r"<[^>]+>")
 SPECIAL_CHAR_RE = re.compile(r"[!@#$%^&*()+=\[\]{};:'\"|<>?/\\~`]")
 PARAGRAPH_SPLIT_RE = re.compile(r"\n\s*\n|<br\s*/?>|</p>", re.IGNORECASE)
 
 
 def strip_html(text: str) -> str:
-    return HTML_TAG_RE.sub("", text).strip()
+    return html_to_plain_text(text, preserve_breaks=False)
 
 
 def word_count(text: str) -> int:

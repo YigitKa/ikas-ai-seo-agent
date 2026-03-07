@@ -40,7 +40,8 @@ Kurallar:
 - Dogal, satis odakli Turkce kullan
 - Aciklama 200-400 kelime arasi
 - Ilk paragrafta ana keyword gecmeli
-- HTML tag kullanma, duz metin dondur
+- Aciklama alaninda p, br, ul, ol, li, strong ve em gibi basit HTML tagleri kullanabilirsin
+- Ad, meta title ve meta description alanlarinda HTML kullanma
 - Abartili reklam dili kullanma
 - Urunun gercek ozelliklerine sadik kal
 
@@ -51,6 +52,7 @@ Kategori: {{category}}
 Hedef Keywordler: {{keywords}}
 
 Bu urunun Turkce aciklamasini SEO icin optimize et. 200-400 kelime, dogal satis dili.
+Gerekirse p, ul, li, strong ve em gibi basit HTML tagleri kullanabilirsin.
 SADECE JSON dondur:
 {"suggested_description": "..."}""",
     "translation_system": """You are a professional e-commerce translator.
@@ -60,6 +62,7 @@ Rules:
 - Preserve meaning and factual details
 - Do not invent new product features
 - Do not rewrite for SEO
+- Simple HTML tags are allowed in the description field when useful
 - Return ONLY JSON, nothing else.""",
     "translation_user": """Urun Adi: {{name}}
 Mevcut Turkce Aciklama: {{description}}
@@ -69,7 +72,7 @@ Bu urunun mevcut Turkce aciklamasini Ingilizceye cevir.
 Kurallar:
 - Anlami koru, yeni ozellik uydurma
 - Dogal ve profesyonel urun Ingilizcesi kullan
-- HTML kullanma
+- Gerekirse p, ul, li, strong ve em gibi basit HTML tagleri kullanabilirsin
 - SEO icin yeniden yazma, ceviri yap
 - Yanit sadece JSON olsun
 
@@ -118,6 +121,7 @@ Kullanilabilir degiskenler:
 Notlar:
 - JSON orneklerini normal sekilde yazabilirsin. Cift kacis gerekmiyor.
 - Degiskenler icin sadece {{degisken_adi}} formatini kullan.
+- {{description}} alani prompt'a gonderilmeden once HTML taglerinden temizlenir.
 - Dosya bos birakilirsa uygulama varsayilan prompta geri doner.
 """
 

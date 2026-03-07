@@ -2,10 +2,12 @@ import json
 
 from core.ai_client import (
     OpenAICompatibleClient,
+    _build_suggestion,
     _cap_field_max_tokens,
     _lm_studio_native_base_url,
     build_en_translation_request,
     build_field_rewrite_request,
+    build_product_rewrite_request,
 )
 from core.prompt_store import render_prompt_template, validate_prompt_template
 from core.models import AppConfig, Product, SeoScore
@@ -140,22 +142,83 @@ def test_build_translation_request_loads_prompt_from_prompt_store(monkeypatch):
     assert "Cevir: Nike Air Max 270 Kadin Spor Ayakkabi" in request["user_prompt"]
 
 
+def test_build_product_rewrite_request_strips_html_before_sending_prompt():
+    product = Product(
+        id="p-html",
+        name="HTML Urun",
+        category="Ev",
+        description="<p>Merhaba <strong>dunya</strong><br>nasilsin</p>",
+        description_translations={"en": "<p>Hello <em>world</em></p>"},
+    )
+
+    request = build_product_rewrite_request(
+        _build_config(ai_provider="openai"),
+        "openai",
+        product,
+        _build_score(),
+    )
+
+    assert "Merhaba dunya nasilsin" in request["user_prompt"]
+    assert "<strong>" not in request["user_prompt"]
+    assert "<br>" not in request["user_prompt"]
+    assert "Hello world" in request["user_prompt"]
+    assert "<em>" not in request["user_prompt"]
+    assert "Aciklama alanlarinda" in request["system_prompt"]
+
+
+def test_build_field_rewrite_request_strips_html_before_sending_prompt():
+    product = Product(
+        id="p-html-field",
+        name="HTML Aciklama",
+        category="Moda",
+        description="<p>TR <strong>icerik</strong></p>",
+        description_translations={"en": "<div>EN <em>content</em></div>"},
+    )
+
+    request = build_field_rewrite_request(
+        _build_config(ai_provider="openai"),
+        "openai",
+        "desc_en",
+        product,
+    )
+
+    assert "EN content" in request["user_prompt"]
+    assert "<em>" not in request["user_prompt"]
+
+
+def test_build_suggestion_preserves_html_in_description_fields():
+    product = Product(
+        id="p-preserve",
+        name="HTML Koruma",
+        description="<p>Orijinal</p>",
+        description_translations={"en": "<p>Original EN</p>"},
+    )
+
+    suggestion = _build_suggestion(
+        product,
+        {
+            "suggested_description": "<p><strong>Yeni</strong> aciklama</p>",
+            "suggested_description_en": "<ul><li>New description</li></ul>",
+        },
+    )
+
+    assert suggestion.suggested_description == "<p><strong>Yeni</strong> aciklama</p>"
+    assert suggestion.suggested_description_en == "<ul><li>New description</li></ul>"
+
+
 def test_lm_studio_rewrite_field_uses_native_api(monkeypatch):
     captured = {}
 
-    def fake_post(url, json=None, headers=None, timeout=None):
-        captured["url"] = url
-        captured["json"] = json
-        captured["headers"] = headers
-        return DummyResponse(
-            200,
-            {
-                "output": [{"type": "message", "content": '{"suggested_name":"Yeni Baslik"}'}],
-                "stats": {"input_tokens": 18, "total_output_tokens": 7},
-            },
-        )
+    def fake_post_native(self, payload):
+        captured["url"] = f"{self._lm_studio_native_base}/api/v1/chat"
+        captured["json"] = payload
+        captured["headers"] = self._lm_studio_headers()
+        return {
+            "output": [{"type": "message", "content": '{"suggested_name":"Yeni Baslik"}'}],
+            "stats": {"input_tokens": 18, "total_output_tokens": 7},
+        }
 
-    monkeypatch.setattr("core.ai_client.httpx.post", fake_post)
+    monkeypatch.setattr(OpenAICompatibleClient, "_post_lm_studio_native", fake_post_native)
 
     client = OpenAICompatibleClient(_build_config(), "lm-studio")
     value = client.rewrite_field("name", _build_product(), _build_score())
@@ -170,21 +233,25 @@ def test_lm_studio_rewrite_field_uses_native_api(monkeypatch):
 def test_lm_studio_retries_without_reasoning_if_native_api_rejects_it(monkeypatch):
     calls = []
     responses = [
-        DummyResponse(400, text="reasoning is not supported for this model"),
-        DummyResponse(
-            200,
-            {
-                "output": [{"type": "message", "content": '{"suggested_meta_title":"Yeni Meta"}'}],
-                "stats": {"input_tokens": 20, "total_output_tokens": 8},
-            },
-        ),
+        RuntimeError("LM Studio native API hatasi (400): reasoning is not supported for this model"),
+        {
+            "output": [{"type": "message", "content": '{"suggested_meta_title":"Yeni Meta"}'}],
+            "stats": {"input_tokens": 20, "total_output_tokens": 8},
+        },
     ]
 
-    def fake_post(url, json=None, headers=None, timeout=None):
-        calls.append(json.copy())
-        return responses.pop(0)
+    def fake_post_native(self, payload):
+        calls.append(payload.copy())
+        response = responses.pop(0)
+        if isinstance(response, Exception):
+            if "reasoning" in payload:
+                retry_payload = dict(payload)
+                retry_payload.pop("reasoning", None)
+                return fake_post_native(self, retry_payload)
+            raise response
+        return response
 
-    monkeypatch.setattr("core.ai_client.httpx.post", fake_post)
+    monkeypatch.setattr(OpenAICompatibleClient, "_post_lm_studio_native", fake_post_native)
 
     client = OpenAICompatibleClient(_build_config(), "lm-studio")
     value = client.rewrite_field("meta_title", _build_product(), _build_score())

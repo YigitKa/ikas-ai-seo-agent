@@ -5,6 +5,7 @@ from typing import List, Optional
 import anthropic
 
 from config.settings import get_config
+from core.html_utils import sanitize_html_for_prompt
 from core.models import Product, SeoScore, SeoSuggestion
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,8 @@ Kurallar:
 - Ilk paragrafta ana keyword gecmeli
 - Meta title max 60 karakter, marka adiyla bitir
 - Meta description max 155 karakter, CTA icermeli
-- HTML tag kullanma, duz metin dondur
+- Aciklama alanlarinda p, br, ul, ol, li, strong ve em gibi basit HTML tagleri kullanabilirsin
+- Ad, meta title ve meta description alanlarinda HTML kullanma
 - Abartili reklam dili kullanma
 - Urunun gercek ozelliklerine sadik kal
 
@@ -33,7 +35,8 @@ Rules:
 - Main keyword should appear in the first paragraph
 - Meta title max 60 characters, end with brand name
 - Meta description max 155 characters, include CTA
-- No HTML tags, return plain text
+- You may use simple HTML tags in description fields, such as <p>, <br>, <ul>, <ol>, <li>, <strong>, and <em>
+- Do not use HTML in the name, meta title, or meta description fields
 - No exaggerated advertising language
 - Stay faithful to the product's real features
 
@@ -99,11 +102,13 @@ class ClaudeClient:
     ) -> SeoSuggestion:
         config = get_config()
         keywords = target_keywords or config.seo_target_keywords
+        raw_desc = sanitize_html_for_prompt(product.description, limit=2000)
+        raw_desc_en = sanitize_html_for_prompt(product.description_translations.get("en", ""), limit=2000)
 
         user_prompt = USER_PROMPT_TEMPLATE.format(
             name=product.name,
-            description=product.description[:2000],
-            description_en=(product.description_translations.get("en", "")[:2000]),
+            description=raw_desc,
+            description_en=raw_desc_en,
             category=product.category or "Belirtilmemis",
             issues="; ".join(score.issues) if score.issues else "Yok",
             keywords=", ".join(keywords) if keywords else "Belirtilmemis",

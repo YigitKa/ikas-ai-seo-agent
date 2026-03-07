@@ -3,6 +3,7 @@ Mevcut Turkce Aciklama: {{description}}
 Kategori: {{category}}
 Hedef Keywordler: {{keywords}}
 
-Bu urunun Turkce aciklamasini SEO icin optimize et. 200-400 kelime, dogal satis dili.
+Bu urunun Turkce aciklamasini SEO icin optimize et. Urun icin Nedir? Neden? Nasil Kullanilir? sorularina basliklar halinde cevap icersin.
+Gerekirse p, ul, li, strong ve em gibi basit HTML tagleri kullan. Dogal satis dili kullan.
 SADECE JSON dondur:
 {"suggested_description": "..."}

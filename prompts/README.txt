@@ -13,4 +13,5 @@ Kullanilabilir degiskenler:
 Notlar:
 - JSON orneklerini normal sekilde yazabilirsin. Cift kacis gerekmiyor.
 - Degiskenler icin sadece {{degisken_adi}} formatini kullan.
+- {{description}} alani prompt'a gonderilmeden once HTML taglerinden temizlenir.
 - Dosya bos birakilirsa uygulama varsayilan prompta geri doner.

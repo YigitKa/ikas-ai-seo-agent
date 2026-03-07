@@ -18,6 +18,7 @@ from typing import List, Optional
 
 import httpx
 
+from core.html_utils import sanitize_html_for_prompt
 from core.models import AppConfig, Product, SeoScore, SeoSuggestion
 from core.prompt_store import load_prompt_template, render_prompt_template
 
@@ -32,7 +33,8 @@ Kurallar:
 - Ilk paragrafta ana keyword gecmeli
 - Meta title max 60 karakter, marka adiyla bitir
 - Meta description max 155 karakter, CTA icermeli
-- HTML tag kullanma, duz metin dondur
+- Aciklama alanlarinda p, br, ul, ol, li, strong ve em gibi basit HTML tagleri kullanabilirsin
+- Ad, meta title ve meta description alanlarinda HTML kullanma
 - Abartili reklam dili kullanma
 - Urunun gercek ozelliklerine sadik kal
 
@@ -47,7 +49,8 @@ Rules:
 - Main keyword should appear in the first paragraph
 - Meta title max 60 characters, end with brand name
 - Meta description max 155 characters, include CTA
-- No HTML tags, return plain text
+- You may use simple HTML tags in description fields, such as <p>, <br>, <ul>, <ol>, <li>, <strong>, and <em>
+- Do not use HTML in the name, meta title, or meta description fields
 - No exaggerated advertising language
 - Stay faithful to the product's real features
 
@@ -101,6 +104,7 @@ Kategori: {category}
 Hedef Keywordler: {keywords}
 
 Rewrite the English product description for SEO. 200-400 words, natural sales language.
+Simple HTML is allowed in the description field when useful.
 Return ONLY JSON:
 {{"suggested_description_en": "..."}}""",
 }
@@ -313,15 +317,8 @@ def _extract_lm_studio_output(data: dict) -> tuple[str, str]:
 
 def _build_field_prompt(field: str, product: Product, keywords: List[str], desc_limit: int = 800) -> str:
     """Build a small prompt for a single field rewrite."""
-    import re as _re
-
-    raw_desc = product.description[:desc_limit]
-    raw_desc = _re.sub(r"<[^>]+>", " ", raw_desc)
-    raw_desc = _re.sub(r"\s+", " ", raw_desc).strip()
-
-    raw_desc_en = product.description_translations.get("en", "")[:desc_limit]
-    raw_desc_en = _re.sub(r"<[^>]+>", " ", raw_desc_en)
-    raw_desc_en = _re.sub(r"\s+", " ", raw_desc_en).strip()
+    raw_desc = sanitize_html_for_prompt(product.description, limit=desc_limit)
+    raw_desc_en = sanitize_html_for_prompt(product.description_translations.get("en", ""), limit=desc_limit)
 
     kw_str = ", ".join(keywords) if keywords else "Belirtilmemis"
 
@@ -370,15 +367,8 @@ def _build_suggestion(product: Product, result: dict, thinking_text: str = "") -
 
 
 def _prepare_prompt_descriptions(product: Product, desc_limit: int) -> tuple[str, str]:
-    import re as _re
-
-    raw_desc = product.description[:desc_limit]
-    raw_desc = _re.sub(r"<[^>]+>", " ", raw_desc)
-    raw_desc = _re.sub(r"\s+", " ", raw_desc).strip()
-
-    raw_desc_en = product.description_translations.get("en", "")[:desc_limit]
-    raw_desc_en = _re.sub(r"<[^>]+>", " ", raw_desc_en)
-    raw_desc_en = _re.sub(r"\s+", " ", raw_desc_en).strip()
+    raw_desc = sanitize_html_for_prompt(product.description, limit=desc_limit)
+    raw_desc_en = sanitize_html_for_prompt(product.description_translations.get("en", ""), limit=desc_limit)
     return raw_desc, raw_desc_en
 
 
