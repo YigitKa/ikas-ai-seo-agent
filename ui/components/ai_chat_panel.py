@@ -163,6 +163,21 @@ class _ThinkingEntry(ctk.CTkFrame):
         )
         self._elapsed_lbl.pack(side="right", padx=4)
 
+        # Canlı thinking preview alanı (başta gizli)
+        self._preview_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self._preview_text = ctk.CTkTextbox(
+            self._preview_frame,
+            height=80,
+            fg_color=COLORS["input_bg"],
+            text_color=_CLR_THINK_CLR,
+            font=ctk.CTkFont(family="Consolas", size=11),
+            wrap="word",
+            activate_scrollbars=True,
+            state="disabled",
+        )
+        self._preview_text.pack(fill="x", padx=4, pady=(0, 4))
+        self._has_preview = False
+
         self._animate()
 
     def _animate(self) -> None:
@@ -176,6 +191,24 @@ class _ThinkingEntry(ctk.CTkFrame):
             self.after(100, self._animate)
         except Exception:
             pass
+
+    def append_chunk(self, text: str, is_thinking: bool) -> None:
+        """Append a streaming chunk to the live preview (must be called from main thread)."""
+        if not text:
+            return
+        # Show preview frame on first thinking chunk
+        if is_thinking and not self._has_preview:
+            self._has_preview = True
+            self._preview_frame.pack(fill="x", padx=6, pady=(0, 4))
+            self._status_lbl.configure(text="Düşünüyor...")
+        if is_thinking:
+            self._preview_text.configure(state="normal")
+            self._preview_text.insert("end", text)
+            self._preview_text.see("end")
+            self._preview_text.configure(state="disabled")
+        else:
+            # Output phase — update status label
+            self._status_lbl.configure(text="Yanıt yazılıyor...")
 
     def stop(self) -> None:
         self._running = False
@@ -235,6 +268,11 @@ class AIChatPanel(ctk.CTkFrame):
     # ──────────────────────────────────────────────
     # Public API
     # ──────────────────────────────────────────────
+
+    def append_thinking_chunk(self, text: str, is_thinking: bool) -> None:
+        """Streaming chunk'ı aktif thinking entry'ye ilet (main thread'den çağrılmalı)."""
+        if self._pending is not None:
+            self._pending.append_chunk(text, is_thinking)
 
     def start_thinking(self, field: str, product_name: str) -> None:
         """AI çağrısı başladığında canlı 'thinking' balonunu göster."""

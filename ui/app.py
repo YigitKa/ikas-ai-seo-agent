@@ -480,8 +480,11 @@ class App(ctk.CTk):
         )
         self._ai_chat.start_thinking("all", product.name)
 
+        def on_chunk(text: str, is_thinking: bool) -> None:
+            self.after(0, lambda t=text, th=is_thinking: self._ai_chat.append_thinking_chunk(t, th))
+
         def do_rewrite():
-            suggestion = self._manager._ai.rewrite_product(product, score)
+            suggestion = self._manager._ai.rewrite_product(product, score, on_chunk=on_chunk)
             db.save_suggestion(suggestion)
             return suggestion
 
@@ -539,8 +542,11 @@ class App(ctk.CTk):
         )
         self._ai_chat.start_thinking(field, product.name)
 
+        def on_chunk(text: str, is_thinking: bool) -> None:
+            self.after(0, lambda t=text, th=is_thinking: self._ai_chat.append_thinking_chunk(t, th))
+
         def do_rewrite():
-            result = self._manager._ai.rewrite_field(field, product, score)
+            result = self._manager._ai.rewrite_field(field, product, score, on_chunk=on_chunk)
             if isinstance(result, tuple):
                 return result
             return result, ""

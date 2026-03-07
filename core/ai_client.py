@@ -13,7 +13,7 @@ Providers:
 
 import json
 import logging
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from core.models import AppConfig, Product, SeoScore, SeoSuggestion
 
@@ -318,6 +318,7 @@ class BaseAIClient:
         product: Product,
         score: SeoScore,
         target_keywords: Optional[List[str]] = None,
+        on_chunk: Optional[Callable[[str, bool], None]] = None,
     ) -> SeoSuggestion:
         raise NotImplementedError
 
@@ -327,6 +328,7 @@ class BaseAIClient:
         product: Product,
         score: SeoScore,
         target_keywords: Optional[List[str]] = None,
+        on_chunk: Optional[Callable[[str, bool], None]] = None,
     ) -> str | tuple[str, str]:
         """Rewrite a single field and return the new value as plain text,
         or (value, thinking_text) tuple when thinking mode is on."""
@@ -531,11 +533,95 @@ class OpenAICompatibleClient(BaseAIClient):
             self._last_output_tokens = 0
             logger.warning(f"{self._provider}: response.usage is None — token tracking unavailable")
 
+    def _stream_completion(
+        self,
+        create_kwargs: dict,
+        on_chunk: Callable[[str, bool], None],
+    ) -> str:
+        """Stream completion and call on_chunk(text, is_thinking) per token.
+
+        Parses <think>...</think> tags in real-time so callers can
+        distinguish thinking tokens from final output tokens.
+        Returns the full raw text.
+        """
+        stream = self._client.chat.completions.create(**create_kwargs, stream=True)
+
+        full_text = ""
+        buf = ""            # unprocessed lookahead buffer for tag detection
+        in_think = False    # currently inside <think>...</think>
+
+        OPEN_TAG  = "<think>"
+        CLOSE_TAG = "</think>"
+
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            piece = (delta.content or "") if delta else ""
+            if not piece:
+                continue
+
+            buf += piece
+            full_text += piece
+
+            # Emit what we can safely (everything except the last len(OPEN_TAG)-1
+            # chars, which might be an incomplete tag boundary)
+            while True:
+                if not in_think:
+                    tag_pos = buf.find(OPEN_TAG)
+                    if tag_pos == -1:
+                        # No open tag found — safe to emit all but tail
+                        safe_len = max(0, len(buf) - len(OPEN_TAG) + 1)
+                        if safe_len > 0:
+                            on_chunk(buf[:safe_len], False)
+                            buf = buf[safe_len:]
+                        break
+                    else:
+                        # Emit text before tag
+                        if tag_pos > 0:
+                            on_chunk(buf[:tag_pos], False)
+                        buf = buf[tag_pos + len(OPEN_TAG):]
+                        in_think = True
+                else:
+                    end_pos = buf.find(CLOSE_TAG)
+                    if end_pos == -1:
+                        safe_len = max(0, len(buf) - len(CLOSE_TAG) + 1)
+                        if safe_len > 0:
+                            on_chunk(buf[:safe_len], True)
+                            buf = buf[safe_len:]
+                        break
+                    else:
+                        if end_pos > 0:
+                            on_chunk(buf[:end_pos], True)
+                        buf = buf[end_pos + len(CLOSE_TAG):]
+                        in_think = False
+
+        # Flush remaining buffer
+        if buf:
+            on_chunk(buf, in_think)
+
+        # Token tracking: streaming responses may include usage in the last chunk
+        try:
+            # Drain stream for usage info (some providers send it at the end)
+            for chunk in stream:
+                if hasattr(chunk, 'usage') and chunk.usage:
+                    inp = getattr(chunk.usage, 'prompt_tokens', 0) or 0
+                    out = getattr(chunk.usage, 'completion_tokens', 0) or 0
+                    self._last_input_tokens = inp
+                    self._last_output_tokens = out
+                    self._total_input_tokens += inp
+                    self._total_output_tokens += out
+        except Exception:
+            pass
+
+        return full_text
+
     def rewrite_product(
         self,
         product: Product,
         score: SeoScore,
         target_keywords: Optional[List[str]] = None,
+        on_chunk: Optional[Callable[[str, bool], None]] = None,
     ) -> SeoSuggestion:
         keywords = target_keywords or self._config.seo_target_keywords
 
@@ -563,7 +649,6 @@ class OpenAICompatibleClient(BaseAIClient):
             issues="; ".join(score.issues[:5]) if score.issues else "Yok",
             keywords=", ".join(keywords) if keywords else "Belirtilmemis",
         )
-        # Build messages; for local providers suppress thinking unless thinking_mode is on
         system_content = _get_system_prompt(self._config)
         if is_local and not thinking_mode:
             system_content += (
@@ -581,45 +666,45 @@ class OpenAICompatibleClient(BaseAIClient):
             ],
         )
 
-        # response_format is unreliable on local servers (LM Studio rejects json_object)
-        # so we skip it entirely and rely on robust response parsing instead
+        # Use streaming when callback provided (shows live thinking)
+        if on_chunk is not None:
+            try:
+                raw_text = self._stream_completion(create_kwargs, on_chunk)
+            except Exception as api_err:
+                logger.error(f"{self._provider} streaming failed: {api_err}")
+                raise
+        else:
+            try:
+                response = self._client.chat.completions.create(**create_kwargs)
+            except Exception as api_err:
+                logger.error(f"{self._provider} API request failed: {api_err}")
+                raise
 
-        try:
-            response = self._client.chat.completions.create(**create_kwargs)
-        except Exception as api_err:
-            logger.error(f"{self._provider} API request failed: {api_err}")
-            raise
+            self._track_usage(response)
 
-        self._track_usage(response)
+            finish_reason = getattr(response.choices[0], "finish_reason", None) if response.choices else None
+            if finish_reason == "length":
+                logger.warning(
+                    f"{self._provider}: Response truncated (max_tokens={max_tokens} reached). "
+                    "Consider increasing Max Tokens or disabling Thinking Mode."
+                )
+
+            if not response.choices:
+                logger.error(f"{self._provider} returned no choices. Full response: {response}")
+                raise ValueError(f"{self._provider} yanit dondurmedi (choices bos)")
+
+            message = response.choices[0].message
+            if message is None:
+                raise ValueError(f"{self._provider} yanit mesaji bos")
+
+            raw_text = message.content or ""
+            if not raw_text.strip():
+                raise ValueError(f"{self._provider} bos icerik dondu")
+
         logger.info(
             f"{self._provider} API call: "
-            f"{self._last_input_tokens} input, {self._last_output_tokens} output tokens "
-            f"(total: {self._total_input_tokens}+{self._total_output_tokens})"
+            f"{self._last_input_tokens} in, {self._last_output_tokens} out tokens"
         )
-
-        # Check for truncation — model ran out of tokens
-        finish_reason = getattr(response.choices[0], "finish_reason", None) if response.choices else None
-        if finish_reason == "length":
-            logger.warning(
-                f"{self._provider}: Response truncated (max_tokens={max_tokens} reached). "
-                "Consider increasing Max Tokens or disabling Thinking Mode."
-            )
-
-        # Defensive checks for LM Studio / Ollama responses
-        if not response.choices:
-            logger.error(f"{self._provider} returned no choices. Full response: {response}")
-            raise ValueError(f"{self._provider} yanit dondurmedi (choices bos)")
-
-        message = response.choices[0].message
-        if message is None:
-            logger.error(f"{self._provider} returned None message")
-            raise ValueError(f"{self._provider} yanit mesaji bos")
-
-        raw_text = message.content or ""
-        if not raw_text.strip():
-            logger.error(f"{self._provider} returned empty content")
-            raise ValueError(f"{self._provider} bos icerik dondu")
-
         logger.debug(f"{self._provider} raw response: {raw_text[:500]}")
         result, thinking_text = _parse_response_text(raw_text)
         return _build_suggestion(product, result, thinking_text)
@@ -630,6 +715,7 @@ class OpenAICompatibleClient(BaseAIClient):
         product: Product,
         score: SeoScore,
         target_keywords: Optional[List[str]] = None,
+        on_chunk: Optional[Callable[[str, bool], None]] = None,
     ) -> str | tuple[str, str]:
         keywords = target_keywords or self._config.seo_target_keywords
         is_local = self._provider in ("ollama", "lm-studio")
@@ -656,35 +742,39 @@ class OpenAICompatibleClient(BaseAIClient):
             ],
         )
 
-        try:
-            response = self._client.chat.completions.create(**create_kwargs)
-        except Exception as api_err:
-            logger.error(f"{self._provider} field rewrite failed: {api_err}")
-            raise
+        if on_chunk is not None:
+            try:
+                raw_text = self._stream_completion(create_kwargs, on_chunk)
+            except Exception as api_err:
+                logger.error(f"{self._provider} field streaming failed: {api_err}")
+                raise
+        else:
+            try:
+                response = self._client.chat.completions.create(**create_kwargs)
+            except Exception as api_err:
+                logger.error(f"{self._provider} field rewrite failed: {api_err}")
+                raise
 
-        self._track_usage(response)
+            self._track_usage(response)
+
+            finish_reason = getattr(response.choices[0], "finish_reason", None) if response.choices else None
+            if finish_reason == "length":
+                logger.warning(
+                    f"{self._provider}: Field '{field}' response truncated (max_tokens={max_tokens})."
+                )
+
+            if not response.choices:
+                raise ValueError(f"{self._provider} yanit dondurmedi (choices bos)")
+
+            message = response.choices[0].message
+            raw_text = (message.content or "") if message else ""
+            if not raw_text.strip():
+                raise ValueError(f"{self._provider} bos icerik dondu")
+
         logger.info(
             f"{self._provider} field '{field}': "
-            f"{self._last_input_tokens} input, {self._last_output_tokens} output tokens "
-            f"(total: {self._total_input_tokens}+{self._total_output_tokens})"
+            f"{self._last_input_tokens} in, {self._last_output_tokens} out tokens"
         )
-
-        # Check for truncation
-        finish_reason = getattr(response.choices[0], "finish_reason", None) if response.choices else None
-        if finish_reason == "length":
-            logger.warning(
-                f"{self._provider}: Field '{field}' response truncated (max_tokens={max_tokens}). "
-                "Consider increasing Max Tokens or disabling Thinking Mode."
-            )
-
-        if not response.choices:
-            raise ValueError(f"{self._provider} yanit dondurmedi (choices bos)")
-
-        message = response.choices[0].message
-        raw_text = (message.content or "") if message else ""
-        if not raw_text.strip():
-            raise ValueError(f"{self._provider} bos icerik dondu")
-
         logger.debug(f"{self._provider} field '{field}' response: {raw_text[:300]}")
         result, thinking_text = _parse_response_text(raw_text)
         result_key = FIELD_RESULT_KEYS.get(field, field)
