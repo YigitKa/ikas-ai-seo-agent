@@ -23,12 +23,15 @@ class Product(BaseModel):
 class SeoScore(BaseModel):
     product_id: str
     total_score: int = Field(ge=0, le=100)
-    title_score: int = Field(ge=0, le=25)
-    description_score: int = Field(ge=0, le=30)
-    english_description_score: int = Field(ge=0, le=10, default=0)
-    meta_score: int = Field(ge=0, le=20)
-    meta_desc_score: int = Field(ge=0, le=15)
+    title_score: int = Field(ge=0, le=15)
+    description_score: int = Field(ge=0, le=20)
+    english_description_score: int = Field(ge=0, le=5, default=0)
+    meta_score: int = Field(ge=0, le=15)
+    meta_desc_score: int = Field(ge=0, le=10)
     keyword_score: int = Field(ge=0, le=10)
+    content_quality_score: int = Field(ge=0, le=10, default=0)
+    technical_seo_score: int = Field(ge=0, le=10, default=0)
+    readability_score: int = Field(ge=0, le=5, default=0)
     issues: List[str] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
 
