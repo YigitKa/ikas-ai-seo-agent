@@ -122,6 +122,12 @@ class ProductManager:
     def get_latest_suggestion(self, product_id: str) -> Optional[SeoSuggestion]:
         return db.get_latest_suggestion_by_product(product_id)
 
+    def update_latest_pending_suggestion(self, suggestion: SeoSuggestion) -> None:
+        db.update_latest_pending_suggestion(suggestion)
+
+    def save_or_update_pending_suggestion(self, suggestion: SeoSuggestion) -> None:
+        db.save_or_update_pending_suggestion(suggestion)
+
     def approve_suggestion(self, product_id: str) -> None:
         db.update_suggestion_status(product_id, "approved")
 

@@ -157,7 +157,6 @@ class _RichText(ctk.CTkFrame):
 
         if code_mode or _looks_like_json(content):
             self._text.insert("end", content.strip(), ("code_block",))
-            self._text.insert("end", "\n")
         else:
             self._render_markdown(content.rstrip())
 
@@ -349,7 +348,7 @@ class _PromptBubble(ctk.CTkFrame):
             bg_color=_CLR_USER_BG,
             text_color=COLORS["text_primary"],
             code_mode=True,
-            max_rows=200,
+            max_rows=32,
         )
 
         ctk.CTkLabel(

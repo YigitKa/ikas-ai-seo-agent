@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 import sys
 import threading
 import tkinter as tk
@@ -31,6 +32,24 @@ logger = logging.getLogger(__name__)
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
+
+
+def _normalize_prompt_block(text: str) -> str:
+    lines = [line.rstrip() for line in text.splitlines()]
+    normalized: list[str] = []
+    blank_pending = False
+
+    for line in lines:
+        if line.strip():
+            if blank_pending and normalized:
+                normalized.append("")
+            normalized.append(line.strip())
+            blank_pending = False
+        else:
+            blank_pending = True
+
+    result = "\n".join(normalized).strip()
+    return re.sub(r"\n{3,}", "\n\n", result)
 
 
 class ConsoleLogHandler(logging.Handler):
@@ -313,8 +332,8 @@ class App(ctk.CTk):
         threading.Thread(target=thread_target, daemon=True).start()
 
     def _format_prompt_display(self, request: dict) -> str:
-        system_prompt = (request.get("system_prompt") or "").strip()
-        user_prompt = (request.get("user_prompt") or "").strip()
+        system_prompt = _normalize_prompt_block(request.get("system_prompt") or "")
+        user_prompt = _normalize_prompt_block(request.get("user_prompt") or "")
         parts = []
         if system_prompt:
             parts.append("[system]\n" + system_prompt)
@@ -806,6 +825,7 @@ class App(ctk.CTk):
 
     def _on_approve(self, suggestion: SeoSuggestion) -> None:
         def work():
+            self._manager.save_or_update_pending_suggestion(suggestion)
             self._manager.approve_suggestion(suggestion.product_id)
             return suggestion.original_name
 

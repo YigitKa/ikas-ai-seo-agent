@@ -200,6 +200,63 @@ def save_suggestion(suggestion: SeoSuggestion) -> None:
         conn.commit()
 
 
+def update_latest_pending_suggestion(suggestion: SeoSuggestion) -> None:
+    with connection() as conn:
+        conn.execute(
+            """
+            UPDATE suggestions
+            SET suggestion_data = ?, status = ?
+            WHERE id = (
+                SELECT id
+                FROM suggestions
+                WHERE product_id = ? AND status = 'pending'
+                ORDER BY created_at DESC
+                LIMIT 1
+            )
+            """,
+            (
+                suggestion.model_dump_json(),
+                suggestion.status,
+                suggestion.product_id,
+            ),
+        )
+        conn.commit()
+
+
+def save_or_update_pending_suggestion(suggestion: SeoSuggestion) -> None:
+    created_at = _now_iso()
+    with connection() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE suggestions
+            SET suggestion_data = ?, status = ?
+            WHERE id = (
+                SELECT id
+                FROM suggestions
+                WHERE product_id = ? AND status = 'pending'
+                ORDER BY created_at DESC
+                LIMIT 1
+            )
+            """,
+            (
+                suggestion.model_dump_json(),
+                suggestion.status,
+                suggestion.product_id,
+            ),
+        )
+        if cursor.rowcount == 0:
+            conn.execute(
+                "INSERT INTO suggestions (product_id, suggestion_data, status, created_at) VALUES (?, ?, ?, ?)",
+                (
+                    suggestion.product_id,
+                    suggestion.model_dump_json(),
+                    suggestion.status,
+                    created_at,
+                ),
+            )
+        conn.commit()
+
+
 def get_pending_suggestions() -> List[SeoSuggestion]:
     return get_suggestions_by_status("pending")
 
