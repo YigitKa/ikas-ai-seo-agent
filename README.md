@@ -1,4 +1,4 @@
-# ikas SEO Optimizer
+﻿# ikas SEO Optimizer
 
 Python-based SEO optimization tool for ikas e-commerce stores. Analyzes product content, scores SEO quality, and uses AI to generate optimized rewrites.
 
@@ -13,13 +13,13 @@ Python-based SEO optimization tool for ikas e-commerce stores. Analyzes product 
 ## Mimari
 
 ```
-+------------------+     +------------------+     +------------------+
-|   CLI (typer)    |     |  Desktop UI      |     |  CSV Import      |
-|   cli/main.py    |     |  (CustomTkinter) |     |  csv_handler.py  |
-+--------+---------+     +--------+---------+     +--------+---------+
-         |                        |                        |
-         +------------------------+------------------------+
-                                  |
++------------------+     +------------------+
+|  Desktop UI      |     |  CSV Import      |
+|  (CustomTkinter) |     |  csv_handler.py  |
++--------+---------+     +--------+---------+
+         |                        |
+         +------------------------+
+                    |
                     +-------------+-------------+
                     |   Product Manager         |
                     |   (Orchestrator)          |
@@ -84,13 +84,13 @@ Uygulama artik birden fazla AI saglayicisini desteklemektedir. Ayarlar ekraninda
 
 | Provider | Aciklama | Gerekli |
 |---|---|---|
-| `none` | AI yok, yalnizca SEO analizi yapilir | — |
+| `none` | AI yok, yalnizca SEO analizi yapilir | â€” |
 | `anthropic` | Anthropic Claude (haiku / sonnet / opus) | API Key |
 | `openai` | OpenAI GPT modelleri | API Key |
 | `gemini` | Google Gemini (OpenAI uyumlu endpoint) | API Key |
 | `openrouter` | OpenRouter uzerinden herhangi bir model | API Key |
-| `ollama` | Yerel Ollama kurulumu, internet gerekmez | — |
-| `lm-studio` | Yerel LM Studio kurulumu, internet gerekmez | — |
+| `ollama` | Yerel Ollama kurulumu, internet gerekmez | â€” |
+| `lm-studio` | Yerel LM Studio kurulumu, internet gerekmez | â€” |
 | `custom` | Herhangi bir OpenAI uyumlu endpoint | Opsiyonel |
 
 ### Provider'a Gore API Key ve URL
@@ -135,19 +135,19 @@ Uygulama acilisinda `.env` dosyasi okunur. Zorunlu alanlar bos ise uygulama term
 | Parametre | Zorunlu | Aciklama | Varsayilan |
 |---|---|---|---|
 | `AI_PROVIDER` | Hayir | `none` / `anthropic` / `openai` / `gemini` / `openrouter` / `ollama` / `lm-studio` / `custom` | `none` (ANTHROPIC_API_KEY varsa `anthropic`) |
-| `AI_API_KEY` | Provider'a gore | Secilen provider'in API anahtari | — |
+| `AI_API_KEY` | Provider'a gore | Secilen provider'in API anahtari | â€” |
 | `AI_BASE_URL` | Opsiyonel | Ozel endpoint URL'i (ollama veya custom icin) | Provider varsayilani |
 | `AI_MODEL_NAME` | Opsiyonel | Kullanilacak model adi | Provider varsayilani |
 | `AI_TEMPERATURE` | Hayir | Yaraticilik seviyesi (0.0 - 1.0) | `0.7` |
 | `AI_MAX_TOKENS` | Hayir | Maksimum cikti token sayisi | `2000` |
-| `ANTHROPIC_API_KEY` | Hayir | Eski Anthropic key (geriye donuk uyumlu) | — |
+| `ANTHROPIC_API_KEY` | Hayir | Eski Anthropic key (geriye donuk uyumlu) | â€” |
 
 ### Genel
 
 | Parametre | Zorunlu | Aciklama | Varsayilan |
 |---|---|---|---|
 | `STORE_LANGUAGES` | Hayir | Aktif diller, virgul ayrimli | `tr` |
-| `SEO_TARGET_KEYWORDS` | Hayir | Hedef anahtar kelimeler, virgul ayrimli | — |
+| `SEO_TARGET_KEYWORDS` | Hayir | Hedef anahtar kelimeler, virgul ayrimli | â€” |
 | `DRY_RUN` | Hayir | `true` ise ikas'a gercek yazma yapilmaz | `true` |
 | `LOG_LEVEL` | Hayir | `DEBUG` / `INFO` / `WARNING` / `ERROR` | `INFO` |
 
@@ -262,8 +262,7 @@ Uygulama icerisinde **Ayarlar > AI Provider > LM Studio (yerel)** secip **"Model
 ## Desktop UI Kullanimi
 
 ```bash
-python main.py        # varsayilan: UI modu
-python main.py --ui   # acikca UI modu
+python main.py
 ```
 
 ### Toolbar
@@ -286,27 +285,9 @@ python main.py --ui   # acikca UI modu
 2. **AI Provider** alaninda istediginiz saglayiciy secin
 3. Provider'a ozgu alanlari doldurun (API Key, Model, vb.)
 4. Ollama icin **"Ollama Bulundu mu?"**, LM Studio icin **"Modelleri Tara"** butonuyla kurulu modelleri listeleyin
-5. **Kaydet**'e basin — ayarlar `.env` dosyasina yazilir ve uygulama yeniden baslatma gerekmeksizin guncellenir
+5. **Kaydet**'e basin â€” ayarlar `.env` dosyasina yazilir ve uygulama yeniden baslatma gerekmeksizin guncellenir
 
 > **Not:** ikas baglantisi yapilandirildiktan sonra AI provider secilmemisse uygulama otomatik olarak **analiz moduna** gecer. "AI ile Yeniden Yaz" butonu, Ayarlar'dan bir provider secilene kadar pasif kalir.
-
----
-
-## CLI Kullanim
-
-```bash
-python main.py --cli analyze                          # Tum urunleri analiz et
-python main.py --cli analyze --threshold 60           # Dusuk skorlu urunler
-python main.py --cli analyze --source csv --file products.csv  # CSV'den
-python main.py --cli analyze --product-id abc123      # Tek urun
-
-python main.py --cli rewrite --dry-run                # AI onerisi uret
-python main.py --cli apply                            # Onaylari uygula
-
-python main.py --cli history                          # Gecmis raporu
-python main.py --cli test-connection                  # Baglanti testi
-python main.py --cli export --output report.csv       # CSV'ye aktar
-```
 
 ---
 
@@ -365,32 +346,33 @@ python -m pytest tests/ -v
 
 ## Proje Yapisi
 
-```
+```text
 ikas-ai-seo-agent/
-├── core/
-│   ├── models.py            # Pydantic veri modelleri
-│   ├── ikas_client.py       # ikas GraphQL API client
-│   ├── csv_handler.py       # CSV import/export
-│   ├── seo_analyzer.py      # Kural tabanli SEO skorlama
-│   ├── ai_client.py         # Unified AI client (tum provider'lar)
-│   ├── claude_client.py     # (eski, geriye donuk)
-│   └── product_manager.py   # Orkestrator
-├── cli/main.py              # CLI arayuzu (typer + rich)
-├── ui/
-│   ├── app.py               # Ana pencere
-│   └── components/
-│       ├── settings_panel.py  # Provider secimi + ayarlar
-│       ├── diff_viewer.py
-│       ├── product_table.py
-│       └── score_card.py
-├── data/                    # SQLite + cache
-├── config/settings.py       # Ayar yukleme + .env yazma
-├── .env.example             # Ornek konfigürasyon
-└── tests/
+|-- main.py                  # Desktop uygulama entry point
+|-- core/
+|   |-- models.py            # Pydantic veri modelleri
+|   |-- ikas_client.py       # ikas GraphQL API client
+|   |-- csv_handler.py       # CSV import/export
+|   |-- seo_analyzer.py      # Kural tabanli SEO skorlama
+|   |-- ai_client.py         # Unified AI client (tum provider'lar)
+|   |-- claude_client.py     # (eski, geriye donuk)
+|   `-- product_manager.py   # Orkestrator
+|-- ui/
+|   |-- app.py               # Ana pencere
+|   `-- components/
+|       |-- settings_panel.py  # Provider secimi + ayarlar
+|       |-- diff_viewer.py
+|       |-- product_table.py
+|       `-- score_card.py
+|-- data/                    # SQLite + cache
+|-- config/settings.py       # Ayar yukleme + .env yazma
+|-- .env.example             # Ornek konfigurasyon
+`-- tests/
 ```
 
 ---
 
 ## Lisans
 
-MIT License — detaylar icin [LICENSE](LICENSE) dosyasina bakin.
+MIT License â€” detaylar icin [LICENSE](LICENSE) dosyasina bakin.
+

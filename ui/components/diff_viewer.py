@@ -350,6 +350,248 @@ class _ScoreMetricRow(ctk.CTkFrame):
         self.set_issues([])
 
 
+class _HtmlCodeEditor(ctk.CTkFrame):
+    _COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
+    _TAG_RE = re.compile(r"</?([a-zA-Z][\w:-]*)")
+    _ATTR_RE = re.compile(r"\s([a-zA-Z_:][\w:.-]*)(?=\=)")
+    _STRING_RE = re.compile(r'"[^"\n]*"|\'[^\'\n]*\'')
+    _ENTITY_RE = re.compile(r"&[a-zA-Z0-9#]+;")
+
+    def __init__(self, master, *, value: str = "", on_change=None):
+        super().__init__(master, fg_color=COLORS["input_bg"], corner_radius=6)
+        self._on_change = on_change
+        self._refresh_job: str | None = None
+
+        toolbar = ctk.CTkFrame(self, fg_color="transparent")
+        toolbar.pack(fill="x", padx=8, pady=(8, 6))
+
+        for label, command in [
+            ("<p>", lambda: self._insert_pair("<p>", "</p>")),
+            ("<h2>", lambda: self._insert_pair("<h2>", "</h2>")),
+            ("<strong>", lambda: self._insert_pair("<strong>", "</strong>")),
+            ("Liste", self._insert_list),
+            ("<a>", self._insert_link),
+            ("<br>", lambda: self._insert_text("<br>\n")),
+        ]:
+            ctk.CTkButton(
+                toolbar,
+                text=label,
+                width=68,
+                height=26,
+                fg_color=COLORS["bg_secondary"],
+                hover_color=COLORS["border"],
+                command=command,
+            ).pack(side="left", padx=(0, 6))
+
+        ctk.CTkButton(
+            toolbar,
+            text="Undo",
+            width=60,
+            height=26,
+            fg_color=COLORS["bg_secondary"],
+            hover_color=COLORS["border"],
+            command=self._undo,
+        ).pack(side="right", padx=(6, 0))
+        ctk.CTkButton(
+            toolbar,
+            text="Redo",
+            width=60,
+            height=26,
+            fg_color=COLORS["bg_secondary"],
+            hover_color=COLORS["border"],
+            command=self._redo,
+        ).pack(side="right")
+
+        body = ctk.CTkFrame(self, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        body.grid_rowconfigure(0, weight=1)
+        body.grid_columnconfigure(1, weight=1)
+
+        self._line_numbers = tk.Text(
+            body,
+            width=5,
+            wrap="none",
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+            padx=8,
+            pady=10,
+            background="#161b28",
+            foreground=COLORS["text_secondary"],
+            font=("Consolas", 12),
+            state="disabled",
+            cursor="arrow",
+            takefocus=0,
+        )
+        self._line_numbers.grid(row=0, column=0, sticky="ns")
+
+        self._text = tk.Text(
+            body,
+            wrap="none",
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+            padx=10,
+            pady=10,
+            background=COLORS["input_bg"],
+            foreground=COLORS["text_primary"],
+            insertbackground=COLORS["text_primary"],
+            selectbackground="#315a8c",
+            font=("Consolas", 13),
+            undo=True,
+            autoseparators=True,
+            maxundo=-1,
+        )
+        self._text.grid(row=0, column=1, sticky="nsew")
+
+        scrollbar = ctk.CTkScrollbar(body, command=self._on_scrollbar)
+        scrollbar.grid(row=0, column=2, sticky="ns", padx=(8, 0))
+        self._scrollbar = scrollbar
+        self._text.configure(yscrollcommand=self._on_text_scroll)
+
+        xscroll = ctk.CTkScrollbar(body, orientation="horizontal", command=self._text.xview)
+        xscroll.grid(row=1, column=1, sticky="ew", pady=(8, 0))
+        self._text.configure(xscrollcommand=xscroll.set)
+
+        self._configure_tags()
+        self._bind_events()
+        self.set_value(value)
+
+    def _configure_tags(self) -> None:
+        self._text.tag_configure("html_tag", foreground="#7cc5ff")
+        self._text.tag_configure("html_attr", foreground="#ffd166")
+        self._text.tag_configure("html_string", foreground="#a5d6a7")
+        self._text.tag_configure("html_comment", foreground="#7f8c8d")
+        self._text.tag_configure("html_entity", foreground="#ff9aa2")
+
+    def _bind_events(self) -> None:
+        for event in ("<KeyRelease>", "<ButtonRelease-1>", "<MouseWheel>", "<Configure>"):
+            self._text.bind(event, self._schedule_refresh, add="+")
+        self._text.bind("<Tab>", self._handle_tab)
+        self._text.bind("<Control-z>", lambda _event: self._undo())
+        self._text.bind("<Control-y>", lambda _event: self._redo())
+        self._text.bind("<Control-Shift-Z>", lambda _event: self._redo())
+
+    def focus_editor(self) -> None:
+        self._text.focus_set()
+
+    def set_value(self, value: str) -> None:
+        self._text.delete("1.0", "end")
+        self._text.insert("1.0", value or "")
+        self._refresh()
+
+    def get_value(self) -> str:
+        return self._text.get("1.0", "end").strip()
+
+    def _handle_tab(self, _event=None):
+        self._text.insert("insert", "    ")
+        self._schedule_refresh()
+        return "break"
+
+    def _undo(self):
+        try:
+            self._text.edit_undo()
+        except tk.TclError:
+            return "break"
+        self._schedule_refresh()
+        return "break"
+
+    def _redo(self):
+        try:
+            self._text.edit_redo()
+        except tk.TclError:
+            return "break"
+        self._schedule_refresh()
+        return "break"
+
+    def _insert_text(self, text: str) -> None:
+        self._text.insert("insert", text)
+        self._schedule_refresh()
+        self.focus_editor()
+
+    def _insert_pair(self, prefix: str, suffix: str) -> None:
+        try:
+            start = self._text.index("sel.first")
+            end = self._text.index("sel.last")
+            selection = self._text.get(start, end)
+            self._text.delete(start, end)
+            self._text.insert(start, prefix + selection + suffix)
+        except tk.TclError:
+            insert_at = self._text.index("insert")
+            self._text.insert(insert_at, prefix + suffix)
+            self._text.mark_set("insert", f"{insert_at}+{len(prefix)}c")
+        self._schedule_refresh()
+        self.focus_editor()
+
+    def _insert_list(self) -> None:
+        snippet = "<ul>\n    <li></li>\n</ul>"
+        self._text.insert("insert", snippet)
+        self._schedule_refresh()
+        self.focus_editor()
+
+    def _insert_link(self) -> None:
+        snippet = '<a href=""></a>'
+        insert_at = self._text.index("insert")
+        self._text.insert(insert_at, snippet)
+        self._text.mark_set("insert", f"{insert_at}+9c")
+        self._schedule_refresh()
+        self.focus_editor()
+
+    def _on_scrollbar(self, *args) -> None:
+        self._text.yview(*args)
+        self._line_numbers.yview(*args)
+
+    def _on_text_scroll(self, first, last) -> None:
+        self._scrollbar.set(first, last)
+        self._line_numbers.yview_moveto(first)
+
+    def _schedule_refresh(self, _event=None):
+        if self._refresh_job is not None:
+            try:
+                self.after_cancel(self._refresh_job)
+            except Exception:
+                pass
+        self._refresh_job = self.after(60, self._refresh)
+
+    def _refresh(self) -> None:
+        self._refresh_job = None
+        self._update_line_numbers()
+        self._highlight_syntax()
+        if self._on_change is not None:
+            self._on_change()
+
+    def _update_line_numbers(self) -> None:
+        total_lines = int(self._text.index("end-1c").split(".")[0])
+        content = "\n".join(str(number) for number in range(1, total_lines + 1))
+        self._line_numbers.configure(state="normal")
+        self._line_numbers.delete("1.0", "end")
+        self._line_numbers.insert("1.0", content)
+        self._line_numbers.configure(state="disabled")
+        first, _last = self._text.yview()
+        self._line_numbers.yview_moveto(first)
+
+    def _clear_highlight_tags(self) -> None:
+        for tag in ("html_tag", "html_attr", "html_string", "html_comment", "html_entity"):
+            self._text.tag_remove(tag, "1.0", "end")
+
+    def _offset_to_index(self, offset: int) -> str:
+        return f"1.0+{offset}c"
+
+    def _highlight_matches(self, regex: re.Pattern, tag_name: str, *, group: int = 0) -> None:
+        text = self._text.get("1.0", "end-1c")
+        for match in regex.finditer(text):
+            start, end = match.span(group)
+            self._text.tag_add(tag_name, self._offset_to_index(start), self._offset_to_index(end))
+
+    def _highlight_syntax(self) -> None:
+        self._clear_highlight_tags()
+        self._highlight_matches(self._COMMENT_RE, "html_comment")
+        self._highlight_matches(self._STRING_RE, "html_string")
+        self._highlight_matches(self._ENTITY_RE, "html_entity")
+        self._highlight_matches(self._TAG_RE, "html_tag", group=1)
+        self._highlight_matches(self._ATTR_RE, "html_attr", group=1)
+
+
 class _HtmlEditorWindow(ctk.CTkToplevel):
     def __init__(self, master, *, title: str, original_value: str, suggestion_value: str, on_save):
         super().__init__(master)
@@ -397,15 +639,18 @@ class _HtmlEditorWindow(ctk.CTkToplevel):
         ctk.CTkLabel(editor_header, text="Oneri HTML Kodu", font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["success"]).grid(row=0, column=0, sticky="w")
         ctk.CTkButton(editor_header, text="Onizlemeyi Yenile", width=120, height=28, fg_color=COLORS["accent"], hover_color=COLORS["bg_card"], command=self._refresh_preview).grid(row=0, column=1, sticky="e")
 
-        self._editor = ctk.CTkTextbox(editor_card, fg_color=COLORS["input_bg"], text_color=COLORS["text_primary"], font=ctk.CTkFont(family="Consolas", size=13), wrap="word")
+        self._editor = _HtmlCodeEditor(
+            editor_card,
+            value=suggestion_value or "",
+            on_change=self._schedule_preview_refresh,
+        )
         self._editor.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
-        self._editor.insert("1.0", suggestion_value or "")
-        self._editor.bind("<KeyRelease>", self._schedule_preview_refresh)
 
         ctk.CTkLabel(editor_card, text="Canli Onizleme", font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["text_secondary"]).grid(row=2, column=0, sticky="w", padx=12, pady=(0, 8))
         self._preview = _HtmlField(editor_card, line_count=12, text_color=COLORS["text_primary"])
         self._preview.grid(row=3, column=0, sticky="nsew", padx=12, pady=(0, 12))
         self._refresh_preview()
+        self.after(100, self._editor.focus_editor)
 
         self.bind("<Escape>", lambda _event: self.destroy())
 
@@ -419,10 +664,10 @@ class _HtmlEditorWindow(ctk.CTkToplevel):
 
     def _refresh_preview(self) -> None:
         self._preview_job = None
-        self._preview.set_value(self._editor.get("1.0", "end").strip())
+        self._preview.set_value(self._editor.get_value())
 
     def _save(self) -> None:
-        self._on_save(self._editor.get("1.0", "end").strip())
+        self._on_save(self._editor.get_value())
         self.destroy()
 
 

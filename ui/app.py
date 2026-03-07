@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import re
-import sys
 import threading
 import tkinter as tk
 from datetime import datetime
@@ -915,7 +914,5 @@ class App(ctk.CTk):
 
 
 def launch() -> None:
-    if "--cli" in sys.argv:
-        return
     app = App()
     app.mainloop()

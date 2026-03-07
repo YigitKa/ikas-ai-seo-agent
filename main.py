@@ -1,16 +1,7 @@
-import sys
-
-
 def main():
-    if "--cli" in sys.argv:
-        sys.argv.remove("--cli")
-        from cli.main import app
+    from ui.app import launch
 
-        app()
-    else:
-        from ui.app import launch
-
-        launch()
+    launch()
 
 
 if __name__ == "__main__":
