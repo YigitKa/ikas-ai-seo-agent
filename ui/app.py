@@ -117,8 +117,8 @@ class App(ctk.CTk):
                        fg_color=COLORS["border"]).pack(side="right", padx=5, pady=5)
 
     def _build_main_layout(self) -> None:
-        """Build 2-panel layout: [Product List] | [Detail + Diff Viewer]."""
-        # Vertical PanedWindow: [main area] / [console]
+        """3-sütun layout: [Ürün Listesi] | [Detay+SEO] | [AI Chat] + alt konsol."""
+        # Dikey PanedWindow: [ana alan] / [konsol]
         self._vpaned = tk.PanedWindow(
             self, orient=tk.VERTICAL,
             sashwidth=6, sashrelief="flat",
@@ -127,7 +127,7 @@ class App(ctk.CTk):
         )
         self._vpaned.pack(fill="both", expand=True, padx=5, pady=(5, 0))
 
-        # Horizontal PanedWindow: [left] | [right]
+        # Yatay PanedWindow: [sol] | [orta] | [sağ=AI Chat]
         self._hpaned = tk.PanedWindow(
             self._vpaned, orient=tk.HORIZONTAL,
             sashwidth=6, sashrelief="flat",
@@ -135,8 +135,8 @@ class App(ctk.CTk):
             borderwidth=0, sashcursor="sb_h_double_arrow",
         )
 
-        # ── Left Panel: Product List ──
-        self._left_panel = DockablePanel(self._hpaned, title="\u00DCr\u00FCn Listesi")
+        # ── Sol Panel: Ürün Listesi ──
+        self._left_panel = DockablePanel(self._hpaned, title="Ürün Listesi")
         left = self._left_panel.content
 
         search_frame = ctk.CTkFrame(left, fg_color="transparent")
@@ -155,8 +155,8 @@ class App(ctk.CTk):
         )
         self._product_table.pack(fill="both", expand=True, padx=5, pady=5)
 
-        # ── Right Panel: Unified Detail + Score + Diff Viewer ──
-        self._right_panel = DockablePanel(self._hpaned, title="Urun Detay & SEO")
+        # ── Orta Panel: Ürün Detay & SEO Diff ──
+        self._right_panel = DockablePanel(self._hpaned, title="Ürün Detay & SEO")
         self._diff_viewer = DiffViewer(
             self._right_panel.content,
             on_approve=self._on_approve,
@@ -165,14 +165,20 @@ class App(ctk.CTk):
         )
         self._diff_viewer.pack(fill="both", expand=True)
 
-        # Add panels to horizontal PanedWindow
-        self._hpaned.add(self._left_panel, minsize=200, stretch="always")
-        self._hpaned.add(self._right_panel, minsize=400, stretch="always")
+        # ── Sağ Panel: AI Chat (kalıcı, her zaman görünür) ──
+        self._chat_panel = DockablePanel(self._hpaned, title="AI Chat")
+        self._ai_chat = AIChatPanel(self._chat_panel.content)
+        self._ai_chat.pack(fill="both", expand=True)
+
+        # Panelleri yatay PanedWindow'a ekle
+        self._hpaned.add(self._left_panel, minsize=180, stretch="always")
+        self._hpaned.add(self._right_panel, minsize=380, stretch="always")
+        self._hpaned.add(self._chat_panel, minsize=260, stretch="always")
 
         self._vpaned.add(self._hpaned, minsize=200, stretch="always")
 
-        # ── Bottom Panel: Tabbed Console + AI Chat ──
-        self._console_panel = DockablePanel(self._vpaned, title="Konsol / AI Yanit")
+        # ── Alt Panel: Sadece Konsol ──
+        self._console_panel = DockablePanel(self._vpaned, title="Konsol")
         console_content = self._console_panel.content
 
         ctk.CTkButton(
@@ -182,22 +188,8 @@ class App(ctk.CTk):
             command=self._clear_console,
         ).pack(side="right", padx=5)
 
-        self._bottom_tabs = ctk.CTkTabview(
-            console_content,
-            fg_color=COLORS["bg_primary"],
-            segmented_button_fg_color=COLORS["bg_card"],
-            segmented_button_selected_color=COLORS["accent"],
-            segmented_button_unselected_color=COLORS["bg_secondary"],
-            segmented_button_selected_hover_color=COLORS["accent"],
-            segmented_button_unselected_hover_color=COLORS["border"],
-            corner_radius=6,
-            height=80,
-        )
-        self._bottom_tabs.pack(fill="both", expand=True, padx=2, pady=2)
-
-        tab_console = self._bottom_tabs.add("Konsol")
         self._console = ctk.CTkTextbox(
-            tab_console, height=80,
+            console_content, height=80,
             fg_color=COLORS["bg_primary"],
             text_color="#80cbc4",
             font=ctk.CTkFont(family="Consolas", size=12),
@@ -205,10 +197,6 @@ class App(ctk.CTk):
             state="disabled",
         )
         self._console.pack(fill="both", expand=True, padx=2, pady=2)
-
-        tab_ai = self._bottom_tabs.add("AI Yanit")
-        self._ai_chat = AIChatPanel(tab_ai)
-        self._ai_chat.pack(fill="both", expand=True)
 
         self._vpaned.add(self._console_panel, minsize=40, stretch="never")
 
@@ -230,8 +218,10 @@ class App(ctk.CTk):
             if total_h > 100 and total_w > 100:
                 self._sash_set = True
                 self.unbind("<Configure>")
-                self._hpaned.sash_place(0, int(total_w * 0.25), 0)
-                self._vpaned.sash_place(0, int(total_h * 0.85), 0)
+                # Sol panel %22, orta panel %48, sağ AI chat %30
+                self._hpaned.sash_place(0, int(total_w * 0.22), 0)
+                self._hpaned.sash_place(1, int(total_w * 0.70), 0)
+                self._vpaned.sash_place(0, int(total_h * 0.87), 0)
         except Exception:
             pass
 
@@ -253,7 +243,6 @@ class App(ctk.CTk):
         self._console.configure(state="normal")
         self._console.delete("1.0", "end")
         self._console.configure(state="disabled")
-        self._ai_chat.clear()
 
     def _build_status_bar(self) -> None:
         self._status_bar = ctk.CTkFrame(self, fg_color=COLORS["bg_secondary"], height=36)
@@ -674,30 +663,31 @@ class App(ctk.CTk):
             f"Provider: {config.ai_provider} | Model: {config.ai_model_name}"
         )
 
+        # Canlı "thinking" balonu göster
+        self._ai_chat.start_thinking("all", product.name)
+
         def do_rewrite():
             try:
-                suggestion = self._manager._ai.rewrite_product(
-                    product, score
-                )
+                suggestion = self._manager._ai.rewrite_product(product, score)
                 db.save_suggestion(suggestion)
                 return suggestion
             except Exception as e:
-                self.after(0, lambda e=e: self._set_status(f"AI Hata: {e}"))
-                self.after(0, lambda e=e: self._ai_chat.add_entry(
-                    field="all", product_name=product.name,
-                    prompt=prompt_summary, error=str(e),
-                ))
-                self.after(0, lambda: self._bottom_tabs.set("AI Yanit"))
-                self.after(0, self._update_token_display)
-                return None
+                return e
 
-        def on_done(suggestion):
-            if suggestion is None:
+        def on_done(result):
+            if isinstance(result, Exception):
+                self._set_status(f"AI Hata: {result}")
+                self._ai_chat.complete_entry(
+                    field="all", product_name=product.name,
+                    prompt=prompt_summary, error=str(result),
+                )
+                self._update_token_display()
                 return
+
+            suggestion = result
             self._diff_viewer.show_suggestion(suggestion)
-            usage = self._manager.get_token_usage()
             last = self._manager.get_last_token_usage()
-            cost = usage.get("estimated_cost", 0)
+            cost = self._manager.get_token_usage().get("estimated_cost", 0)
             cost_str = f" | Maliyet: ${cost}" if cost else ""
             tok_str = ""
             last_in = last.get("input", 0)
@@ -705,6 +695,7 @@ class App(ctk.CTk):
             if last_in or last_out:
                 tok_str = f" | {last_in}+{last_out} tok"
             self._set_status(f"Rewrite tamamlandi{tok_str}{cost_str}")
+
             result_dict = {
                 "suggested_name": suggestion.suggested_name,
                 "suggested_meta_title": suggestion.suggested_meta_title,
@@ -713,7 +704,8 @@ class App(ctk.CTk):
             if suggestion.suggested_description:
                 result_dict["suggested_description"] = suggestion.suggested_description[:200] + "..."
             result_text = json.dumps(result_dict, ensure_ascii=False, indent=2)
-            self._ai_chat.add_entry(
+
+            self._ai_chat.complete_entry(
                 field="all", product_name=product.name,
                 prompt=prompt_summary,
                 thinking=suggestion.thinking_text or "",
@@ -723,8 +715,7 @@ class App(ctk.CTk):
 
         def thread_target():
             result = do_rewrite()
-            if result:
-                self.after(0, lambda: on_done(result))
+            self.after(0, lambda: on_done(result))
 
         threading.Thread(target=thread_target, daemon=True).start()
 
@@ -753,6 +744,9 @@ class App(ctk.CTk):
             f"Provider: {config.ai_provider} | Model: {config.ai_model_name}"
         )
 
+        # Canlı "thinking" balonu göster
+        self._ai_chat.start_thinking(field, product.name)
+
         def thread_target():
             try:
                 result = self._manager._ai.rewrite_field(field, product, score)
@@ -763,7 +757,7 @@ class App(ctk.CTk):
                 self.after(0, lambda: self._diff_viewer.set_field_value(field, value))
                 self.after(0, lambda: self._diff_viewer.set_field_loading_done(field))
                 self.after(0, lambda: self._set_status(f"{label} yazildi"))
-                self.after(0, lambda: self._ai_chat.add_entry(
+                self.after(0, lambda: self._ai_chat.complete_entry(
                     field=field, product_name=product.name,
                     prompt=prompt_summary,
                     thinking=thinking_text,
@@ -773,11 +767,10 @@ class App(ctk.CTk):
             except Exception as e:
                 self.after(0, lambda e=e: self._set_status(f"AI Hata ({label}): {e}"))
                 self.after(0, lambda: self._diff_viewer.set_field_loading_done(field))
-                self.after(0, lambda e=e: self._ai_chat.add_entry(
+                self.after(0, lambda e=e: self._ai_chat.complete_entry(
                     field=field, product_name=product.name,
                     prompt=prompt_summary, error=str(e),
                 ))
-                self.after(0, lambda: self._bottom_tabs.set("AI Yanit"))
                 self.after(0, self._update_token_display)
 
         threading.Thread(target=thread_target, daemon=True).start()
