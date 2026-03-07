@@ -312,15 +312,34 @@ python main.py --cli export --output report.csv       # CSV'ye aktar
 
 ## SEO Skor Dagilimi
 
-| Alan | Puan |
-|---|---|
-| Baslik kalitesi | 25 |
-| Turkce aciklama | 30 |
-| Ingilizce aciklama | 10 |
-| Meta title | 20 |
-| Meta description | 15 |
-| Keyword uyumu | 10 |
-| **Toplam** | **100** |
+Skorlama algoritmasi modern SEO araclarindan (Ahrefs, Semrush, Yoast, Moz, Screaming Frog) esinlenerek tasarlanmistir.
+
+| Kategori | Maks Puan | Kontrol Edilen Kriterler |
+|---|---|---|
+| Baslik Kalitesi | 15 | Uzunluk (30-60 karakter), buyuk harf orani, ozel karakter, power word kullanimi |
+| Turkce Aciklama | 20 | Kelime sayisi (150-500 ideal), paragraf yapisi, HTML yapisal ogeler (baslik, liste, bold) |
+| Ingilizce Aciklama | 5 | Kelime sayisi, Turkce karakter kontrolu |
+| Meta Title | 15 | Uzunluk (50-60 karakter), marka ayirici, urun adindan farklilik |
+| Meta Description | 10 | Uzunluk (120-160 karakter), call-to-action varligi |
+| Keyword Uyumu | 10 | Hedef keyword kapsami, kategori adi eslesmesi, urun adi-aciklama tutarliligi, meta title keyword |
+| Icerik Kalitesi | 10 | Keyword stuffing tespiti, kelime cesitliligi (TTR), tekrarlanan n-gram tespiti, baslik-icerik uyumu |
+| Teknik SEO | 10 | Gorsel sayisi, etiket/tag varligi, kategori atamasi, URL-dostu isim, fiyat bilgisi |
+| Okunabilirlik | 5 | Ortalama cumle uzunlugu, cumle uzunluk varyasyonu, gecis kelimeleri |
+| **Toplam** | **100** | |
+
+### Algoritma Detaylari
+
+**Baslik Kalitesi (15 puan):** Arama motorlari 50-60 karakter arasi basliklari tercih eder. Buyuk harf orani %50'yi gecmemeli. "Premium", "ozel", "dogal" gibi dikkat cekici kelimeler (power words) CTR'yi arttirir.
+
+**Turkce Aciklama (20 puan):** Modern SEO'da icerik uzunlugu siralamada dogrudan etkilidir. Minimum 150 kelime beklenir. `<h2>`, `<h3>`, `<ul>`, `<strong>` gibi HTML ogeler arama motorlarinin icerigi daha iyi anlamasini saglar.
+
+**Keyword Uyumu (10 puan):** Hedef anahtar kelimelerin aciklama, meta title ve urun adinda dogal sekilde yer almasi beklenir. Kategori adi ile icerik tutarliligi kontrol edilir.
+
+**Icerik Kalitesi (10 puan):** Keyword stuffing (>%5 yogunluk) cezalandirilir. Type-Token Ratio (TTR) ile kelime cesitliligi olculur. Tekrarlanan 3-gram ifadeler tespit edilir. Baslik ile aciklama arasindaki icerik tutarliligi degerlendirilir.
+
+**Teknik SEO (10 puan):** Urun gorselleri (ideal 3-5), etiketler (en az 3-5), kategori atamasi, URL-dostu isim ve fiyat bilgisi kontrol edilir. Bu bilgiler arama motorlarinda zengin snippet gosterimine katki saglar.
+
+**Okunabilirlik (5 puan):** Cumle uzunlugu ortalamasi (ideal 15-25 kelime), cumle uzunlugu cesitliligi (monotonluk kontrolu) ve gecis kelimeleri (ayrica, bunun yaninda, ozellikle vb.) degerlendirilir.
 
 Skor < 70 ise urun "optimizasyon gerekiyor" olarak isaretlenir.
 

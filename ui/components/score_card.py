@@ -26,11 +26,14 @@ class ScoreCard(ctk.CTkFrame):
 
         self._bars: dict[str, tuple[ctk.CTkLabel, ctk.CTkProgressBar]] = {}
         categories = [
-            ("Baslik", 25),
-            ("Aciklama", 30),
-            ("Meta Title", 20),
-            ("Meta Desc", 15),
+            ("Baslik", 15),
+            ("Aciklama", 20),
+            ("Meta Title", 15),
+            ("Meta Desc", 10),
             ("Keyword", 10),
+            ("Icerik Kalite", 10),
+            ("Teknik SEO", 10),
+            ("Okunabilirlik", 5),
         ]
         for name, max_val in categories:
             row = ctk.CTkFrame(self._details_frame, fg_color="transparent")
@@ -57,11 +60,14 @@ class ScoreCard(ctk.CTkFrame):
         self._total_label.configure(text=str(score.total_score), text_color=color)
 
         values = {
-            "Baslik": (score.title_score, 25),
-            "Aciklama": (score.description_score, 30),
-            "Meta Title": (score.meta_score, 20),
-            "Meta Desc": (score.meta_desc_score, 15),
+            "Baslik": (score.title_score, 15),
+            "Aciklama": (score.description_score, 20),
+            "Meta Title": (score.meta_score, 15),
+            "Meta Desc": (score.meta_desc_score, 10),
             "Keyword": (score.keyword_score, 10),
+            "Icerik Kalite": (score.content_quality_score, 10),
+            "Teknik SEO": (score.technical_seo_score, 10),
+            "Okunabilirlik": (score.readability_score, 5),
         }
 
         for name, (val, max_val) in values.items():
