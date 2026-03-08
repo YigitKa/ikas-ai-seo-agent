@@ -77,3 +77,4 @@ class AppConfig(BaseModel):
     ai_temperature: float = 0.7
     ai_max_tokens: int = 2000
     ai_thinking_mode: bool = False
+    seo_low_score_threshold: int = 70

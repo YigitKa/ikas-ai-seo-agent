@@ -74,6 +74,14 @@ class ProductManager:
     def analyze_product(self, product: Product) -> SeoScore:
         return self.score_products([product])[0][1]
 
+    def filter_products_by_score(
+        self,
+        products_data: List[tuple[Product, SeoScore]],
+        threshold: int | None = None,
+    ) -> List[tuple[Product, SeoScore]]:
+        cutoff = threshold if threshold is not None else self._config.seo_low_score_threshold
+        return [(p, s) for p, s in products_data if s.total_score < cutoff]
+
     def analyze_products(
         self,
         products: List[Product],

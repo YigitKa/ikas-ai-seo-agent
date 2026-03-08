@@ -4,7 +4,7 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from core.models import SeoSuggestion
+from core.models import Product, SeoSuggestion
 
 _EMPTY_SUGGESTION_VALUES = {"", "-", "AI ile yeniden yazma icin butonu kullanin"}
 _ISSUE_PATTERNS = {
@@ -100,6 +100,14 @@ def get_en_description_value(translations: Mapping[str, str] | None = None) -> s
         if en_desc and en_desc.strip():
             return en_desc
     return ""
+
+
+def get_product_image_urls(product: Product) -> list[str]:
+    if product.image_urls:
+        return product.image_urls
+    if product.image_url:
+        return [product.image_url]
+    return []
 
 
 def summarize_suggestion_result(suggestion: SeoSuggestion) -> dict[str, str]:

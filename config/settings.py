@@ -136,6 +136,7 @@ def get_config() -> AppConfig:
         ai_temperature=_parse_float_env("AI_TEMPERATURE", 0.7),
         ai_max_tokens=_parse_int_env("AI_MAX_TOKENS", 2000),
         ai_thinking_mode=_parse_bool_env("AI_THINKING_MODE", default=False),
+        seo_low_score_threshold=_parse_int_env("SEO_LOW_SCORE_THRESHOLD", 70),
     )
     return _config
 
