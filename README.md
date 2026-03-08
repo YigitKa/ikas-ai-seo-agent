@@ -13,6 +13,10 @@
 - Urun filtreleri: `all`, `low_score`, `missing_english`, `pending`, `approved`
 - SEO score breakdown: title, description, EN description, meta, keyword, content quality, technical SEO, readability
 - Chat-first AI akisi: urun baglami, SEO metrikleri, prompt parametre ekleme, istek iptali, oturum token/context gostergeleri
+- Otomatik urun giris mesaji: urun secildiginde chat paneli SEO analizi ile baslar
+- Gecmis ozetleme: uzun sohbet gecmisi AI ile otomatik olarak ozetlenir
+- Semantik yonlendirme: `@ikas` / `@local` etiketleri olmadan kullanici mesaji MCP mi yerel mi cozumlenir
+- LM Studio native streaming: `/api/v1/chat` uzerinden gercek zamanli akis
 - Ayar merkezi: provider secimi, model kesfi, prompt editoru, MCP durumu, LM Studio canli durum ekrani
 - Suggestion durumlari: `pending`, `approved`, `rejected`, `applied`
 - Guvenli varsayilan: `DRY_RUN=true`
@@ -27,13 +31,13 @@
 +---------------+--------------+
                 |
                 v
-+---------------+--------------+
-| FastAPI                        |
-| REST + WebSocket               |
-| api/main.py                    |
-+---------------+--------------+
-                |
-                v
++-----------------------------------+
+| FastAPI                           |
+| REST + WebSocket                  |
+| api/main.py                       |
++---+---+---+-----------+-----------+
+    |   |   |
+    v   v   v
 +---------------+--------------+
 | ProductManager                 |
 | core/product_manager.py        |
@@ -147,12 +151,15 @@ Dashboard ekraninda:
 
 ### Chat Panel
 
-Chat paneli mevcut urun baglamini ve skor metriklerini modele verir. Arayuzde:
+Chat paneli mevcut urun baglamini ve skor metriklerini modele verir. Urun secildiginde panel otomatik olarak bir SEO analizi intro mesaji gonderir. Arayuzde:
 
-- `@local` ile yalnizca mevcut baglam uzerinden analiz isteme
+- Urun seciminde otomatik giris mesaji (auto intro)
+- `@local` ile yalnizca mevcut baglam, `@ikas` ile canli magaza verisi uzerinden analiz isteme
+- Etiket kullanilmadan da semantik yonlendirme ile dogru kaynak secilir
 - `{productDescription}`, `{productMetaTitle}`, `{seoMetricsSummary}` gibi hazir alanlari mesaja ekleme
 - Aktif istegi `Stop` ile iptal etme
 - MCP arac cagri sonucunu mesaja gomulu gorme
+- Uzun sohbet gecmisi otomatik olarak ozetlenir (gecmis sıkıştırma)
 - LM Studio kullanirken context uzunlugu ve token kullanimini izleme
 
 ### Settings
@@ -333,7 +340,9 @@ Translation prompt'larinda `{{keywords}}` yoktur; yalnizca ilgili ceviri degiske
 
 - secili urun baglamini modele aktarir
 - kullanici mesajina gore MCP arac cagrisi yapabilir
+- `@ikas` / `@local` etiketleri ile ya da semantik yonlendirme ile dogru kaynak secilir
 - arac sonucunu assistant cevabina baglar
+- uzun sohbet gecmisini AI ozetleme ile sıkıştırır
 - aktif istegi iptal edebilir
 - oturum bazli token ve context kullanim metriklerini saklar
 
@@ -348,6 +357,7 @@ Sik kullanilan testler:
 ```bash
 python -m pytest tests/test_products_api.py -v
 python -m pytest tests/test_product_manager.py -v
+python -m pytest tests/test_chat_service.py -v
 python -m pytest tests/test_settings_service.py -v
 python -m pytest tests/test_provider_service.py -v
 ```
@@ -358,6 +368,8 @@ python -m pytest tests/test_provider_service.py -v
 - Frontend build ciktilari `web/dist` altina uretilir.
 - FastAPI, build alinmis SPA varsa root path'te onu servis eder.
 - `web/package.json` icinde `dev`, `build`, `lint`, `preview` script'leri bulunur.
+- Legacy masaustu UI (`ui/`) repo'dan kaldirilmistir; `ui/` dizini artik mevcut degil.
+- LM Studio entegrasyonu native SSE streaming (`/api/v1/chat`) ile calisir; OpenAI-compat endpoint'i de desteklenir.
 
 ## Proje Yapisi
 
@@ -378,6 +390,8 @@ ikas-ai-seo-agent/
 |-- core/
 |   |-- ai_client.py
 |   |-- chat_service.py
+|   |-- claude_client.py       # legacy, geriye donuk uyumluluk
+|   |-- csv_handler.py
 |   |-- html_utils.py
 |   |-- ikas_client.py
 |   |-- mcp_client.py
@@ -399,10 +413,36 @@ ikas-ai-seo-agent/
 |   |-- translation_en.user.txt
 |   `-- README.txt
 |-- tests/
+|   |-- test_ai_client.py
+|   |-- test_chat_service.py
+|   |-- test_claude_client.py
+|   |-- test_db.py
+|   |-- test_html_utils.py
+|   |-- test_ikas_client.py
+|   |-- test_mcp_client.py
+|   |-- test_presentation.py
+|   |-- test_product_manager.py
+|   |-- test_products_api.py
+|   |-- test_provider_service.py
+|   |-- test_seo_analyzer.py
+|   |-- test_settings.py
+|   |-- test_settings_service.py
+|   `-- test_suggestion_service.py
 |-- web/
 |   |-- package.json
 |   |-- vite.config.ts
 |   `-- src/
+|       |-- api/
+|       |   `-- client.ts
+|       |-- components/
+|       |   |-- ChatPanel.tsx
+|       |   |-- ProductTable.tsx
+|       |   `-- ScoreCard.tsx
+|       |-- hooks/
+|       |   `-- useChat.ts
+|       `-- pages/
+|           |-- Dashboard.tsx
+|           `-- Settings.tsx
 |-- .env.example
 |-- main.py
 |-- requirements.txt
