@@ -3,14 +3,234 @@ import { useQuery } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { getLmStudioLiveStatus, getSettings } from '../api/client';
-import { useChat, type ChatMessage, type MCPState } from '../hooks/useChat';
-import type { ChatResponseMeta, ToolResult } from '../types';
+import { useChat, type ChatMessage } from '../hooks/useChat';
+import type { ChatResponseMeta, Product, SeoScore, ToolResult } from '../types';
 
 interface Props {
   productId?: string;
   productName?: string;
   productCategory?: string | null;
   seoScore?: number | null;
+  product?: Product | null;
+  score?: SeoScore | null;
+}
+
+interface PromptParamOption {
+  key: string;
+  label: string;
+  description: string;
+  value: string;
+  preview: string;
+  searchText: string;
+}
+
+interface ParamTriggerState {
+  start: number;
+  end: number;
+  query: string;
+}
+
+interface StarterPrompt {
+  label: string;
+  template: string;
+}
+
+function stripHtml(value: string) {
+  return value
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\r/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+function compactPreview(value: string, maxLength = 120) {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 1)}...`;
+}
+
+function createPromptParamOption(
+  key: string,
+  label: string,
+  description: string,
+  rawValue: string | null | undefined,
+) {
+  const normalizedValue = (rawValue ?? '').trim() || 'Belirtilmemis';
+  return {
+    key,
+    label,
+    description,
+    value: normalizedValue,
+    preview: compactPreview(normalizedValue),
+    searchText: `${key} ${label} ${description}`.toLowerCase(),
+  } satisfies PromptParamOption;
+}
+
+function buildSeoMetricsSummary(score?: SeoScore | null) {
+  if (!score) {
+    return 'SEO metrikleri henuz okunmadi.';
+  }
+
+  const sections = [
+    `Toplam SEO skoru: ${score.total_score}/100`,
+    `Baslik skoru: ${score.title_score}/15`,
+    `Aciklama skoru: ${score.description_score}/20`,
+    `Ingilizce aciklama skoru: ${score.english_description_score}/5`,
+    `Meta title skoru: ${score.meta_score}/15`,
+    `Meta description skoru: ${score.meta_desc_score}/10`,
+    `Anahtar kelime skoru: ${score.keyword_score}/10`,
+    `Icerik kalitesi skoru: ${score.content_quality_score}/10`,
+    `Teknik SEO skoru: ${score.technical_seo_score}/10`,
+    `Okunabilirlik skoru: ${score.readability_score}/5`,
+  ];
+
+  if (score.issues.length > 0) {
+    sections.push(`Sorunlar:\n- ${score.issues.join('\n- ')}`);
+  }
+
+  if (score.suggestions.length > 0) {
+    sections.push(`Oneriler:\n- ${score.suggestions.join('\n- ')}`);
+  }
+
+  return sections.join('\n');
+}
+
+function buildPromptParamOptions(product?: Product | null, score?: SeoScore | null) {
+  const productDescription = stripHtml(product?.description || '');
+  const productDescriptionEn = stripHtml(product?.description_translations?.en || '');
+  const seoIssues = score?.issues.length ? `- ${score.issues.join('\n- ')}` : 'Belirtilmemis';
+  const seoSuggestions = score?.suggestions.length ? `- ${score.suggestions.join('\n- ')}` : 'Belirtilmemis';
+
+  return [
+    createPromptParamOption('productName', 'Urun adi', 'Secili urunun basligi', product?.name),
+    createPromptParamOption('productCategory', 'Kategori', 'Secili urunun kategorisi', product?.category),
+    createPromptParamOption('productDescription', 'Urun aciklamasi', 'Temizlenmis urun aciklama metni', productDescription),
+    createPromptParamOption('productDescriptionEn', 'EN aciklama', 'Varsa Ingilizce aciklama', productDescriptionEn),
+    createPromptParamOption('productMetaTitle', 'Meta title', 'Mevcut meta title alani', product?.meta_title),
+    createPromptParamOption('productMetaDescription', 'Meta description', 'Mevcut meta description alani', product?.meta_description),
+    createPromptParamOption('productTags', 'Etiketler', 'Secili urunun etiketleri', product?.tags.join(', ')),
+    createPromptParamOption('productSku', 'SKU', 'Secili urunun SKU degeri', product?.sku),
+    createPromptParamOption('productStatus', 'Durum', 'Secili urunun yayindaki durumu', product?.status),
+    createPromptParamOption(
+      'productPrice',
+      'Fiyat',
+      'Secili urunun kayitli fiyati',
+      typeof product?.price === 'number' ? `${product.price.toFixed(2)} TL` : undefined,
+    ),
+    createPromptParamOption('seoMetricsSummary', 'SEO ozeti', 'Tum mevcut SEO skor kirilimlari', buildSeoMetricsSummary(score)),
+    createPromptParamOption(
+      'seoTotalScore',
+      'Toplam SEO skoru',
+      'Toplam skor',
+      typeof score?.total_score === 'number' ? `${score.total_score}/100` : undefined,
+    ),
+    createPromptParamOption(
+      'seoTitleScore',
+      'Baslik skoru',
+      'Title skor kirilimi',
+      typeof score?.title_score === 'number' ? `${score.title_score}/15` : undefined,
+    ),
+    createPromptParamOption(
+      'seoDescriptionScore',
+      'Aciklama skoru',
+      'Description skor kirilimi',
+      typeof score?.description_score === 'number' ? `${score.description_score}/20` : undefined,
+    ),
+    createPromptParamOption(
+      'seoEnglishDescriptionScore',
+      'EN aciklama skoru',
+      'English description skor kirilimi',
+      typeof score?.english_description_score === 'number' ? `${score.english_description_score}/5` : undefined,
+    ),
+    createPromptParamOption(
+      'seoMetaTitleScore',
+      'Meta title skoru',
+      'Meta title skor kirilimi',
+      typeof score?.meta_score === 'number' ? `${score.meta_score}/15` : undefined,
+    ),
+    createPromptParamOption(
+      'seoMetaDescriptionScore',
+      'Meta description skoru',
+      'Meta description skor kirilimi',
+      typeof score?.meta_desc_score === 'number' ? `${score.meta_desc_score}/10` : undefined,
+    ),
+    createPromptParamOption(
+      'seoKeywordScore',
+      'Keyword skoru',
+      'Anahtar kelime skor kirilimi',
+      typeof score?.keyword_score === 'number' ? `${score.keyword_score}/10` : undefined,
+    ),
+    createPromptParamOption(
+      'seoContentQualityScore',
+      'Icerik kalitesi skoru',
+      'Content quality skor kirilimi',
+      typeof score?.content_quality_score === 'number' ? `${score.content_quality_score}/10` : undefined,
+    ),
+    createPromptParamOption(
+      'seoTechnicalScore',
+      'Teknik SEO skoru',
+      'Technical SEO skor kirilimi',
+      typeof score?.technical_seo_score === 'number' ? `${score.technical_seo_score}/10` : undefined,
+    ),
+    createPromptParamOption(
+      'seoReadabilityScore',
+      'Okunabilirlik skoru',
+      'Readability skor kirilimi',
+      typeof score?.readability_score === 'number' ? `${score.readability_score}/5` : undefined,
+    ),
+    createPromptParamOption('seoIssues', 'SEO sorunlari', 'Mevcut issue listesi', seoIssues),
+    createPromptParamOption('seoSuggestions', 'SEO onerileri', 'Mevcut suggestion listesi', seoSuggestions),
+  ];
+}
+
+function resolvePromptTemplate(template: string, options: PromptParamOption[]) {
+  return options.reduce(
+    (resolved, option) => resolved.split(`{${option.key}}`).join(option.value),
+    template,
+  );
+}
+
+function getParamTriggerState(value: string, caretPosition: number | null) {
+  if (caretPosition === null) {
+    return null;
+  }
+
+  const textBeforeCaret = value.slice(0, caretPosition);
+  const openIndex = textBeforeCaret.lastIndexOf('{');
+  if (openIndex === -1) {
+    return null;
+  }
+
+  if (textBeforeCaret.lastIndexOf('}') > openIndex) {
+    return null;
+  }
+
+  const query = textBeforeCaret.slice(openIndex + 1);
+  if (/\s/.test(query)) {
+    return null;
+  }
+
+  const closingIndex = value.indexOf('}', openIndex);
+  if (closingIndex !== -1 && closingIndex < caretPosition) {
+    return null;
+  }
+
+  return {
+    start: openIndex,
+    end: caretPosition,
+    query,
+  } satisfies ParamTriggerState;
 }
 
 function formatDuration(seconds: number) {
@@ -369,9 +589,12 @@ function ThinkingBlock({
         </span>
       </button>
       {expanded && (
-        <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed" style={{ color: 'rgba(139, 92, 246, 0.7)' }}>
-          {text}
-        </p>
+        <div
+          className="mt-2 text-[12px] leading-relaxed"
+          style={{ color: 'rgba(139, 92, 246, 0.78)' }}
+        >
+          <MarkdownMessage content={text} />
+        </div>
       )}
     </div>
   );
@@ -524,204 +747,13 @@ function StatusPill({
   );
 }
 
-function MentionGuide({ mcpState }: { mcpState: MCPState }) {
-  const examples = [
-    '@local Bu urunun SEO skorunu yorumla',
-    '@ikas Bu urunun canli stok ve fiyatini getir',
-    '@ikas @local Varyantlari cek ve kisaca ozetle',
-  ];
-  const queryCapabilities = [
-    {
-      title: 'Customer Management',
-      items: ['listCustomer', 'listCustomerAttribute'],
-    },
-    {
-      title: 'Location Management',
-      items: ['listCountry', 'listState', 'listCity', 'listDistrict', 'listTown'],
-    },
-    {
-      title: 'Merchant',
-      items: ['getMerchant', 'getMerchantLicence'],
-    },
-    {
-      title: 'Sales & Payments',
-      items: ['listAbandonedCheckouts'],
-    },
-    {
-      title: 'Product Management',
-      items: ['listProduct', 'listProductAttribute', 'listProductBrand'],
-    },
-    {
-      title: 'Order Management',
-      items: ['listOrder', 'listOrderTag', 'listOrderTransactions'],
-    },
-    {
-      title: 'Settings',
-      items: ['getGlobalTaxSettings', 'listShippingSettings', 'listTaxSettings'],
-    },
-  ];
-  const mutationCapabilities = [
-    {
-      title: 'Customer Management',
-      items: ['updateCustomer', 'addCustomerTimelineEntry'],
-    },
-    {
-      title: 'App Integration',
-      items: ['createMerchantAppPayment', 'saveWebhooks', 'deleteWebhook', 'getAppDemoDay'],
-    },
-    {
-      title: 'Sales Channel',
-      items: ['updateSalesChannel'],
-    },
-    {
-      title: 'Order Management',
-      items: ['createOrderWithTransactions', 'fulfillOrder', 'cancelFulfillment', 'cancelOrderLine', 'refundOrderLine', 'updateOrderPackageStatus', 'addOrderInvoice', 'removeOrderInvoice', 'downloadOrderInvoice', 'approvePendingOrderTransactions'],
-    },
-    {
-      title: 'Product Management',
-      items: ['createProduct', 'updateProduct', 'deleteProductList', 'addVariantToProduct', 'removeVariantFromProduct', 'saveVariantStocks', 'updateVariantPrices'],
-    },
-    {
-      title: 'Campaign Management',
-      items: ['createCampaign', 'updateCampaign', 'deleteCampaignList', 'addCouponsToCampaign'],
-    },
-    {
-      title: 'Storefront Management',
-      items: ['createStorefrontJSScript', 'updateStorefrontJSScript', 'deleteStorefrontJSScript'],
-    },
-    {
-      title: 'Timeline Management',
-      items: ['addCustomTimelineEntry', 'addOrderTimelineEntry'],
-    },
-  ];
-
-  return (
-    <details
-      className="rounded-xl px-3 py-2.5"
-      style={{
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid var(--color-border)',
-      }}
-    >
-      <summary
-        className="cursor-pointer text-[12px] font-medium"
-        style={{ color: 'var(--color-text-secondary)' }}
-      >
-        Mentionlar ve MCP
-      </summary>
-      <div className="mt-3 space-y-3 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-        <p>
-          Canli ikas verisini sadece <strong>@ikas</strong> ile aciyoruz. Mention yoksa sohbet
-          varsayilan olarak local baglamda kalir ve MCP cagrisi yapmaz.
-        </p>
-        <p>
-          Teknik olarak ikas MCP arka planda generic bir GraphQL katmani sunuyor; uygulama bunu
-          sana operasyon listesi olarak gosterip chat tarafinda kullanilabilir hale getiriyor.
-        </p>
-        <p>
-          Model, sadece arac cagirmakla kalmaz; onerilerini de desteklenen ikas operasyon adlariyla
-          somut bir sonraki adima donusturmeye calisir.
-        </p>
-        <div>
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em]">
-            Yonetim
-          </div>
-          <ul className="space-y-1">
-            <li>- <strong>@local</strong>: sadece mevcut baglamla cevap ver, arac kullanma</li>
-            <li>- <strong>@ikas</strong>: mumkunse canli ikas MCP araci kullan</li>
-            <li>- <strong>@ikas @local</strong>: veriyi MCP ile cek, yaniti model ozetlesin</li>
-          </ul>
-        </div>
-        <div>
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em]">
-            Ornekler
-          </div>
-          <ul className="space-y-1">
-            {examples.map((example) => (
-              <li key={example}>- {example}</li>
-            ))}
-          </ul>
-        </div>
-
-        <div>
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em]">
-            Query yetenekleri
-          </div>
-          <div className="space-y-2">
-            {queryCapabilities.map((group) => (
-              <div
-                key={group.title}
-                className="rounded-lg px-2.5 py-2"
-                style={{ background: 'rgba(255,255,255,0.03)' }}
-              >
-                <div className="text-[11px] font-semibold text-white">{group.title}</div>
-                <div className="mt-1 text-[11px] leading-relaxed">
-                  {group.items.join(', ')}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em]">
-            Mutation yetenekleri
-          </div>
-          <div className="space-y-2">
-            {mutationCapabilities.map((group) => (
-              <div
-                key={group.title}
-                className="rounded-lg px-2.5 py-2"
-                style={{ background: 'rgba(255,255,255,0.03)' }}
-              >
-                <div className="text-[11px] font-semibold text-white">{group.title}</div>
-                <div className="mt-1 text-[11px] leading-relaxed">
-                  {group.items.join(', ')}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {mcpState.initialized && mcpState.tools.length > 0 ? (
-          <div>
-            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em]">
-              Kullanilabilir operasyonlar ({mcpState.toolCount})
-            </div>
-            <div className="space-y-2">
-              {mcpState.tools.slice(0, 10).map((tool) => (
-                <div
-                  key={tool.name}
-                  className="rounded-lg px-2.5 py-2"
-                  style={{ background: 'rgba(245, 158, 11, 0.05)' }}
-                >
-                  <div className="font-mono text-[11px]" style={{ color: '#fbbf24' }}>
-                    {tool.name}
-                  </div>
-                  <div className="mt-1 text-[11px] leading-relaxed">
-                    {tool.description || 'Aciklama gelmedi.'}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <p>
-            {mcpState.hasToken
-              ? 'Token var ama arac listesi gelmedi. Bu durumda @ikas yazsan da model kullanabilecek arac goremeyebilir.'
-              : 'MCP token olmadigi icin @ikas mentioni canli veri cektiremez.'}
-          </p>
-        )}
-      </div>
-    </details>
-  );
-}
-
 export default function ChatPanel({
   productId,
   productName,
   productCategory,
   seoScore,
+  product,
+  score,
 }: Props) {
   const settingsQ = useQuery({
     queryKey: ['settings'],
@@ -738,6 +770,9 @@ export default function ChatPanel({
     refetchInterval: configuredProvider === 'lm-studio' ? 5_000 : false,
   });
   const configuredAssistantLabel = configuredModel || configuredProvider || 'AI modeli';
+  const displayProductName = productName || product?.name;
+  const displayProductCategory = productCategory ?? product?.category ?? null;
+  const displaySeoScore = seoScore ?? score?.total_score ?? null;
   const {
     messages,
     isLoading,
@@ -750,14 +785,18 @@ export default function ChatPanel({
     disconnect,
   } = useChat({
     id: productId,
-    name: productName,
-    category: productCategory,
-    score: seoScore,
+    name: displayProductName,
+    category: displayProductCategory,
+    score: displaySeoScore,
     assistantLabel: configuredAssistantLabel,
   });
   const [input, setInput] = useState('');
   const [liveElapsedSeconds, setLiveElapsedSeconds] = useState(0);
+  const [paramTrigger, setParamTrigger] = useState<ParamTriggerState | null>(null);
+  const [activeParamIndex, setActiveParamIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const promptParamOptions = buildPromptParamOptions(product, score);
 
   useEffect(() => {
     connect();
@@ -786,6 +825,22 @@ export default function ChatPanel({
     return () => window.clearInterval(intervalId);
   }, [pendingSince]);
 
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    textarea.style.height = '0px';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 220)}px`;
+  }, [input]);
+
+  useEffect(() => {
+    setInput('');
+    setParamTrigger(null);
+    setActiveParamIndex(0);
+  }, [productId]);
+
   const latestAssistant = [...messages].reverse().find(
     (msg) => msg.role === 'assistant' && typeof msg.meta?.model === 'string',
   );
@@ -806,24 +861,82 @@ export default function ChatPanel({
       ? String(latestAssistant.meta.model)
       : configuredAssistantLabel;
 
-  const starterPrompts = [
-    '@local Bu urunun SEO skorunu hizlica acikla',
-    '@local Bu urun icin 3 yeni baslik oner',
-    mcpState.initialized
-      ? '@ikas Bu urunun canli stok ve fiyat durumunu kontrol et'
-      : '@local Bu urun icin aciklama iyilestirme plani cikar',
+  const starterPrompts: StarterPrompt[] = [
+    {
+      label: 'SEO metriklerini yorumla',
+      template:
+        '@local Bu mevcut SEO metriklerini alan bazinda yorumla ve sadece bu skorlara gore 3 oncelikli tavsiye ver.\n\n{seoMetricsSummary}',
+    },
+    {
+      label: 'Urun aciklamasini yorumla',
+      template:
+        '@local Bu urunun mevcut aciklamasini yorumla. Yalnizca eldeki metni kullan.\n\n{productDescription}',
+    },
+    {
+      label: 'Meta titlei yorumla',
+      template:
+        '@local Bu mevcut meta titlei SEO acisindan yorumla.\n\n{productMetaTitle}',
+    },
+    {
+      label: 'Meta descriptioni yorumla',
+      template:
+        '@local Bu mevcut meta descriptioni SEO acisindan yorumla.\n\n{productMetaDescription}',
+    },
   ];
 
-  const showStarterState = messages.every((msg) => msg.role === 'system');
+  const showStarterState = messages.length === 0 || messages.every((msg) => msg.role === 'system');
+  const filteredParamOptions = paramTrigger
+    ? promptParamOptions.filter((option) => (
+      !paramTrigger.query
+      || option.searchText.includes(paramTrigger.query.toLowerCase())
+      || option.key.toLowerCase().includes(paramTrigger.query.toLowerCase())
+    ))
+    : [];
+  const showParamMenu = filteredParamOptions.length > 0;
+
+  const syncParamTrigger = (value: string, caretPosition: number | null) => {
+    setParamTrigger(getParamTriggerState(value, caretPosition));
+    setActiveParamIndex(0);
+  };
+
+  const applyParamOption = (option: PromptParamOption) => {
+    if (!paramTrigger) {
+      return;
+    }
+
+    const closingIndex = input.indexOf('}', paramTrigger.start);
+    const replaceEnd =
+      closingIndex !== -1 && closingIndex >= paramTrigger.end
+        ? closingIndex + 1
+        : paramTrigger.end;
+    const nextValue = `${input.slice(0, paramTrigger.start)}${option.value}${input.slice(replaceEnd)}`;
+    const nextCaretPosition = paramTrigger.start + option.value.length;
+
+    setInput(nextValue);
+    setParamTrigger(null);
+    setActiveParamIndex(0);
+
+    window.requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) {
+        return;
+      }
+      textarea.focus();
+      textarea.setSelectionRange(nextCaretPosition, nextCaretPosition);
+    });
+  };
 
   const submitPrompt = (text: string) => {
-    const value = text.trim();
+    const value = resolvePromptTemplate(text, promptParamOptions).trim();
     if (!value) return;
     sendMessage(value);
     setInput('');
+    setParamTrigger(null);
+    setActiveParamIndex(0);
   };
 
   const handleSend = () => submitPrompt(input);
+  const handleStarterPrompt = (prompt: StarterPrompt) => submitPrompt(prompt.template);
 
   return (
     <div
@@ -853,14 +966,14 @@ export default function ChatPanel({
               </span>
             </div>
 
-            {productName && (
+            {displayProductName && (
               <div className="mt-2 min-w-0">
                 <div className="truncate text-[18px] font-semibold text-white">
-                  {productName}
+                  {displayProductName}
                 </div>
                 <div className="mt-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                  {productCategory || 'Kategori yok'}
-                  {typeof seoScore === 'number' ? ` | SEO ${seoScore}/100` : ''}
+                  {displayProductCategory || 'Kategori yok'}
+                  {typeof displaySeoScore === 'number' ? ` | SEO ${displaySeoScore}/100` : ''}
                 </div>
               </div>
             )}
@@ -915,10 +1028,6 @@ export default function ChatPanel({
             />
           )}
         </div>
-
-        <div className="mt-3">
-          <MentionGuide mcpState={mcpState} />
-        </div>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
@@ -939,17 +1048,18 @@ export default function ChatPanel({
               </svg>
             </div>
             <p className="mt-3 text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
-              Secili urun icin uc tarafli sohbet hazir.
+              Secili urunun mevcut SEO metrikleri ve eldeki alanlariyla sohbet hazir.
             </p>
             <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-              `@local` ile mevcut baglami yorumlat, `@ikas` ile canli veri iste.
+              `@local` ile mevcut baglami yorumlat. {'{'} yazarak `productDescription` veya `seoMetricsSummary`
+              gibi alanlari mesaja ekleyebilirsin.
             </p>
 
             <div className="mt-4 flex flex-wrap justify-center gap-2">
               {starterPrompts.map((prompt) => (
                 <button
-                  key={prompt}
-                  onClick={() => submitPrompt(prompt)}
+                  key={prompt.label}
+                  onClick={() => handleStarterPrompt(prompt)}
                   disabled={isLoading}
                   className="rounded-full px-3 py-1.5 text-[11px] font-medium transition-all hover:opacity-90 disabled:opacity-40"
                   style={{
@@ -958,7 +1068,7 @@ export default function ChatPanel({
                     border: '1px solid rgba(99, 102, 241, 0.2)',
                   }}
                 >
-                  {prompt}
+                  {prompt.label}
                 </button>
               ))}
             </div>
@@ -1005,33 +1115,136 @@ export default function ChatPanel({
       </div>
 
       <div className="p-3" style={{ borderTop: '1px solid var(--color-border)' }}>
-        <div className="flex gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
-                handleSend();
+        <div className="flex items-end gap-2">
+          <div className="relative flex-1">
+            {showParamMenu && (
+              <div
+                className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-xl"
+                style={{
+                  background: 'rgba(15, 23, 42, 0.98)',
+                  border: '1px solid rgba(99, 102, 241, 0.22)',
+                  boxShadow: '0 14px 40px rgba(0, 0, 0, 0.34)',
+                }}
+              >
+                <div
+                  className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em]"
+                  style={{
+                    color: 'var(--color-text-muted)',
+                    borderBottom: '1px solid rgba(255,255,255,0.06)',
+                  }}
+                >
+                  Parametreler
+                </div>
+                <div className="max-h-64 overflow-y-auto p-1.5">
+                  {filteredParamOptions.slice(0, 8).map((option, index) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        applyParamOption(option);
+                      }}
+                      className="mb-1 block w-full rounded-lg px-2.5 py-2 text-left last:mb-0"
+                      style={{
+                        background:
+                          index === activeParamIndex
+                            ? 'rgba(99, 102, 241, 0.14)'
+                            : 'rgba(255,255,255,0.02)',
+                        border:
+                          index === activeParamIndex
+                            ? '1px solid rgba(99, 102, 241, 0.28)'
+                            : '1px solid transparent',
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[11px]" style={{ color: '#c7d2fe' }}>
+                          {`{${option.key}}`}
+                        </span>
+                        <span className="text-[11px] font-medium text-white">{option.label}</span>
+                      </div>
+                      <div className="mt-1 text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
+                        {option.description}
+                      </div>
+                      <div className="mt-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                        {option.preview}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <textarea
+              ref={textareaRef}
+              value={input}
+              rows={1}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                setInput(nextValue);
+                syncParamTrigger(nextValue, e.target.selectionStart);
+              }}
+              onSelect={(e) => {
+                syncParamTrigger(e.currentTarget.value, e.currentTarget.selectionStart);
+              }}
+              onKeyDown={(e) => {
+                if (showParamMenu) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setActiveParamIndex((prev) => (prev + 1) % filteredParamOptions.slice(0, 8).length);
+                    return;
+                  }
+
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setActiveParamIndex((prev) => (
+                      prev === 0 ? filteredParamOptions.slice(0, 8).length - 1 : prev - 1
+                    ));
+                    return;
+                  }
+
+                  if ((e.key === 'Enter' || e.key === 'Tab') && filteredParamOptions[activeParamIndex]) {
+                    e.preventDefault();
+                    applyParamOption(filteredParamOptions[activeParamIndex]);
+                    return;
+                  }
+
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setParamTrigger(null);
+                    return;
+                  }
+                }
+
+                if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={
+                displayProductName
+                  ? `${displayProductName} icin soru sorun. { ile hazir alan ekleyin...`
+                  : 'Mesaj yazin... { ile parametre ekleyin.'
               }
-            }}
-            placeholder={
-              productName
-                ? `${productName} icin soru sorun. @local veya @ikas ile yonlendirebilirsiniz...`
-                : 'Mesaj yazin...'
-            }
-            className="flex-1 rounded-lg px-3 py-2 text-[13px] outline-none transition-all"
-            style={{
-              background: 'var(--color-bg-base)',
-              border: '1px solid var(--color-border-light)',
-              color: 'var(--color-text-primary)',
-            }}
-            onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
-            onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--color-border-light)')}
-          />
+              className="min-h-[44px] w-full resize-none rounded-lg px-3 py-2 text-[13px] outline-none transition-all"
+              style={{
+                background: 'var(--color-bg-base)',
+                border: '1px solid var(--color-border-light)',
+                color: 'var(--color-text-primary)',
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = 'var(--color-border-light)';
+                setParamTrigger(null);
+              }}
+            />
+            <div className="mt-1 px-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+              {'{'} ile `productDescription`, `productMetaTitle` veya `seoMetricsSummary` gibi alanlari hizlica ekle.
+            </div>
+          </div>
           <button
             onClick={isLoading ? cancelMessage : handleSend}
             disabled={!isLoading && !input.trim()}
-            className={`flex h-9 flex-shrink-0 items-center justify-center rounded-lg px-3 text-white transition-all hover:opacity-90 disabled:opacity-30 ${isLoading ? 'min-w-[64px]' : 'w-9'}`}
+            className={`flex min-h-[44px] flex-shrink-0 items-center justify-center rounded-lg px-3 text-white transition-all hover:opacity-90 disabled:opacity-30 ${isLoading ? 'min-w-[64px]' : 'w-11'}`}
             style={{
               background: isLoading
                 ? 'linear-gradient(135deg, #ef4444, #f97316)'

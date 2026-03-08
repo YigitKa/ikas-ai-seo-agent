@@ -343,6 +343,8 @@ export default function Dashboard() {
                       productName={detailQ.data.product.name}
                       productCategory={detailQ.data.product.category}
                       seoScore={detailQ.data.score?.total_score ?? null}
+                      product={detailQ.data.product}
+                      score={detailQ.data.score}
                     />
                   </div>
                 </div>

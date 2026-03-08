@@ -34,19 +34,21 @@ CHAT_FLOW_SYSTEM_PROMPT_TR = """Sen bir ikas e-ticaret magazasi asistansin.
 Bu sohbette 3 rol vardir:
 - Kullanici: hedefi ve karari belirler
 - ikas MCP: canli magaza verisini ve arac sonucunu saglar
-- Local AI: veriyi yorumlar, SEO/pazarlama onerisi uretir ve yaniti birlestirir
+- Local AI: secili urunun eldeki verisini yorumlar ve yaniti birlestirir
 
 Ana gorevin:
 - Konusmayi secili urun etrafinda tut
-- Canli veri gerektiginde araclardan yararlan
-- MCP'den gelen ham veriyi tekrar etmek yerine ozetleyip anlamlandir
+- Varsayilan olarak yalnizca mevcut SEO metrikleri, issue/suggestion alanlari ve promptta zaten bulunan urun bilgileri uzerinden tavsiye ver
+- Kullanici urun aciklamasi, meta title, meta description, kategori, etiket, SKU gibi eldeki alanlari yorumlamani isterse bunu local baglamla yap
+- Canli veri gerektiginde ve kullanici ozellikle isterse araclardan yararlan
 - Somut, uygulanabilir ve kisa yanit ver
 
 Kurallar:
 - Turkce yanit ver; kullanici Ingilizce yazarsa Ingilizce yanit ver
-- Gerekli degilse MCP cagirisi yapma, ama stok/fiyat/varyant/magaza durumu gibi canli veri gereken yerde arac kullan
+- Gerekli degilse MCP cagirisi yapma
 - Secili urunun promptta zaten bulunan statik SEO bilgileri icin yeniden arac cagirisi yapma
-- SEO onerilerinde oncelik sirasi ve neden belirt
+- SEO onerilerini mevcut skor kirilimlari, sorunlar ve gorunen urun alanlariyla sinirli tut
+- Stok, fiyat, kampanya, siparis, musteri, kargo veya operasyonel konulara kullanici acikca istemedikce kendiliginden gecme
 - Veri eksigi veya belirsizlik varsa acikca soyle
 - Uretim tonu net, profesyonel ve kisa olsun
 - Markdown kullanabilirsin
@@ -111,8 +113,8 @@ Mutation yetenekleri:
 - Timeline Management: addCustomTimelineEntry, addOrderTimelineEntry
 
 Davranis kurallari:
-- Yanit verirken uygun oldugunda onerileri bu operasyon adlariyla operasyonel aksiyonlara cevir.
-- Mumkunse once ilgili query ile mevcut durumu netlestir, sonra gerekiyorsa uygun mutation oner.
+- Bu chat ekraninda varsayilan tavsiyeleri yalnizca mevcut SEO metrikleri ve secili urunun eldeki alanlariyla sinirla.
+- Operasyon onerisi verirken once secili urunun mevcut kaydini dogrulayan `listProduct` veya SEO alanlarini guncelleyen `updateProduct` etrafinda kal.
 - Mutation gerektiren adimlarda kullanicidan net onay iste.
 - Arac kullanmiyor olsan bile, nasil ilerlenebilecegini desteklenen operasyon adlariyla kisaca anlat.
 - Yanitin sonunda konusmayi ilerletecek tek bir sonraki adim veya soru oner.
@@ -164,6 +166,24 @@ PRICE_HINT_PATTERN = re.compile(r"\bfiyat\b|\bücret\b|\bprice\b", re.IGNORECASE
 VARIANT_HINT_PATTERN = re.compile(r"\bvaryant\b|\bvariant\b", re.IGNORECASE)
 ORDER_HINT_PATTERN = re.compile(r"\bsipari[sş]\b|\border\b", re.IGNORECASE)
 CUSTOMER_HINT_PATTERN = re.compile(r"\bm[uü]steri\b|\bcustomer\b", re.IGNORECASE)
+MATCH_NORMALIZATION_TABLE = str.maketrans({
+    "\u00c7": "c",
+    "\u00e7": "c",
+    "\u011e": "g",
+    "\u011f": "g",
+    "\u0130": "i",
+    "\u0131": "i",
+    "\u00d6": "o",
+    "\u00f6": "o",
+    "\u015e": "s",
+    "\u015f": "s",
+    "\u00dc": "u",
+    "\u00fc": "u",
+})
+SEO_OPERATION_HINT_PATTERN = re.compile(
+    r"\bseo\b|\bskor\b|\bissue\b|\bsorun\b|\boneri\b|\bsuggestion\b|\bmeta\b|\bbaslik\b|\btitle\b|\baciklama\b|\bdescription\b|\bicerik\b|\bcontent\b|\bkeyword\b|\betiket\b|\btag\b|\bkategori\b|\bsku\b|\bokunabilirlik\b|\breadability\b|\bteknik seo\b|\btechnical seo\b|\bisim\b|\bname\b",
+    re.IGNORECASE,
+)
 LIVE_PRODUCT_HINT_PATTERNS = (
     STOCK_HINT_PATTERN,
     PRICE_HINT_PATTERN,
@@ -273,8 +293,9 @@ def _extract_message_directives(user_message: str) -> tuple[str, str | None, boo
             cleaned_message,
             (
                 "Bu mesaj hem @ikas hem @local ile etiketlendi. "
-                "Uygun bir ikas MCP araci kullan, sonra sonucu kisa ve net bicimde yorumla. "
-                "Gerekirse ilgili query/mutation operasyonlariyla sonraki adimi oner; mutation icin onay iste."
+                "Yanitini once mevcut SEO metrikleri ve eldeki urun alanlariyla sinirla. "
+                "Canli veri ancak kullanicinin acik talebiyle gerekiyorsa uygun bir ikas MCP araci kullan, sonra sonucu kisa ve net bicimde yorumla. "
+                "Gerekirse `listProduct` veya `updateProduct` etrafinda sonraki adimi oner; mutation icin onay iste."
             ),
             True,
         )
@@ -286,7 +307,8 @@ def _extract_message_directives(user_message: str) -> tuple[str, str | None, boo
                 "Bu mesaj @ikas ile etiketlendi. "
                 "Mumkunse uygun bir ikas MCP araci kullanmadan yanit verme. "
                 "Canli veri cekemiyorsan bunu acikca belirt. "
-                "Yanitta ilgili operasyonlarla nasil devam edilecegini de oner; mutation gerekiyorsa onay iste."
+                "Yanitta tavsiyeyi yine mevcut SEO problemi ve secili urun baglami etrafinda tut. "
+                "Operasyon onerisi gerekiyorsa once `listProduct`, gerekiyorsa `updateProduct` oner; mutation gerekiyorsa onay iste."
             ),
             True,
         )
@@ -296,8 +318,10 @@ def _extract_message_directives(user_message: str) -> tuple[str, str | None, boo
             cleaned_message,
             (
                 "Bu mesaj @local ile etiketlendi veya mention icermiyor. "
-                "Arac kullanma; yalnizca mevcut urun ve sohbet baglamina gore yanit ver. "
-                "Ama uygun oldugunda desteklenen ikas operasyon adlariyla nasil ilerlenebilecegini oner."
+                "Arac kullanma; yalnizca mevcut SEO metrikleri, secili urunun promptta bulunan alanlari ve sohbet baglamina gore yanit ver. "
+                "Stok, fiyat, siparis, kampanya veya musteri verisi uydurma. "
+                "Kullanici urun aciklamasi, meta title veya meta description gibi mevcut alanlari yorumlamani isterse bunu local baglamla yap. "
+                "Ama uygun oldugunda `listProduct` veya `updateProduct` ile nasil ilerlenebilecegini oner."
             ),
             False,
         )
@@ -355,6 +379,65 @@ def _build_local_no_think_instruction(config: AppConfig) -> str | None:
         "Yerel model kullaniyorsun. Ic muhakemeyi, <think> bloklarini ve uzun dusunce metinlerini "
         "yazma; dogrudan nihai yaniti ver. /no_think"
     )
+
+
+def _normalize_matching_text(text: str) -> str:
+    return (text or "").translate(MATCH_NORMALIZATION_TABLE).lower()
+
+
+def _operation_footer_already_present(text: str) -> bool:
+    return "ikas mcp operasyon onerisi" in _normalize_matching_text(text)
+
+
+def _select_product_operation_suggestion(
+    user_message: str,
+    response_text: str,
+    product: Product | None,
+) -> tuple[str, str, bool]:
+    normalized_text = _normalize_matching_text(f"{user_message}\n{response_text}")
+    product_label = (product.name or "").strip() if product else ""
+    subject = product_label or "secili urun"
+
+    if SEO_OPERATION_HINT_PATTERN.search(normalized_text):
+        return (
+            "updateProduct",
+            f"{subject} icin mevcut baslik, aciklama, meta ve diger SEO alanlarini guncellemek icin uygun adim",
+            True,
+        )
+
+    return (
+        "listProduct",
+        f"{subject} kaydini dogrulamak ve eldeki urun alanlarini netlestirmek icin uygun query",
+        False,
+    )
+
+
+def _append_operation_suggestion(
+    response_text: str,
+    *,
+    user_message: str,
+    product: Product | None,
+) -> str:
+    content = (response_text or "").strip()
+    if not content or _operation_footer_already_present(content):
+        return response_text
+
+    operation_name, reason, requires_confirmation = _select_product_operation_suggestion(
+        user_message,
+        content,
+        product,
+    )
+
+    lines = [
+        content,
+        "",
+        "**ikas MCP Operasyon Onerisi**",
+        f"- `{operation_name}`: {reason}.",
+    ]
+    if requires_confirmation:
+        lines.append("- Not: Bu bir mutation adimidir; uygulamadan once onayini alirim.")
+    lines.append("- Istersen bir sonraki adimda bunu secili urun icin netlestireyim.")
+    return "\n".join(lines)
 
 
 def _format_chat_error(exc: Exception) -> str:
@@ -733,10 +816,15 @@ class ChatService:
             if guided_result:
                 guided_context, guided_tool_results, guided_fallback = guided_result
                 if routing_mode == "ikas":
-                    assistant_msg = ChatMessage(role="assistant", content=guided_fallback)
+                    guided_content = _append_operation_suggestion(
+                        guided_fallback,
+                        user_message=cleaned_message,
+                        product=self._product,
+                    )
+                    assistant_msg = ChatMessage(role="assistant", content=guided_content)
                     self._history.append(assistant_msg)
                     return ChatResponse(
-                        content=guided_fallback,
+                        content=guided_content,
                         thinking="",
                         tool_results=guided_tool_results,
                         error=False,
@@ -805,10 +893,15 @@ class ChatService:
             if self._history and self._history[-1] is user_msg:
                 self._history.pop()
             if guided_fallback:
-                assistant_msg = ChatMessage(role="assistant", content=guided_fallback)
+                guided_content = _append_operation_suggestion(
+                    guided_fallback,
+                    user_message=cleaned_message,
+                    product=self._product,
+                )
+                assistant_msg = ChatMessage(role="assistant", content=guided_content)
                 self._history.append(assistant_msg)
                 return ChatResponse(
-                    content=guided_fallback,
+                    content=guided_content,
                     thinking="",
                     tool_results=tool_results,
                     error=False,
@@ -819,7 +912,11 @@ class ChatService:
                     },
                 )
             return ChatResponse(
-                content=_format_chat_error(exc),
+                content=_append_operation_suggestion(
+                    _format_chat_error(exc),
+                    user_message=cleaned_message,
+                    product=self._product,
+                ),
                 thinking="",
                 tool_results=tool_results,
                 error=True,
@@ -833,6 +930,11 @@ class ChatService:
                 "Model nihai cevap uretmedi. Yerel model dusunce modunda takilmis olabilir; "
                 "daha kisa bir istek deneyin veya Thinking Mode'u kapatin."
             )
+        response_text = _append_operation_suggestion(
+            response_text,
+            user_message=cleaned_message,
+            product=self._product,
+        )
 
         # Add assistant response to history
         assistant_msg = ChatMessage(role="assistant", content=response_text)

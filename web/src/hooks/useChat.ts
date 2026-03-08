@@ -25,39 +25,8 @@ export interface ChatProductContext {
   assistantLabel?: string;
 }
 
-function buildContextIntro(
-  context?: ChatProductContext,
-  reason: 'initial' | 'switch' | 'clear' = 'initial',
-): ChatMessage[] {
-  if (!context?.id || !context.name) {
-    return [];
-  }
-
-  const summaryBits = [
-    context.category ? `Kategori: ${context.category}` : null,
-    typeof context.score === 'number' ? `SEO: ${context.score}/100` : null,
-  ].filter(Boolean);
-
-  const lead =
-    reason === 'switch'
-      ? `Konusma yeni secili urune baglandi: ${context.name}`
-      : reason === 'clear'
-        ? `Konusma temizlendi. Hala secili urun: ${context.name}`
-        : `Secili urun icin sohbet hazir: ${context.name}`;
-
-  const flow =
-    `Akis: Sen hedefi belirlersin, ${context.assistantLabel || 'AI modeli'} yorumu ve oneriyi uretir, ikas MCP gerekirse canli magaza verisini getirir.`;
-
-  const summary = summaryBits.length > 0 ? summaryBits.join(' | ') : 'Urun baglami hazir.';
-
-  return [
-    { role: 'system', content: lead },
-    { role: 'system', content: `${flow} ${summary}` },
-  ];
-}
-
 export function useChat(productContext?: ChatProductContext) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => buildContextIntro(productContext));
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [pendingSince, setPendingSince] = useState<number | null>(null);
   const [mcpState, setMcpState] = useState<MCPState>({
@@ -93,8 +62,8 @@ export function useChat(productContext?: ChatProductContext) {
   }, []);
 
   const resetToContextIntro = useCallback(
-    (reason: 'initial' | 'switch' | 'clear' = 'initial') => {
-      setMessages(buildContextIntro(productContextRef.current, reason));
+    () => {
+      setMessages([]);
     },
     [],
   );
@@ -175,7 +144,7 @@ export function useChat(productContext?: ChatProductContext) {
 
         case 'cleared':
           finishPendingRequest();
-          resetToContextIntro(clearReasonRef.current);
+          resetToContextIntro();
           clearReasonRef.current = 'clear';
           break;
       }
@@ -209,7 +178,7 @@ export function useChat(productContext?: ChatProductContext) {
       wsRef.current.send(JSON.stringify({ action: 'set_context', product_id: nextProductId }));
     }
 
-    resetToContextIntro(prevProductId ? 'switch' : 'initial');
+    resetToContextIntro();
   }, [
     productContext?.id,
     productContext?.name,
@@ -245,7 +214,7 @@ export function useChat(productContext?: ChatProductContext) {
       wsRef.current.send(JSON.stringify({ action: 'clear' }));
       return;
     }
-    resetToContextIntro('clear');
+    resetToContextIntro();
   }, [resetToContextIntro]);
 
   const cancelMessage = useCallback(() => {

@@ -106,8 +106,14 @@ def test_build_product_context_mentions_chat_roles():
 def test_build_product_context_mentions_supported_operations_and_next_step_behavior():
     ctx = _build_product_context(None, None)
     assert "listproduct" in ctx.lower()
-    assert "updatevariantprices" in ctx.lower()
+    assert "updateproduct" in ctx.lower()
     assert "sonraki adim" in ctx.lower()
+
+
+def test_build_product_context_limits_default_scope_to_current_seo_data():
+    ctx = _build_product_context(None, None)
+    assert "yalnizca mevcut seo metrikleri" in ctx.lower()
+    assert "eldeki alanlariyla sinirla" in ctx.lower()
 
 
 def test_extract_message_directives_ikas_forces_tools():
@@ -121,6 +127,7 @@ def test_extract_message_directives_local_disables_tools():
     cleaned, instruction, allow_tools = _extract_message_directives("@local seo skorunu yorumla")
     assert cleaned == "seo skorunu yorumla"
     assert instruction is not None and "@local" in instruction
+    assert "mevcut seo metrikleri" in instruction.lower()
     assert "operasyon" in instruction.lower()
     assert allow_tools is False
 
@@ -256,6 +263,8 @@ async def test_send_message_local_does_not_pass_tools_even_if_mcp_ready():
     response = await service.send_message("@local seo skorunu yorumla")
 
     assert response.error is False
+    assert "ikas MCP Operasyon Onerisi" in response.content
+    assert "`updateProduct`" in response.content
     assert captured["tools"] is None
     system_messages = [
         msg["content"]
@@ -263,6 +272,25 @@ async def test_send_message_local_does_not_pass_tools_even_if_mcp_ready():
         if msg["role"] == "system"
     ]
     assert any("/no_think" in content for content in system_messages)
+
+
+@pytest.mark.anyio
+async def test_send_message_appends_seo_operation_suggestion_for_existing_product_fields():
+    config = _make_config(ai_provider="lm-studio", ai_thinking_mode=False)
+    service = ChatService(config)
+    service.set_product_context(_make_product(name="Bud Candy 250 ML"), _make_score())
+
+    async def fake_chat_completion(messages, tools):
+        return "Aciklama girisi zayif, fayda dili daha belirgin olabilir.", "", [], {"model": "lm-studio-test"}
+
+    service._chat_completion = fake_chat_completion  # type: ignore[method-assign]
+
+    response = await service.send_message("@local urun aciklamasini yorumla")
+
+    assert response.error is False
+    assert "ikas MCP Operasyon Onerisi" in response.content
+    assert "`updateProduct`" in response.content
+    assert "mutation" in response.content.lower()
 
 
 @pytest.mark.anyio
@@ -280,4 +308,5 @@ async def test_send_message_timeout_returns_clear_error_and_drops_failed_user():
 
     assert response.error is True
     assert "zaman asimina" in response.content.lower()
+    assert "ikas mcp operasyon onerisi" in response.content.lower()
     assert service.history == []
