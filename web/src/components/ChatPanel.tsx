@@ -2,15 +2,206 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { getSettings } from '../api/client';
+import { getLmStudioLiveStatus, getSettings } from '../api/client';
 import { useChat, type ChatMessage, type MCPState } from '../hooks/useChat';
-import type { ToolResult } from '../types';
+import type { ChatResponseMeta, ToolResult } from '../types';
 
 interface Props {
   productId?: string;
   productName?: string;
   productCategory?: string | null;
   seoScore?: number | null;
+}
+
+function formatDuration(seconds: number) {
+  const safeSeconds = Math.max(seconds, 0);
+  if (safeSeconds < 60) {
+    return safeSeconds < 10 ? `${safeSeconds.toFixed(2)}s` : `${safeSeconds.toFixed(1)}s`;
+  }
+
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainder = Math.floor(safeSeconds % 60);
+  return `${minutes}m ${remainder}s`;
+}
+
+function formatCompactNumber(value: number) {
+  if (value >= 1000) {
+    return value >= 10_000 ? `${Math.round(value / 1000)}K` : `${(value / 1000).toFixed(1)}K`;
+  }
+  return String(value);
+}
+
+function formatThoughtDuration(seconds: number) {
+  const safeSeconds = Math.max(seconds, 0);
+  if (safeSeconds < 60) {
+    return `${safeSeconds.toFixed(2)} seconds`;
+  }
+  return formatDuration(safeSeconds);
+}
+
+function formatPercent(value: number) {
+  return `${value.toFixed(1)}%`;
+}
+
+function clampPercent(value: number) {
+  return Math.min(100, Math.max(0, value));
+}
+
+function resolveContextUsage(meta?: ChatResponseMeta, fallbackContextLength?: number | null) {
+  const inputTokens = readMetaNumber(meta, 'input_tokens');
+  const contextLength = readMetaNumber(meta, 'context_length') ?? fallbackContextLength ?? undefined;
+  const usedPercent = readMetaNumber(meta, 'context_used_percent');
+  const remainingPercent = readMetaNumber(meta, 'context_remaining_percent');
+
+  if (typeof inputTokens !== 'number' || typeof contextLength !== 'number' || contextLength <= 0) {
+    return null;
+  }
+
+  const derivedUsed = clampPercent((inputTokens / contextLength) * 100);
+  const normalizedUsed = typeof usedPercent === 'number' ? clampPercent(usedPercent) : derivedUsed;
+  const normalizedRemaining =
+    typeof remainingPercent === 'number'
+      ? clampPercent(remainingPercent)
+      : clampPercent(100 - normalizedUsed);
+
+  return {
+    inputTokens,
+    contextLength,
+    usedPercent: normalizedUsed,
+    remainingPercent: normalizedRemaining,
+  };
+}
+
+function readMetaNumber(meta: ChatResponseMeta | undefined, key: keyof ChatResponseMeta) {
+  const value = meta?.[key];
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function getAssistantMetrics(meta?: ChatResponseMeta) {
+  if (!meta) {
+    return [];
+  }
+
+  const metrics: Array<{ key: string; label: string; value: string }> = [];
+  const outputTokens = readMetaNumber(meta, 'output_tokens');
+  const totalTokens = readMetaNumber(meta, 'total_tokens');
+  const elapsedSeconds = readMetaNumber(meta, 'elapsed_seconds');
+  let tokensPerSecond = readMetaNumber(meta, 'tokens_per_second');
+  const ttft = readMetaNumber(meta, 'time_to_first_token_seconds');
+
+  if (typeof totalTokens === 'number' && totalTokens > 0) {
+    metrics.push({
+      key: 'tokens',
+      label: 'Token',
+      value: `${formatCompactNumber(totalTokens)} tok`,
+    });
+  } else if (typeof outputTokens === 'number' && outputTokens > 0) {
+    metrics.push({
+      key: 'tokens',
+      label: 'Token',
+      value: `${formatCompactNumber(outputTokens)} tok`,
+    });
+  }
+
+  if (typeof elapsedSeconds === 'number' && elapsedSeconds > 0) {
+    metrics.push({
+      key: 'elapsed',
+      label: 'Sure',
+      value: formatDuration(elapsedSeconds),
+    });
+  }
+
+  if (
+    (typeof tokensPerSecond !== 'number' || tokensPerSecond <= 0)
+    && typeof elapsedSeconds === 'number'
+    && elapsedSeconds > 0
+  ) {
+    const rateBase = outputTokens ?? totalTokens;
+    if (typeof rateBase === 'number' && rateBase > 0) {
+      tokensPerSecond = rateBase / elapsedSeconds;
+    }
+  }
+
+  if (typeof tokensPerSecond === 'number' && tokensPerSecond > 0) {
+    const roundedRate =
+      tokensPerSecond >= 100 ? Math.round(tokensPerSecond) : Number(tokensPerSecond.toFixed(1));
+    metrics.push({
+      key: 'speed',
+      label: 'Hiz',
+      value: `${formatCompactNumber(roundedRate)} tok/sn`,
+    });
+  }
+
+  if (typeof ttft === 'number' && ttft > 0) {
+    metrics.push({
+      key: 'ttft',
+      label: 'TTFT',
+      value: formatDuration(ttft),
+    });
+  }
+
+  return metrics;
+}
+
+function ContextUsageCard({
+  meta,
+  fallbackContextLength,
+}: {
+  meta?: ChatResponseMeta;
+  fallbackContextLength?: number | null;
+}) {
+  const usage = resolveContextUsage(meta, fallbackContextLength);
+  if (!usage) {
+    return null;
+  }
+
+  return (
+    <div
+      className="mr-6 rounded-xl p-3"
+      style={{
+        background: 'rgba(255,255,255,0.035)',
+        border: '1px solid rgba(255,255,255,0.08)',
+      }}
+    >
+      <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1.5 text-[12px] leading-5">
+            <div style={{ color: 'var(--color-text-secondary)' }}>
+            Current conversation tokens: <span className="font-semibold text-white">{usage.inputTokens}</span>
+            </div>
+            <div style={{ color: 'var(--color-text-secondary)' }}>
+            Total loaded context: <span className="font-semibold text-white">{usage.contextLength}</span>
+            </div>
+          <div style={{ color: 'var(--color-text-muted)' }}>
+            {formatPercent(usage.usedPercent)} used ({formatPercent(usage.remainingPercent)} left)
+          </div>
+        </div>
+        <div className="flex min-w-[60px] flex-col items-center gap-2">
+          <div
+            className="relative h-11 w-11 rounded-full"
+            style={{
+              background: `conic-gradient(#60a5fa ${usage.usedPercent}%, rgba(255,255,255,0.08) 0)`,
+            }}
+          >
+            <div
+              className="absolute inset-[4px] flex items-center justify-center rounded-full text-[10px] font-semibold"
+              style={{ background: 'var(--color-bg-surface)', color: '#93c5fd' }}
+            >
+              {Math.round(usage.usedPercent)}%
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function MarkdownMessage({ content }: { content: string }) {
@@ -142,8 +333,20 @@ function ToolResultCard({ result }: { result: ToolResult }) {
   );
 }
 
-function ThinkingBlock({ text, assistantLabel }: { text: string; assistantLabel: string }) {
+function ThinkingBlock({
+  text,
+  assistantLabel,
+  durationSeconds,
+}: {
+  text: string;
+  assistantLabel: string;
+  durationSeconds?: number;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const title =
+    typeof durationSeconds === 'number' && durationSeconds > 0
+      ? `Thought for ${formatThoughtDuration(durationSeconds)}`
+      : `${assistantLabel} dusunce`;
   return (
     <div
       className="rounded-lg px-3 py-2 text-xs"
@@ -160,7 +363,7 @@ function ThinkingBlock({ text, assistantLabel }: { text: string; assistantLabel:
         <svg className="h-3 w-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
         </svg>
-        <span className="font-medium">{assistantLabel} dusunce</span>
+        <span className="font-medium">{title}</span>
         <span className="ml-auto text-[10px]" style={{ color: 'rgba(139, 92, 246, 0.6)' }}>
           {expanded ? 'Gizle' : 'Goster'}
         </span>
@@ -198,14 +401,18 @@ function getRoleMeta(role: ChatMessage['role'], assistantLabel: string) {
 function MessageBubble({
   msg,
   assistantLabel,
+  fallbackContextLength,
 }: {
   msg: ChatMessage;
   assistantLabel: string;
+  fallbackContextLength?: number | null;
 }) {
   const isUser = msg.role === 'user';
   const isSystem = msg.role === 'system';
   const isAssistant = msg.role === 'assistant';
   const roleMeta = getRoleMeta(msg.role, assistantLabel);
+  const assistantMetrics = isAssistant ? getAssistantMetrics(msg.meta) : [];
+  const thoughtDuration = readMetaNumber(msg.meta, 'elapsed_seconds');
 
   return (
     <div className="space-y-2">
@@ -217,7 +424,13 @@ function MessageBubble({
         </div>
       )}
 
-      {isAssistant && msg.thinking ? <ThinkingBlock text={msg.thinking} assistantLabel={assistantLabel} /> : null}
+      {isAssistant && msg.thinking ? (
+        <ThinkingBlock
+          text={msg.thinking}
+          assistantLabel={assistantLabel}
+          durationSeconds={thoughtDuration}
+        />
+      ) : null}
 
       <div className={`${isUser ? 'ml-6' : isSystem ? '' : 'mr-6'}`}>
         <div
@@ -248,12 +461,25 @@ function MessageBubble({
         </div>
       </div>
 
-      {isAssistant && msg.meta && (msg.meta.input_tokens || msg.meta.output_tokens) ? (
-        <div className="mr-6 text-right text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
-          {String(msg.meta.input_tokens ?? 0)}+{String(msg.meta.output_tokens ?? 0)} tokens
-          {msg.meta.model ? <span> &middot; {String(msg.meta.model)}</span> : null}
+      {isAssistant && assistantMetrics.length > 0 ? (
+        <div className="mr-6 flex flex-wrap justify-end gap-1.5">
+          {assistantMetrics.map((metric) => (
+            <div
+              key={metric.key}
+              className="rounded-full px-2.5 py-1 text-[10px] font-medium"
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                color: 'var(--color-text-muted)',
+                border: '1px solid rgba(255,255,255,0.08)',
+              }}
+            >
+              {metric.label}: {metric.value}
+            </div>
+          ))}
         </div>
       ) : null}
+
+      {isAssistant ? <ContextUsageCard meta={msg.meta} fallbackContextLength={fallbackContextLength} /> : null}
     </div>
   );
 }
@@ -304,22 +530,68 @@ function MentionGuide({ mcpState }: { mcpState: MCPState }) {
     '@ikas Bu urunun canli stok ve fiyatini getir',
     '@ikas @local Varyantlari cek ve kisaca ozetle',
   ];
-  const capabilities = [
+  const queryCapabilities = [
+    {
+      title: 'Customer Management',
+      items: ['listCustomer', 'listCustomerAttribute'],
+    },
+    {
+      title: 'Location Management',
+      items: ['listCountry', 'listState', 'listCity', 'listDistrict', 'listTown'],
+    },
+    {
+      title: 'Merchant',
+      items: ['getMerchant', 'getMerchantLicence'],
+    },
+    {
+      title: 'Sales & Payments',
+      items: ['listAbandonedCheckouts'],
+    },
     {
       title: 'Product Management',
-      items: ['listProduct', 'listProductAttribute', 'listProductBrand', 'createProduct', 'updateProduct', 'saveVariantStocks', 'updateVariantPrices'],
+      items: ['listProduct', 'listProductAttribute', 'listProductBrand'],
     },
     {
       title: 'Order Management',
-      items: ['listOrder', 'listOrderTransactions', 'fulfillOrder', 'cancelOrderLine', 'refundOrderLine', 'addOrderInvoice'],
+      items: ['listOrder', 'listOrderTag', 'listOrderTransactions'],
     },
+    {
+      title: 'Settings',
+      items: ['getGlobalTaxSettings', 'listShippingSettings', 'listTaxSettings'],
+    },
+  ];
+  const mutationCapabilities = [
     {
       title: 'Customer Management',
-      items: ['listCustomer', 'listCustomerAttribute', 'updateCustomer', 'addCustomerTimelineEntry'],
+      items: ['updateCustomer', 'addCustomerTimelineEntry'],
     },
     {
-      title: 'Merchant & Settings',
-      items: ['getMerchant', 'getMerchantLicence', 'getGlobalTaxSettings', 'listShippingSettings', 'listTaxSettings'],
+      title: 'App Integration',
+      items: ['createMerchantAppPayment', 'saveWebhooks', 'deleteWebhook', 'getAppDemoDay'],
+    },
+    {
+      title: 'Sales Channel',
+      items: ['updateSalesChannel'],
+    },
+    {
+      title: 'Order Management',
+      items: ['createOrderWithTransactions', 'fulfillOrder', 'cancelFulfillment', 'cancelOrderLine', 'refundOrderLine', 'updateOrderPackageStatus', 'addOrderInvoice', 'removeOrderInvoice', 'downloadOrderInvoice', 'approvePendingOrderTransactions'],
+    },
+    {
+      title: 'Product Management',
+      items: ['createProduct', 'updateProduct', 'deleteProductList', 'addVariantToProduct', 'removeVariantFromProduct', 'saveVariantStocks', 'updateVariantPrices'],
+    },
+    {
+      title: 'Campaign Management',
+      items: ['createCampaign', 'updateCampaign', 'deleteCampaignList', 'addCouponsToCampaign'],
+    },
+    {
+      title: 'Storefront Management',
+      items: ['createStorefrontJSScript', 'updateStorefrontJSScript', 'deleteStorefrontJSScript'],
+    },
+    {
+      title: 'Timeline Management',
+      items: ['addCustomTimelineEntry', 'addOrderTimelineEntry'],
     },
   ];
 
@@ -346,6 +618,10 @@ function MentionGuide({ mcpState }: { mcpState: MCPState }) {
           Teknik olarak ikas MCP arka planda generic bir GraphQL katmani sunuyor; uygulama bunu
           sana operasyon listesi olarak gosterip chat tarafinda kullanilabilir hale getiriyor.
         </p>
+        <p>
+          Model, sadece arac cagirmakla kalmaz; onerilerini de desteklenen ikas operasyon adlariyla
+          somut bir sonraki adima donusturmeye calisir.
+        </p>
         <div>
           <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em]">
             Yonetim
@@ -369,10 +645,30 @@ function MentionGuide({ mcpState }: { mcpState: MCPState }) {
 
         <div>
           <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em]">
-            ikas MCP ile sorulabilecek alanlar
+            Query yetenekleri
           </div>
           <div className="space-y-2">
-            {capabilities.map((group) => (
+            {queryCapabilities.map((group) => (
+              <div
+                key={group.title}
+                className="rounded-lg px-2.5 py-2"
+                style={{ background: 'rgba(255,255,255,0.03)' }}
+              >
+                <div className="text-[11px] font-semibold text-white">{group.title}</div>
+                <div className="mt-1 text-[11px] leading-relaxed">
+                  {group.items.join(', ')}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em]">
+            Mutation yetenekleri
+          </div>
+          <div className="space-y-2">
+            {mutationCapabilities.map((group) => (
               <div
                 key={group.title}
                 className="rounded-lg px-2.5 py-2"
@@ -434,12 +730,21 @@ export default function ChatPanel({
   });
   const configuredModel = settingsQ.data?.ai_model_name?.trim();
   const configuredProvider = settingsQ.data?.ai_provider?.trim();
+  const lmStatusQ = useQuery({
+    queryKey: ['lm-studio-live-status'],
+    queryFn: () => getLmStudioLiveStatus(),
+    enabled: configuredProvider === 'lm-studio',
+    staleTime: 2_000,
+    refetchInterval: configuredProvider === 'lm-studio' ? 5_000 : false,
+  });
   const configuredAssistantLabel = configuredModel || configuredProvider || 'AI modeli';
   const {
     messages,
     isLoading,
+    pendingSince,
     mcpState,
     sendMessage,
+    cancelMessage,
     clearHistory,
     connect,
     disconnect,
@@ -451,6 +756,7 @@ export default function ChatPanel({
     assistantLabel: configuredAssistantLabel,
   });
   const [input, setInput] = useState('');
+  const [liveElapsedSeconds, setLiveElapsedSeconds] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -465,9 +771,36 @@ export default function ChatPanel({
     });
   }, [messages]);
 
+  useEffect(() => {
+    if (pendingSince === null) {
+      setLiveElapsedSeconds(0);
+      return;
+    }
+
+    const updateElapsed = () => {
+      setLiveElapsedSeconds((performance.now() - pendingSince) / 1000);
+    };
+
+    updateElapsed();
+    const intervalId = window.setInterval(updateElapsed, 100);
+    return () => window.clearInterval(intervalId);
+  }, [pendingSince]);
+
   const latestAssistant = [...messages].reverse().find(
     (msg) => msg.role === 'assistant' && typeof msg.meta?.model === 'string',
   );
+  const liveContextLength = lmStatusQ.data?.selected_model?.context_length ?? null;
+  let sessionTotalTokens = 0;
+  for (const msg of messages) {
+    if (msg.role !== 'assistant') {
+      continue;
+    }
+
+    const totalTokens = readMetaNumber(msg.meta, 'total_tokens');
+    const inputTokens = readMetaNumber(msg.meta, 'input_tokens');
+    const outputTokens = readMetaNumber(msg.meta, 'output_tokens');
+    sessionTotalTokens += totalTokens ?? ((inputTokens ?? 0) + (outputTokens ?? 0));
+  }
   const assistantLabel =
     typeof latestAssistant?.meta?.model === 'string'
       ? String(latestAssistant.meta.model)
@@ -560,6 +893,27 @@ export default function ChatPanel({
               tone="success"
             />
           )}
+          {sessionTotalTokens > 0 && (
+            <StatusPill
+              label="Token"
+              value={`${formatCompactNumber(sessionTotalTokens)} tok`}
+              tone="neutral"
+            />
+          )}
+          {typeof liveContextLength === 'number' && liveContextLength > 0 && (
+            <StatusPill
+              label="Context"
+              value={formatCompactNumber(liveContextLength)}
+              tone="neutral"
+            />
+          )}
+          {isLoading && (
+            <StatusPill
+              label="Sure"
+              value={formatDuration(liveElapsedSeconds)}
+              tone="warn"
+            />
+          )}
         </div>
 
         <div className="mt-3">
@@ -612,25 +966,40 @@ export default function ChatPanel({
         )}
 
         {messages.map((msg, i) => (
-          <MessageBubble key={i} msg={msg} assistantLabel={assistantLabel} />
+          <MessageBubble
+            key={i}
+            msg={msg}
+            assistantLabel={assistantLabel}
+            fallbackContextLength={liveContextLength}
+          />
         ))}
 
         {isLoading && (
           <div
-            className="mr-6 flex items-center gap-2 rounded-xl px-4 py-3"
+            className="mr-6 rounded-xl px-4 py-3"
             style={{
               background: 'var(--color-bg-elevated)',
               border: '1px solid var(--color-border)',
             }}
           >
-            <div className="flex gap-1">
-              <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-primary-light)' }} />
-              <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-primary-light)' }} />
-              <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-primary-light)' }} />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1">
+                  <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-primary-light)' }} />
+                  <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-primary-light)' }} />
+                  <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-primary-light)' }} />
+                </div>
+                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                  {assistantLabel} dusunuyor...
+                </span>
+              </div>
             </div>
-            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-              {assistantLabel} dusunuyor...
-            </span>
+            <div
+              className="mt-2 text-[11px]"
+              style={{ color: 'var(--color-text-secondary)' }}
+            >
+              Sure: {formatDuration(liveElapsedSeconds)}
+            </div>
           </div>
         )}
       </div>
@@ -640,7 +1009,11 @@ export default function ChatPanel({
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
+                handleSend();
+              }
+            }}
             placeholder={
               productName
                 ? `${productName} icin soru sorun. @local veya @ikas ile yonlendirebilirsiniz...`
@@ -656,14 +1029,23 @@ export default function ChatPanel({
             onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--color-border-light)')}
           />
           <button
-            onClick={handleSend}
-            disabled={isLoading || !input.trim()}
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white transition-all hover:opacity-90 disabled:opacity-30"
-            style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
+            onClick={isLoading ? cancelMessage : handleSend}
+            disabled={!isLoading && !input.trim()}
+            className={`flex h-9 flex-shrink-0 items-center justify-center rounded-lg px-3 text-white transition-all hover:opacity-90 disabled:opacity-30 ${isLoading ? 'min-w-[64px]' : 'w-9'}`}
+            style={{
+              background: isLoading
+                ? 'linear-gradient(135deg, #ef4444, #f97316)'
+                : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            }}
+            title={isLoading ? 'Aktif istegi durdur' : 'Mesaji gonder'}
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-            </svg>
+            {isLoading ? (
+              <span className="text-[11px] font-semibold uppercase tracking-[0.12em]">Stop</span>
+            ) : (
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+            )}
           </button>
         </div>
       </div>

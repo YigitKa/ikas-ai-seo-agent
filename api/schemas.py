@@ -159,6 +159,32 @@ class ProviderModelsResponse(BaseModel):
     models: list[str]
 
 
+class LMStudioModelStatusResponse(BaseModel):
+    id: str = ""
+    display_name: str = ""
+    status: str = ""
+    context_length: Optional[int] = None
+
+
+class LMStudioDownloadStatusResponse(BaseModel):
+    job_id: str = ""
+    status: str = ""
+    bytes_per_second: Optional[float] = None
+    estimated_completion: str = ""
+    completed_at: str = ""
+    total_size_bytes: Optional[int] = None
+    downloaded_bytes: Optional[int] = None
+    started_at: str = ""
+
+
+class LMStudioLiveStatusResponse(BaseModel):
+    provider: str = "lm-studio"
+    configured_model: str = ""
+    selected_model: LMStudioModelStatusResponse = Field(default_factory=LMStudioModelStatusResponse)
+    models: list[LMStudioModelStatusResponse] = Field(default_factory=list)
+    download_status: Optional[LMStudioDownloadStatusResponse] = None
+
+
 # ── MCP ──────────────────────────────────────────────────────────────────────
 
 class MCPStatusResponse(BaseModel):

@@ -126,13 +126,56 @@ export interface ToolResult {
   result: string;
 }
 
+export interface ChatResponseMeta extends Record<string, unknown> {
+  model?: string;
+  finish_reason?: string;
+  stop_reason?: string;
+  source?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  elapsed_seconds?: number;
+  tokens_per_second?: number;
+  time_to_first_token_seconds?: number;
+  reasoning_output_tokens?: number;
+  context_length?: number;
+  context_used_percent?: number;
+  context_remaining_percent?: number;
+}
+
+export interface LMStudioModelStatus {
+  id: string;
+  display_name: string;
+  status: string;
+  context_length: number | null;
+}
+
+export interface LMStudioDownloadStatus {
+  job_id: string;
+  status: 'downloading' | 'paused' | 'completed' | 'failed' | string;
+  bytes_per_second: number | null;
+  estimated_completion: string;
+  completed_at: string;
+  total_size_bytes: number | null;
+  downloaded_bytes: number | null;
+  started_at: string;
+}
+
+export interface LMStudioLiveStatus {
+  provider: string;
+  configured_model: string;
+  selected_model: LMStudioModelStatus;
+  models: LMStudioModelStatus[];
+  download_status: LMStudioDownloadStatus | null;
+}
+
 export interface ChatWsMessage {
-  type: 'response' | 'error' | 'thinking' | 'mcp_status' | 'context_set' | 'cleared';
+  type: 'response' | 'error' | 'thinking' | 'mcp_status' | 'context_set' | 'cleared' | 'cancelled';
   content?: string;
   thinking?: string;
   tool_results?: ToolResult[];
   error?: boolean;
-  meta?: Record<string, unknown>;
+  meta?: ChatResponseMeta;
   has_token?: boolean;
   initialized?: boolean;
   tool_count?: number;

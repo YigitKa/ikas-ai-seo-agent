@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChatWsMessage, MCPToolInfo, ToolResult } from '../types';
+import type { ChatResponseMeta, ChatWsMessage, MCPToolInfo, ToolResult } from '../types';
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   thinking?: string;
   toolResults?: ToolResult[];
-  meta?: Record<string, unknown>;
+  meta?: ChatResponseMeta;
 }
 
 export interface MCPState {
@@ -59,6 +59,7 @@ function buildContextIntro(
 export function useChat(productContext?: ChatProductContext) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => buildContextIntro(productContext));
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingSince, setPendingSince] = useState<number | null>(null);
   const [mcpState, setMcpState] = useState<MCPState>({
     hasToken: false,
     initialized: false,
@@ -70,7 +71,26 @@ export function useChat(productContext?: ChatProductContext) {
   const productContextRef = useRef(productContext);
   const activeProductIdRef = useRef<string | undefined>(productContext?.id);
   const clearReasonRef = useRef<'switch' | 'clear'>('clear');
+  const pendingSinceRef = useRef<number | null>(null);
   productContextRef.current = productContext;
+
+  const startPendingRequest = useCallback(() => {
+    const startedAt = performance.now();
+    pendingSinceRef.current = startedAt;
+    setPendingSince(startedAt);
+    setIsLoading(true);
+  }, []);
+
+  const finishPendingRequest = useCallback(() => {
+    const startedAt = pendingSinceRef.current;
+    pendingSinceRef.current = null;
+    setPendingSince(null);
+    setIsLoading(false);
+    if (startedAt === null) {
+      return undefined;
+    }
+    return (performance.now() - startedAt) / 1000;
+  }, []);
 
   const resetToContextIntro = useCallback(
     (reason: 'initial' | 'switch' | 'clear' = 'initial') => {
@@ -102,7 +122,12 @@ export function useChat(productContext?: ChatProductContext) {
       const data: ChatWsMessage = JSON.parse(event.data);
 
       switch (data.type) {
-        case 'response':
+        case 'response': {
+          const elapsedSeconds = finishPendingRequest();
+          const meta: ChatResponseMeta = {
+            ...(data.meta ?? {}),
+            ...(typeof elapsedSeconds === 'number' ? { elapsed_seconds: elapsedSeconds } : {}),
+          };
           setMessages((prev) => [
             ...prev,
             {
@@ -110,18 +135,26 @@ export function useChat(productContext?: ChatProductContext) {
               content: data.content || '',
               thinking: data.thinking,
               toolResults: data.tool_results,
-              meta: data.meta,
+              meta,
             },
           ]);
-          setIsLoading(false);
           break;
+        }
 
         case 'error':
+          finishPendingRequest();
           setMessages((prev) => [
             ...prev,
             { role: 'system', content: data.content || data.message || 'Hata' },
           ]);
-          setIsLoading(false);
+          break;
+
+        case 'cancelled':
+          finishPendingRequest();
+          setMessages((prev) => [
+            ...prev,
+            { role: 'system', content: data.message || 'Istek durduruldu.' },
+          ]);
           break;
 
         case 'thinking':
@@ -141,6 +174,7 @@ export function useChat(productContext?: ChatProductContext) {
           break;
 
         case 'cleared':
+          finishPendingRequest();
           resetToContextIntro(clearReasonRef.current);
           clearReasonRef.current = 'clear';
           break;
@@ -149,9 +183,9 @@ export function useChat(productContext?: ChatProductContext) {
 
     ws.onclose = () => {
       wsRef.current = null;
-      setIsLoading(false);
+      finishPendingRequest();
     };
-  }, [resetToContextIntro]);
+  }, [finishPendingRequest, resetToContextIntro]);
 
   useEffect(() => {
     const nextProductId = productContext?.id;
@@ -197,12 +231,12 @@ export function useChat(productContext?: ChatProductContext) {
       }
 
       setMessages((prev) => [...prev, { role: 'user', content: message }]);
-      setIsLoading(true);
+      startPendingRequest();
       wsRef.current.send(
         JSON.stringify({ action: 'message', message, product_id: productId }),
       );
     },
-    [connect],
+    [connect, startPendingRequest],
   );
 
   const clearHistory = useCallback(() => {
@@ -214,10 +248,27 @@ export function useChat(productContext?: ChatProductContext) {
     resetToContextIntro('clear');
   }, [resetToContextIntro]);
 
+  const cancelMessage = useCallback(() => {
+    if (wsRef.current?.readyState !== WebSocket.OPEN || pendingSinceRef.current === null) {
+      return;
+    }
+    wsRef.current.send(JSON.stringify({ action: 'cancel' }));
+  }, []);
+
   const disconnect = useCallback(() => {
     wsRef.current?.close();
     wsRef.current = null;
   }, []);
 
-  return { messages, isLoading, mcpState, sendMessage, clearHistory, connect, disconnect };
+  return {
+    messages,
+    isLoading,
+    pendingSince,
+    mcpState,
+    sendMessage,
+    cancelMessage,
+    clearHistory,
+    connect,
+    disconnect,
+  };
 }

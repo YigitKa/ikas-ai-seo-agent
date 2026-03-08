@@ -155,6 +155,110 @@ def discover_provider_models(provider: str, base_url: str = "", timeout: float =
     raise ValueError(f"Model discovery desteklenmiyor: {provider}")
 
 
+def resolve_lm_studio_native_base_url(base_url: str = "") -> str:
+    base = (base_url or PROVIDER_BASE_URLS["lm-studio"]).rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+    return base
+
+
+def _extract_lm_studio_model_items(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        items = payload
+    elif isinstance(payload, dict):
+        raw_items = payload.get("data")
+        items = raw_items if isinstance(raw_items, list) else []
+    else:
+        items = []
+
+    return [item for item in items if isinstance(item, dict)]
+
+
+def _normalize_lm_studio_model(item: dict[str, Any]) -> dict[str, Any]:
+    context_length = (
+        item.get("context_length")
+        or item.get("max_context_length")
+        or item.get("contextLength")
+        or item.get("maxContextLength")
+    )
+    status = (
+        item.get("status")
+        or item.get("state")
+        or ("loaded" if item.get("loaded") else "")
+    )
+    return {
+        "id": str(item.get("id") or item.get("model_key") or item.get("name") or ""),
+        "display_name": str(item.get("display_name") or item.get("name") or item.get("id") or ""),
+        "status": str(status or ""),
+        "context_length": int(context_length) if isinstance(context_length, (int, float)) else None,
+    }
+
+
+def get_lm_studio_live_status(
+    config: AppConfig,
+    *,
+    job_id: str = "",
+    timeout: float = 5.0,
+) -> dict[str, Any]:
+    provider = config.ai_provider.lower()
+    if provider != "lm-studio":
+        raise ValueError("LM Studio live status sadece lm-studio provider icin gecerlidir.")
+
+    native_base = resolve_lm_studio_native_base_url(config.ai_base_url)
+    if not native_base:
+        raise ValueError("LM Studio base URL bulunamadi.")
+
+    headers = _provider_headers(provider, config.ai_api_key, config)
+    response = httpx.get(f"{native_base}/api/v1/models", headers=headers, timeout=timeout)
+    response.raise_for_status()
+    model_items = [
+        _normalize_lm_studio_model(item)
+        for item in _extract_lm_studio_model_items(response.json())
+    ]
+
+    selected_model = None
+    configured_model = (config.ai_model_name or "").strip()
+    if configured_model:
+        selected_model = next(
+            (item for item in model_items if item["id"] == configured_model or item["display_name"] == configured_model),
+            None,
+        )
+    if selected_model is None:
+        selected_model = next((item for item in model_items if item.get("status") == "loaded"), None)
+    if selected_model is None and model_items:
+        selected_model = model_items[0]
+
+    download_status: dict[str, Any] | None = None
+    normalized_job_id = job_id.strip()
+    if normalized_job_id:
+        download_response = httpx.get(
+            f"{native_base}/api/v1/models/download/status/{normalized_job_id}",
+            headers=headers,
+            timeout=timeout,
+        )
+        download_response.raise_for_status()
+        payload = download_response.json()
+        if isinstance(payload, dict):
+            download_status = {
+                "job_id": str(payload.get("job_id") or normalized_job_id),
+                "status": str(payload.get("status") or ""),
+                "bytes_per_second": payload.get("bytes_per_second"),
+                "estimated_completion": str(payload.get("estimated_completion") or ""),
+                "completed_at": str(payload.get("completed_at") or ""),
+                "total_size_bytes": payload.get("total_size_bytes"),
+                "downloaded_bytes": payload.get("downloaded_bytes"),
+                "started_at": str(payload.get("started_at") or ""),
+            }
+
+    return {
+        "provider": "lm-studio",
+        "configured_model": configured_model,
+        "selected_model": selected_model or {},
+        "models": model_items,
+        "download_status": download_status,
+    }
+
+
 def test_settings_connection(values: dict[str, Any], timeout: float = 10.0) -> dict[str, Any]:
     provider = str(values.get("ai_provider") or "none").lower()
     if provider == "none":

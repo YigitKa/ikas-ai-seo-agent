@@ -18,6 +18,7 @@ import type {
   ProductListResponse,
   ProductWithScore,
   PromptGroup,
+  LMStudioLiveStatus,
   SettingsData,
   ProviderInfo,
   ProviderHealth,
@@ -162,6 +163,11 @@ export async function getProviderModels(
 ): Promise<{ models: string[] }> {
   const params = baseUrl ? `?base_url=${encodeURIComponent(baseUrl)}` : '';
   return request(`/api/settings/models/${provider}${params}`);
+}
+
+export async function getLmStudioLiveStatus(jobId = ''): Promise<LMStudioLiveStatus> {
+  const params = jobId ? `?job_id=${encodeURIComponent(jobId)}` : '';
+  return request(`/api/settings/lm-studio/status${params}`);
 }
 
 export async function testConnection(values: Record<string, unknown>): Promise<{

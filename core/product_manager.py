@@ -13,7 +13,12 @@ from core.chat_service import ChatService
 from core.ikas_client import IkasClient
 from core.models import AppConfig, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.presentation import format_prompt_display, get_tr_description_value
-from core.provider_service import discover_provider_models, get_provider_health, test_settings_connection
+from core.provider_service import (
+    discover_provider_models,
+    get_lm_studio_live_status,
+    get_provider_health,
+    test_settings_connection,
+)
 from core.seo_analyzer import analyze_product
 from data import db
 from core.prompt_store import ensure_prompt_files
@@ -172,6 +177,9 @@ class ProductManager:
     def test_settings_connection(self, values: dict) -> dict:
         return test_settings_connection(values)
 
+    def get_lm_studio_live_status(self, *, job_id: str = "") -> dict:
+        return get_lm_studio_live_status(self._config, job_id=job_id)
+
     async def apply_suggestions(self, suggestions: List[SeoSuggestion]) -> int:
         applied = 0
         for suggestion in suggestions:
@@ -270,6 +278,10 @@ class ProductManager:
     async def send_chat_message(self, message: str) -> ChatResponse:
         """Send a chat message and get AI response with optional MCP tool calls."""
         return await self._chat.send_message(message)
+
+    def cancel_chat_request(self) -> bool:
+        """Cancel the active chat request if one is in flight."""
+        return self._chat.cancel_active_request()
 
     def clear_chat_history(self) -> None:
         """Clear the chat conversation history."""

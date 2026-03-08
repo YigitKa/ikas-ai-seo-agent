@@ -7,6 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from api.dependencies import get_manager
 from api.schemas import (
     MessageResponse,
+    LMStudioDownloadStatusResponse,
+    LMStudioLiveStatusResponse,
+    LMStudioModelStatusResponse,
     PromptGroupResponse,
     PromptResetRequest,
     PromptTemplateResponse,
@@ -155,6 +158,34 @@ async def list_models(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return ProviderModelsResponse(models=models)
+
+
+@router.get("/lm-studio/status", response_model=LMStudioLiveStatusResponse)
+async def lm_studio_live_status(
+    job_id: str = "",
+    manager: ProductManager = Depends(get_manager),
+) -> LMStudioLiveStatusResponse:
+    """Return live LM Studio model/context status and optional download job progress."""
+    try:
+        result = manager.get_lm_studio_live_status(job_id=job_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    selected_model = LMStudioModelStatusResponse(**result.get("selected_model", {}))
+    models = [LMStudioModelStatusResponse(**item) for item in result.get("models", [])]
+    download_payload = result.get("download_status")
+    download_status = (
+        LMStudioDownloadStatusResponse(**download_payload)
+        if isinstance(download_payload, dict)
+        else None
+    )
+    return LMStudioLiveStatusResponse(
+        provider=str(result.get("provider") or "lm-studio"),
+        configured_model=str(result.get("configured_model") or ""),
+        selected_model=selected_model,
+        models=models,
+        download_status=download_status,
+    )
 
 
 @router.post("/test-connection", response_model=TestConnectionResponse)

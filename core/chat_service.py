@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import re
+import threading
 from datetime import datetime
 from typing import Any, Optional
 
@@ -86,6 +87,37 @@ SEO Skoru: {total_score}/100
 - Teknik SEO: {technical_seo_score}/10
 - Okunabilirlik: {readability_score}/5
 Sorunlar: {issues}"""
+
+IKAS_OPERATION_GUIDE_TR = """
+ikas operasyon rehberi:
+
+Query yetenekleri:
+- Customer Management: listCustomer, listCustomerAttribute
+- Location Management: listCountry, listState, listCity, listDistrict, listTown
+- Merchant: getMerchant, getMerchantLicence
+- Sales & Payments: listAbandonedCheckouts
+- Product Management: listProduct, listProductAttribute, listProductBrand
+- Order Management: listOrder, listOrderTag, listOrderTransactions
+- Settings: getGlobalTaxSettings, listShippingSettings, listTaxSettings
+
+Mutation yetenekleri:
+- Customer Management: updateCustomer, addCustomerTimelineEntry
+- App Integration: createMerchantAppPayment, saveWebhooks, deleteWebhook, getAppDemoDay
+- Sales Channel: updateSalesChannel
+- Order Management: createOrderWithTransactions, fulfillOrder, cancelFulfillment, cancelOrderLine, refundOrderLine, updateOrderPackageStatus, addOrderInvoice, removeOrderInvoice, downloadOrderInvoice, approvePendingOrderTransactions
+- Product Management: createProduct, updateProduct, deleteProductList, addVariantToProduct, removeVariantFromProduct, saveVariantStocks, updateVariantPrices
+- Campaign Management: createCampaign, updateCampaign, deleteCampaignList, addCouponsToCampaign
+- Storefront Management: createStorefrontJSScript, updateStorefrontJSScript, deleteStorefrontJSScript
+- Timeline Management: addCustomTimelineEntry, addOrderTimelineEntry
+
+Davranis kurallari:
+- Yanit verirken uygun oldugunda onerileri bu operasyon adlariyla operasyonel aksiyonlara cevir.
+- Mumkunse once ilgili query ile mevcut durumu netlestir, sonra gerekiyorsa uygun mutation oner.
+- Mutation gerektiren adimlarda kullanicidan net onay iste.
+- Arac kullanmiyor olsan bile, nasil ilerlenebilecegini desteklenen operasyon adlariyla kisaca anlat.
+- Yanitin sonunda konusmayi ilerletecek tek bir sonraki adim veya soru oner.
+- Desteklenmeyen operasyon adi uydurma.
+"""
 
 CHAT_SYSTEM_PROMPT_TR = """Sen bir ikas e-ticaret mağazası asistanısın. Mağaza sahibine ürünleri,
 SEO optimizasyonu, stok durumu ve mağaza yönetimi konularında yardım ediyorsun.
@@ -221,7 +253,7 @@ def _build_product_context(product: Product | None, score: SeoScore | None) -> s
     return CHAT_FLOW_SYSTEM_PROMPT_TR.format(
         product_context=product_ctx,
         score_context=score_ctx,
-    )
+    ) + "\n\n" + IKAS_OPERATION_GUIDE_TR
 
 
 def _extract_message_directives(user_message: str) -> tuple[str, str | None, bool]:
@@ -241,7 +273,8 @@ def _extract_message_directives(user_message: str) -> tuple[str, str | None, boo
             cleaned_message,
             (
                 "Bu mesaj hem @ikas hem @local ile etiketlendi. "
-                "Uygun bir ikas MCP araci kullan, sonra sonucu kisa ve net bicimde yorumla."
+                "Uygun bir ikas MCP araci kullan, sonra sonucu kisa ve net bicimde yorumla. "
+                "Gerekirse ilgili query/mutation operasyonlariyla sonraki adimi oner; mutation icin onay iste."
             ),
             True,
         )
@@ -252,7 +285,8 @@ def _extract_message_directives(user_message: str) -> tuple[str, str | None, boo
             (
                 "Bu mesaj @ikas ile etiketlendi. "
                 "Mumkunse uygun bir ikas MCP araci kullanmadan yanit verme. "
-                "Canli veri cekemiyorsan bunu acikca belirt."
+                "Canli veri cekemiyorsan bunu acikca belirt. "
+                "Yanitta ilgili operasyonlarla nasil devam edilecegini de oner; mutation gerekiyorsa onay iste."
             ),
             True,
         )
@@ -262,7 +296,8 @@ def _extract_message_directives(user_message: str) -> tuple[str, str | None, boo
             cleaned_message,
             (
                 "Bu mesaj @local ile etiketlendi veya mention icermiyor. "
-                "Arac kullanma; yalnizca mevcut urun ve sohbet baglamina gore yanit ver."
+                "Arac kullanma; yalnizca mevcut urun ve sohbet baglamina gore yanit ver. "
+                "Ama uygun oldugunda desteklenen ikas operasyon adlariyla nasil ilerlenebilecegini oner."
             ),
             False,
         )
@@ -380,6 +415,79 @@ def _format_money(price: dict[str, Any]) -> str:
     return f"{sell_text}{currency_text}"
 
 
+def _first_number(*values: Any) -> int | float | None:
+    for value in values:
+        if isinstance(value, (int, float)):
+            return value
+    return None
+
+
+def _build_completion_meta(data: dict[str, Any], model: str, finish_reason: str) -> dict[str, Any]:
+    usage = data.get("usage", {}) if isinstance(data, dict) else {}
+    stats = data.get("stats", {}) if isinstance(data, dict) else {}
+    model_info = data.get("model_info", {}) if isinstance(data, dict) else {}
+
+    input_tokens = _first_number(
+        usage.get("prompt_tokens") if isinstance(usage, dict) else None,
+        stats.get("input_tokens") if isinstance(stats, dict) else None,
+    )
+    output_tokens = _first_number(
+        usage.get("completion_tokens") if isinstance(usage, dict) else None,
+        stats.get("total_output_tokens") if isinstance(stats, dict) else None,
+        stats.get("output_tokens") if isinstance(stats, dict) else None,
+    )
+    total_tokens = _first_number(
+        usage.get("total_tokens") if isinstance(usage, dict) else None,
+        (
+            (int(input_tokens) if isinstance(input_tokens, (int, float)) else 0)
+            + (int(output_tokens) if isinstance(output_tokens, (int, float)) else 0)
+        ),
+    )
+
+    meta: dict[str, Any] = {
+        "model": data.get("model", model),
+        "finish_reason": finish_reason,
+        "input_tokens": int(input_tokens or 0),
+        "output_tokens": int(output_tokens or 0),
+        "total_tokens": int(total_tokens or 0),
+    }
+
+    extra_fields = {
+        "tokens_per_second": _first_number(
+            stats.get("tokens_per_second") if isinstance(stats, dict) else None,
+        ),
+        "time_to_first_token_seconds": _first_number(
+            stats.get("time_to_first_token_seconds") if isinstance(stats, dict) else None,
+        ),
+        "reasoning_output_tokens": _first_number(
+            stats.get("reasoning_output_tokens") if isinstance(stats, dict) else None,
+        ),
+        "context_length": _first_number(
+            model_info.get("context_length") if isinstance(model_info, dict) else None,
+            model_info.get("max_context_length") if isinstance(model_info, dict) else None,
+            stats.get("context_length") if isinstance(stats, dict) else None,
+        ),
+        "stop_reason": str(data.get("stop_reason") or (stats.get("stop_reason") if isinstance(stats, dict) else "") or ""),
+    }
+
+    prompt_tokens = meta["input_tokens"]
+    context_length = extra_fields["context_length"]
+    if isinstance(context_length, (int, float)) and context_length > 0:
+        meta["context_length"] = int(context_length)
+        meta["context_used_percent"] = round((prompt_tokens / context_length) * 100, 1)
+        meta["context_remaining_percent"] = round(max(0.0, 100 - meta["context_used_percent"]), 1)
+
+    for key, value in extra_fields.items():
+        if key in {"context_length"}:
+            continue
+        if isinstance(value, (int, float)):
+            meta[key] = value
+        elif isinstance(value, str) and value:
+            meta[key] = value
+
+    return meta
+
+
 class ChatService:
     """Multi-turn chat service with optional MCP tool integration.
 
@@ -395,6 +503,8 @@ class ChatService:
         self._product: Product | None = None
         self._score: SeoScore | None = None
         self._total_tokens = {"input": 0, "output": 0}
+        self._active_request_lock = threading.Lock()
+        self._active_http_client: httpx.AsyncClient | None = None
 
     @property
     def has_mcp(self) -> bool:
@@ -430,6 +540,22 @@ class ChatService:
     def clear_history(self) -> None:
         """Clear conversation history."""
         self._history.clear()
+
+    def cancel_active_request(self) -> bool:
+        """Try to cancel the in-flight chat completion HTTP request."""
+        with self._active_request_lock:
+            client = self._active_http_client
+
+        if client is None:
+            return False
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+
+        loop.create_task(client.aclose())
+        return True
 
     async def initialize_mcp(self) -> tuple[bool, str]:
         """Initialize MCP connection. Returns (success, message)."""
@@ -669,6 +795,11 @@ class ChatService:
                 messages, tools
             )
             tool_results.extend(completion_tool_results)
+        except asyncio.CancelledError:
+            logger.info("Chat request cancelled by user")
+            if user_msg in self._history:
+                self._history.remove(user_msg)
+            raise
         except Exception as exc:
             logger.exception("Chat completion failed")
             if self._history and self._history[-1] is user_msg:
@@ -745,7 +876,10 @@ class ChatService:
                 if self._config.ai_provider in ("ollama", "lm-studio")
                 else httpx.Timeout(120.0, connect=10.0)
             )
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            client = httpx.AsyncClient(timeout=timeout)
+            with self._active_request_lock:
+                self._active_http_client = client
+            try:
                 headers: dict[str, str] = {"Content-Type": "application/json"}
                 if self._config.ai_api_key:
                     headers["Authorization"] = f"Bearer {self._config.ai_api_key}"
@@ -757,24 +891,20 @@ class ChatService:
                 )
                 resp.raise_for_status()
                 data = resp.json()
+            finally:
+                with self._active_request_lock:
+                    if self._active_http_client is client:
+                        self._active_http_client = None
+                await client.aclose()
 
             choice = data.get("choices", [{}])[0]
             message = choice.get("message", {})
             finish_reason = choice.get("finish_reason", "stop")
 
             # Track tokens
-            usage = data.get("usage", {})
-            if usage:
-                self._total_tokens["input"] += usage.get("prompt_tokens", 0)
-                self._total_tokens["output"] += usage.get("completion_tokens", 0)
-
-            meta = {
-                "model": data.get("model", model),
-                "finish_reason": finish_reason,
-                "input_tokens": usage.get("prompt_tokens", 0),
-                "output_tokens": usage.get("completion_tokens", 0),
-                "total_tokens": usage.get("total_tokens", 0),
-            }
+            meta = _build_completion_meta(data, model, finish_reason)
+            self._total_tokens["input"] += int(meta.get("input_tokens", 0) or 0)
+            self._total_tokens["output"] += int(meta.get("output_tokens", 0) or 0)
 
             # Check for tool calls
             tool_calls = message.get("tool_calls")
@@ -889,6 +1019,7 @@ class ChatService:
 
     async def close(self) -> None:
         """Close MCP connection."""
+        self.cancel_active_request()
         if self._mcp:
             await self._mcp.close()
             self._mcp = None

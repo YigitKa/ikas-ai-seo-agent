@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getMcpStatus,
+  getLmStudioLiveStatus,
   getPromptTemplates,
   getProviderHealth,
   getProviderModels,
@@ -122,12 +123,21 @@ export default function Settings() {
   const [activePromptGroup, setActivePromptGroup] = useState('');
   const [discoveredModels, setDiscoveredModels] = useState<Record<string, string[]>>({});
   const [banner, setBanner] = useState<BannerState>(null);
+  const [downloadJobId, setDownloadJobId] = useState('');
 
   const settingsQ = useQuery({ queryKey: ['settings'], queryFn: getSettings });
   const promptsQ = useQuery({ queryKey: ['prompt-templates'], queryFn: getPromptTemplates });
   const providersQ = useQuery({ queryKey: ['providers'], queryFn: getProviders });
   const healthQ = useQuery({ queryKey: ['provider-health'], queryFn: getProviderHealth });
   const mcpQ = useQuery({ queryKey: ['mcp-status'], queryFn: getMcpStatus });
+  const activeProvider = form?.ai_provider || settingsQ.data?.ai_provider || 'none';
+  const lmStudioLiveQ = useQuery({
+    queryKey: ['lm-studio-live-status', activeProvider, downloadJobId],
+    queryFn: () => getLmStudioLiveStatus(downloadJobId.trim()),
+    enabled: activeProvider === 'lm-studio',
+    staleTime: 2_000,
+    refetchInterval: activeProvider === 'lm-studio' ? 2_500 : false,
+  });
 
   useEffect(() => {
     if (settingsQ.data) {
@@ -653,6 +663,94 @@ export default function Settings() {
               )}
             </SectionCard>
 
+            {currentProvider === 'lm-studio' && (
+              <SectionCard
+                eyebrow="LM Studio"
+                title="Anlik Durum"
+                description="Secili modelin loaded context bilgisini ve varsa indirme job durumunu gosterir."
+              >
+                <div className="space-y-4">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-slate-200">Download Job ID</span>
+                    <input
+                      value={downloadJobId}
+                      onChange={(event) => setDownloadJobId(event.target.value)}
+                      placeholder="Opsiyonel job id"
+                      className="h-11 w-full rounded-2xl border border-slate-700 bg-slate-950/90 px-4 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-400"
+                    />
+                    <span className="mt-2 block text-xs leading-5 text-slate-500">
+                      Girersen `/api/v1/models/download/status/:job_id` ile anlik indirme bilgisi izlenir.
+                    </span>
+                  </label>
+
+                  {lmStudioLiveQ.isError ? (
+                    <Banner
+                      tone="error"
+                      message={formatError(lmStudioLiveQ.error, 'LM Studio anlik durum bilgisi okunamadi.')}
+                    />
+                  ) : (
+                    <>
+                      <dl className="space-y-4 text-sm">
+                        <StatusRow
+                          label="Secili model"
+                          value={lmStudioLiveQ.data?.selected_model?.display_name || form.ai_model_name || 'Bilinmiyor'}
+                          mono={false}
+                        />
+                        <StatusRow
+                          label="Model durumu"
+                          value={lmStudioLiveQ.data?.selected_model?.status || 'Bilinmiyor'}
+                          mono={false}
+                        />
+                        <StatusRow
+                          label="Loaded context"
+                          value={
+                            typeof lmStudioLiveQ.data?.selected_model?.context_length === 'number'
+                              ? String(lmStudioLiveQ.data.selected_model.context_length)
+                              : 'Bilinmiyor'
+                          }
+                        />
+                      </dl>
+
+                      {lmStudioLiveQ.data?.download_status && (
+                        <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                          <div className="text-sm font-medium text-white">Download Job</div>
+                          <dl className="mt-3 space-y-3 text-sm">
+                            <StatusRow
+                              label="Durum"
+                              value={lmStudioLiveQ.data.download_status.status || 'Bilinmiyor'}
+                              mono={false}
+                            />
+                            <StatusRow
+                              label="Indirilen"
+                              value={formatByteProgress(
+                                lmStudioLiveQ.data.download_status.downloaded_bytes,
+                                lmStudioLiveQ.data.download_status.total_size_bytes,
+                              )}
+                              mono={false}
+                            />
+                            <StatusRow
+                              label="Hiz"
+                              value={
+                                typeof lmStudioLiveQ.data.download_status.bytes_per_second === 'number'
+                                  ? `${formatBytes(lmStudioLiveQ.data.download_status.bytes_per_second)}/sn`
+                                  : 'Bilinmiyor'
+                              }
+                              mono={false}
+                            />
+                            <StatusRow
+                              label="ETA"
+                              value={formatIsoDateTime(lmStudioLiveQ.data.download_status.estimated_completion)}
+                              mono={false}
+                            />
+                          </dl>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </SectionCard>
+            )}
+
             <SectionCard
               eyebrow="Durum"
               title="Canli Ozet"
@@ -930,6 +1028,38 @@ function toneClasses(tone: BannerTone) {
     return 'border-rose-500/30 bg-rose-500/10 text-rose-100';
   }
   return 'border-sky-500/30 bg-sky-500/10 text-sky-100';
+}
+
+function formatBytes(value: number) {
+  if (value >= 1024 ** 3) {
+    return `${(value / 1024 ** 3).toFixed(2)} GB`;
+  }
+  if (value >= 1024 ** 2) {
+    return `${(value / 1024 ** 2).toFixed(2)} MB`;
+  }
+  if (value >= 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+  return `${value} B`;
+}
+
+function formatByteProgress(downloaded?: number | null, total?: number | null) {
+  if (typeof downloaded !== 'number' || typeof total !== 'number' || total <= 0) {
+    return 'Bilinmiyor';
+  }
+  const percent = ((downloaded / total) * 100).toFixed(1);
+  return `${formatBytes(downloaded)} / ${formatBytes(total)} (${percent}%)`;
+}
+
+function formatIsoDateTime(value?: string) {
+  if (!value) {
+    return 'Bilinmiyor';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString('tr-TR');
 }
 
 function toneFromHealth(status?: string): BannerTone {

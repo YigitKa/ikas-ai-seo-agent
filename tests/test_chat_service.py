@@ -3,7 +3,12 @@
 import httpx
 import pytest
 
-from core.chat_service import ChatService, _build_product_context, _extract_message_directives
+from core.chat_service import (
+    ChatService,
+    _build_completion_meta,
+    _build_product_context,
+    _extract_message_directives,
+)
 from core.models import AppConfig, ChatMessage, Product, SeoScore
 
 
@@ -98,6 +103,13 @@ def test_build_product_context_mentions_chat_roles():
     assert "ikas mcp" in ctx.lower()
 
 
+def test_build_product_context_mentions_supported_operations_and_next_step_behavior():
+    ctx = _build_product_context(None, None)
+    assert "listproduct" in ctx.lower()
+    assert "updatevariantprices" in ctx.lower()
+    assert "sonraki adim" in ctx.lower()
+
+
 def test_extract_message_directives_ikas_forces_tools():
     cleaned, instruction, allow_tools = _extract_message_directives("@ikas stok durumunu kontrol et")
     assert cleaned == "stok durumunu kontrol et"
@@ -109,6 +121,7 @@ def test_extract_message_directives_local_disables_tools():
     cleaned, instruction, allow_tools = _extract_message_directives("@local seo skorunu yorumla")
     assert cleaned == "seo skorunu yorumla"
     assert instruction is not None and "@local" in instruction
+    assert "operasyon" in instruction.lower()
     assert allow_tools is False
 
 
@@ -194,6 +207,34 @@ def test_get_default_model():
     config2 = _make_config(ai_provider="openai")
     service2 = ChatService(config2)
     assert service2._get_default_model() == "gpt-4o-mini"
+
+
+def test_build_completion_meta_uses_stats_and_context_length():
+    meta = _build_completion_meta(
+        {
+            "model": "turkish-gemma-9b",
+            "stats": {
+                "input_tokens": 917,
+                "total_output_tokens": 899,
+                "tokens_per_second": 14.49,
+                "time_to_first_token_seconds": 0.43,
+                "reasoning_output_tokens": 120,
+            },
+            "model_info": {
+                "context_length": 4096,
+            },
+        },
+        "turkish-gemma-9b",
+        "stop",
+    )
+
+    assert meta["input_tokens"] == 917
+    assert meta["output_tokens"] == 899
+    assert meta["total_tokens"] == 1816
+    assert meta["context_length"] == 4096
+    assert meta["tokens_per_second"] == 14.49
+    assert meta["time_to_first_token_seconds"] == 0.43
+    assert meta["context_used_percent"] == 22.4
 
 
 @pytest.mark.anyio

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import logging
 
@@ -89,23 +91,79 @@ async def ws_chat(ws: WebSocket) -> None:
     """Multi-turn AI chat with MCP tool calling support."""
     await ws.accept()
     manager = get_manager()
+    send_lock = asyncio.Lock()
+    active_chat_task: asyncio.Task | None = None
+    notify_on_cancel = True
+
+    async def send_json(payload: dict[str, object]) -> None:
+        async with send_lock:
+            await ws.send_json(payload)
+
+    async def cancel_active_chat(*, notify: bool) -> bool:
+        nonlocal active_chat_task, notify_on_cancel
+        if active_chat_task is None or active_chat_task.done():
+            return False
+        notify_on_cancel = notify
+        manager.cancel_chat_request()
+        active_chat_task.cancel()
+        return True
+
     await ws.send_json(_build_mcp_status_payload(manager))
 
     # Auto-initialize MCP if token is configured
     if manager.chat_has_mcp and not manager.chat_mcp_initialized:
         try:
             success, msg = await manager.initialize_mcp()
-            await ws.send_json(_build_mcp_status_payload(manager, message_override=msg))
+            await send_json(_build_mcp_status_payload(manager, message_override=msg))
         except Exception as e:
-            await ws.send_json(_build_mcp_status_payload(manager, message_override=str(e)))
+            await send_json(_build_mcp_status_payload(manager, message_override=str(e)))
 
     try:
+        receive_task = asyncio.create_task(ws.receive_text())
         while True:
-            raw = await ws.receive_text()
+            wait_tasks: set[asyncio.Task] = {receive_task}
+            if active_chat_task is not None:
+                wait_tasks.add(active_chat_task)
+
+            done, _ = await asyncio.wait(wait_tasks, return_when=asyncio.FIRST_COMPLETED)
+
+            if active_chat_task is not None and active_chat_task in done:
+                try:
+                    response = active_chat_task.result()
+                    await send_json({
+                        "type": "response",
+                        "content": response.content,
+                        "thinking": response.thinking,
+                        "tool_results": response.tool_results,
+                        "error": response.error,
+                        "meta": response.meta,
+                    })
+                except asyncio.CancelledError:
+                    if notify_on_cancel:
+                        await send_json({
+                            "type": "cancelled",
+                            "message": "Istek kullanici tarafindan durduruldu.",
+                        })
+                except Exception as e:
+                    logger.error("Chat error: %s", e)
+                    await send_json({"type": "error", "content": str(e)})
+                finally:
+                    active_chat_task = None
+                    notify_on_cancel = True
+
+            if receive_task not in done:
+                continue
+
+            try:
+                raw = receive_task.result()
+            except WebSocketDisconnect:
+                raise
+            receive_task = asyncio.create_task(ws.receive_text())
+
             try:
                 payload = json.loads(raw)
             except json.JSONDecodeError:
-                await ws.send_json({"type": "error", "content": "Invalid JSON"})
+                await send_json({"type": "error", "content": "Invalid JSON"})
                 continue
 
             action = payload.get("action", "message")
@@ -116,7 +174,7 @@ async def ws_chat(ws: WebSocket) -> None:
                     product = db.get_product(product_id)
                     score = db.get_latest_score(product_id) if product else None
                     manager.set_chat_product_context(product, score)
-                    await ws.send_json({
+                    await send_json({
                         "type": "context_set",
                         "product_id": product_id,
                         "product_name": product.name if product else "",
@@ -124,42 +182,49 @@ async def ws_chat(ws: WebSocket) -> None:
                 continue
 
             if action == "clear":
+                await cancel_active_chat(notify=False)
                 manager.clear_chat_history()
-                await ws.send_json({"type": "cleared"})
+                await send_json({"type": "cleared"})
                 continue
 
-            # Default: send message
+            if action == "cancel":
+                await cancel_active_chat(notify=True)
+                continue
+
+            if active_chat_task is not None:
+                await send_json({
+                    "type": "error",
+                    "content": "Calisan bir chat istegi var. Once Stop ile iptal edin.",
+                })
+                continue
+
             user_message = payload.get("message", "")
             if not user_message:
-                await ws.send_json({"type": "error", "content": "Bos mesaj"})
+                await send_json({"type": "error", "content": "Bos mesaj"})
                 continue
 
-            # Set product context if provided
             product_id = payload.get("product_id")
             if product_id:
                 product = db.get_product(product_id)
                 score = db.get_latest_score(product_id) if product else None
                 manager.set_chat_product_context(product, score)
 
-            await ws.send_json({"type": "thinking"})
-
-            try:
-                response = await manager.send_chat_message(user_message)
-
-                await ws.send_json({
-                    "type": "response",
-                    "content": response.content,
-                    "thinking": response.thinking,
-                    "tool_results": response.tool_results,
-                    "error": response.error,
-                    "meta": response.meta,
-                })
-            except Exception as e:
-                logger.error("Chat error: %s", e)
-                await ws.send_json({"type": "error", "content": str(e)})
+            await send_json({"type": "thinking"})
+            notify_on_cancel = True
+            active_chat_task = asyncio.create_task(manager.send_chat_message(user_message))
 
     except WebSocketDisconnect:
         logger.info("Chat WebSocket disconnected")
+    finally:
+        manager.cancel_chat_request()
+        if 'receive_task' in locals():
+            receive_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await receive_task
+        if active_chat_task is not None:
+            active_chat_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await active_chat_task
 
 
 @router.websocket("/ws/progress")
