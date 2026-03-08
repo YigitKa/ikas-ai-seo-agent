@@ -4,34 +4,20 @@ import threading
 
 import customtkinter as ctk
 
-from core.provider_service import (
-    PROVIDER_LABELS,
-    discover_provider_models,
-    get_provider_model_options,
-    provider_key_from_label,
-    test_settings_connection,
-)
-from core.prompt_store import (
-    get_prompt_editor_groups,
-    get_prompt_editor_meta,
-    load_prompt_template,
-    reset_prompt_template,
-    save_prompt_template,
-)
+from core.settings_service import SettingsService
 from ui.themes.dark import COLORS
 
 
 class SettingsPanel(ctk.CTkToplevel):
-    def __init__(self, master, config, on_save=None, on_test=None, on_discover_provider_models=None, **kwargs):
+    def __init__(self, master, config, on_save=None, **kwargs):
         super().__init__(master, **kwargs)
         self.title("Ayarlar")
         self.geometry("900x920")
         self.resizable(True, True)
         self.configure(fg_color=COLORS["bg_primary"])
         self._on_save = on_save
-        self._on_test = on_test
-        self._on_discover_provider_models = on_discover_provider_models
         self._config = config
+        self._settings = SettingsService()
         self._prompt_editors: dict[str, ctk.CTkTextbox] = {}
 
         # Ollama model list (populated by discovery)
@@ -51,11 +37,11 @@ class SettingsPanel(ctk.CTkToplevel):
         self._section(main, "AI Provider", top_pad=20)
 
         ctk.CTkLabel(main, text="Provider:", text_color=COLORS["text_secondary"]).pack(anchor="w", pady=(5, 0))
-        self._provider_var = ctk.StringVar(value=PROVIDER_LABELS.get(config.ai_provider, "None (yalnizca analiz)"))
+        self._provider_var = ctk.StringVar(value=self._settings.get_provider_label(config.ai_provider))
         self._provider_menu = ctk.CTkOptionMenu(
             main,
             variable=self._provider_var,
-            values=list(PROVIDER_LABELS.values()),
+            values=self._settings.get_provider_label_values(),
             fg_color=COLORS["input_bg"],
             command=self._on_provider_change,
         )
@@ -179,7 +165,7 @@ class SettingsPanel(ctk.CTkToplevel):
         tabs = ctk.CTkTabview(container, fg_color=COLORS["bg_secondary"], segmented_button_fg_color=COLORS["input_bg"])
         tabs.pack(fill="both", expand=True, padx=10, pady=10)
 
-        for group_label, prompt_keys in get_prompt_editor_groups():
+        for group_label, prompt_keys in self._settings.get_prompt_editor_groups():
             tab = tabs.add(group_label)
             for prompt_key in prompt_keys:
                 self._add_prompt_editor_card(tab, prompt_key)
@@ -201,7 +187,7 @@ class SettingsPanel(ctk.CTkToplevel):
         ).pack(side="right", padx=(0, 8))
 
     def _add_prompt_editor_card(self, parent, prompt_key: str) -> None:
-        meta = get_prompt_editor_meta(prompt_key)
+        meta = self._settings.get_prompt_editor_meta(prompt_key)
         card = ctk.CTkFrame(parent, fg_color=COLORS["bg_primary"], corner_radius=8)
         card.pack(fill="both", expand=True, padx=8, pady=(8, 0))
 
@@ -251,13 +237,17 @@ class SettingsPanel(ctk.CTkToplevel):
             wrap="word",
         )
         textbox.pack(fill="both", expand=True, padx=10, pady=(8, 10))
-        textbox.insert("1.0", load_prompt_template(prompt_key))
+        textbox.insert("1.0", self._settings.load_prompt_template(prompt_key))
         self._prompt_editors[prompt_key] = textbox
 
     def _save_prompt_templates(self, show_status: bool = True) -> bool:
         try:
-            for prompt_key, textbox in self._prompt_editors.items():
-                save_prompt_template(prompt_key, textbox.get("1.0", "end-1c"))
+            self._settings.save_prompt_templates(
+                {
+                    prompt_key: textbox.get("1.0", "end-1c")
+                    for prompt_key, textbox in self._prompt_editors.items()
+                }
+            )
         except Exception as exc:
             if show_status:
                 self._set_status(f"Promptlar kaydedilemedi: {exc}", "warning")
@@ -268,22 +258,20 @@ class SettingsPanel(ctk.CTkToplevel):
 
     def _reset_prompt_editor(self, prompt_key: str) -> None:
         try:
-            reset_prompt_template(prompt_key)
             textbox = self._prompt_editors[prompt_key]
             textbox.delete("1.0", "end")
-            textbox.insert("1.0", load_prompt_template(prompt_key))
-            meta = get_prompt_editor_meta(prompt_key)
+            textbox.insert("1.0", self._settings.reset_prompt_template(prompt_key))
+            meta = self._settings.get_prompt_editor_meta(prompt_key)
             self._set_status(f"{meta['title']} varsayilana donduruldu.", "success")
         except Exception as exc:
             self._set_status(f"Prompt sifirlanamadi: {exc}", "warning")
 
     def _reset_all_prompt_editors(self) -> None:
         try:
-            for prompt_key in self._prompt_editors:
-                reset_prompt_template(prompt_key)
-                textbox = self._prompt_editors[prompt_key]
+            contents = self._settings.reset_prompt_templates(self._prompt_editors.keys())
+            for prompt_key, textbox in self._prompt_editors.items():
                 textbox.delete("1.0", "end")
-                textbox.insert("1.0", load_prompt_template(prompt_key))
+                textbox.insert("1.0", contents[prompt_key])
             self._set_status("Tum promptlar varsayilana donduruldu.", "success")
         except Exception as exc:
             self._set_status(f"Promptlar sifirlanamadi: {exc}", "warning")
@@ -291,7 +279,7 @@ class SettingsPanel(ctk.CTkToplevel):
     # â”€â”€ Provider change â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _on_provider_change(self, label: str) -> None:
-        provider = provider_key_from_label(label)
+        provider = self._settings.get_provider_key(label)
 
         # Clear the frame
         for widget in self._provider_frame.winfo_children():
@@ -323,7 +311,7 @@ class SettingsPanel(ctk.CTkToplevel):
             self._model_var = self._inner_dropdown(
                 self._provider_frame, "Model:",
                 config.ai_model_name or "claude-haiku-4-5-20251001",
-                get_provider_model_options("anthropic"),
+                self._settings.get_provider_model_options("anthropic"),
             )
 
         elif provider == "openai":
@@ -333,7 +321,7 @@ class SettingsPanel(ctk.CTkToplevel):
             self._model_var = self._inner_dropdown(
                 self._provider_frame, "Model:",
                 config.ai_model_name or "gpt-4o-mini",
-                get_provider_model_options("openai"),
+                self._settings.get_provider_model_options("openai"),
             )
 
         elif provider == "gemini":
@@ -342,7 +330,7 @@ class SettingsPanel(ctk.CTkToplevel):
             self._model_var = self._inner_dropdown(
                 self._provider_frame, "Model:",
                 config.ai_model_name or "gemini-1.5-flash",
-                get_provider_model_options("gemini"),
+                self._settings.get_provider_model_options("gemini"),
             )
 
         elif provider == "openrouter":
@@ -356,7 +344,7 @@ class SettingsPanel(ctk.CTkToplevel):
             self._model_var = self._inner_dropdown(
                 self._provider_frame, "Model:",
                 config.ai_model_name or "openai/gpt-4o-mini",
-                get_provider_model_options("openrouter"),
+                self._settings.get_provider_model_options("openrouter"),
             )
 
         elif provider == "ollama":
@@ -429,10 +417,7 @@ class SettingsPanel(ctk.CTkToplevel):
 
         def _check():
             try:
-                if self._on_discover_provider_models is not None:
-                    models = self._on_discover_provider_models("ollama", base_url)
-                else:
-                    models = discover_provider_models("ollama", base_url)
+                models = self._settings.discover_provider_models("ollama", base_url)
                 self.after(0, lambda: self._ollama_found(models))
             except Exception as exc:
                 self.after(0, lambda: self._ollama_not_found(str(exc)))
@@ -460,10 +445,7 @@ class SettingsPanel(ctk.CTkToplevel):
 
         def _check():
             try:
-                if self._on_discover_provider_models is not None:
-                    models = self._on_discover_provider_models("lm-studio", base_url)
-                else:
-                    models = discover_provider_models("lm-studio", base_url)
+                models = self._settings.discover_provider_models("lm-studio", base_url)
                 self.after(0, lambda: self._lm_studio_found(models))
             except Exception as exc:
                 self.after(0, lambda: self._lm_studio_not_found(str(exc)))
@@ -489,7 +471,7 @@ class SettingsPanel(ctk.CTkToplevel):
     # â”€â”€ Save / Test â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _collect_provider_key(self) -> str:
-        return provider_key_from_label(self._provider_var.get())
+        return self._settings.get_provider_key(self._provider_var.get())
 
     def _collect_model(self) -> str:
         provider = self._collect_provider_key()
@@ -542,9 +524,7 @@ class SettingsPanel(ctk.CTkToplevel):
         if self._on_save:
             self._on_save(payload)
         else:
-            # Default: persist to .env
-            from config.settings import save_config_to_env
-            save_config_to_env(payload)
+            self._settings.save_settings(payload)
             self._set_status("Ayarlar ve promptlar kaydedildi.", "success")
 
         self.destroy()
@@ -560,11 +540,9 @@ class SettingsPanel(ctk.CTkToplevel):
 
         def _run():
             try:
-                result = self._on_test(payload) if self._on_test is not None else test_settings_connection(payload)
+                result = self._settings.test_connection(payload)
                 color = "text_secondary" if provider == "none" else ("success" if result.get("ok") else "warning")
                 self.after(0, lambda: self._set_status(str(result.get("message") or "Test tamamlandi."), color))
-                return
-
             except Exception as exc:
                 self.after(0, lambda: self._set_status(f"Hata: {exc}", "warning"))
 

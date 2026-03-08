@@ -12,6 +12,7 @@ from core.presentation import (
     get_tr_description_value,
     group_score_issues,
 )
+from core.suggestion_service import apply_suggestion_field, create_pending_suggestion, sync_suggestion_fields
 from ui.themes.dark import COLORS, score_color
 
 
@@ -867,38 +868,21 @@ class DiffViewer(ctk.CTkFrame):
     def _ensure_current_suggestion(self) -> None:
         if self._current_suggestion is not None or self._current_product is None:
             return
-        product = self._current_product
-        self._current_suggestion = SeoSuggestion(
-            product_id=product.id,
-            original_name=product.name,
-            original_description=product.description,
-            original_description_en=product.description_translations.get("en", ""),
-            original_meta_title=product.meta_title,
-            original_meta_description=product.meta_description,
-            status="pending",
-        )
+        self._current_suggestion = create_pending_suggestion(self._current_product)
 
     def _apply_field_to_current_suggestion(self, field: str, value: str) -> None:
         if self._current_suggestion is None:
             return
-        cleaned = clean_suggestion_value(value)
-        if field == "name":
-            self._current_suggestion.suggested_name = cleaned or None
-        elif field == "meta_title":
-            self._current_suggestion.suggested_meta_title = cleaned
-        elif field == "meta_desc":
-            self._current_suggestion.suggested_meta_description = cleaned
-        elif field == "desc_tr":
-            self._current_suggestion.suggested_description = cleaned
-        elif field == "desc_en":
-            self._current_suggestion.suggested_description_en = cleaned
+        apply_suggestion_field(self._current_suggestion, field, value)
 
     def _sync_current_suggestion_from_fields(self) -> None:
         self._ensure_current_suggestion()
         if self._current_suggestion is None:
             return
-        for field, widget in self._fields_sugg.items():
-            self._apply_field_to_current_suggestion(field, widget.get_value())
+        sync_suggestion_fields(
+            self._current_suggestion,
+            {field: widget.get_value() for field, widget in self._fields_sugg.items()},
+        )
 
     def _close_editor_window(self, field: str) -> None:
         window = self._editor_windows.pop(field, None)

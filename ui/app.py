@@ -525,7 +525,7 @@ class App(ctk.CTk):
         self._set_status(f"Analiz ediliyor: {product.name[:30]}...")
 
         def do_analyze():
-            return self._manager.score_products([product])[0][1]
+            return self._manager.analyze_product(product)
 
         def on_done(score: object) -> None:
             if self._selected_product is not None and self._selected_product.id == product.id:
@@ -729,27 +729,18 @@ class App(ctk.CTk):
     def _apply_approved(self) -> None:
         self._set_status("Onaylanmis oneriler kontrol ediliyor...")
 
-        def load_approved():
-            return self._manager.get_approved_suggestions()
+        def apply_work():
+            return asyncio.run(self._manager.apply_approved_suggestions())
 
-        def on_loaded(result: object) -> None:
-            approved = result
-            if not approved:
+        def on_applied(result: object) -> None:
+            count, had_approved = result
+            if not had_approved:
                 self._set_status("Onaylanmis oneri yok")
                 return
+            self._set_status(f"{count} urun guncellendi")
+            self._update_stats()
 
-            self._set_status(f"{len(approved)} oneri uygulaniyor...")
-
-            def apply_work():
-                return asyncio.run(self._manager.apply_suggestions(approved))
-
-            def on_applied(count: object) -> None:
-                self._set_status(f"{count} urun guncellendi")
-                self._update_stats()
-
-            self._run_in_background(apply_work, on_applied, lambda exc: self._set_status(f"Uygulama hatasi: {exc}"))
-
-        self._run_in_background(load_approved, on_loaded, lambda exc: self._set_status(f"Uygulama hatasi: {exc}"))
+        self._run_in_background(apply_work, on_applied, lambda exc: self._set_status(f"Uygulama hatasi: {exc}"))
 
     def _on_approve(self, suggestion: SeoSuggestion) -> None:
         def work():
@@ -831,8 +822,6 @@ class App(ctk.CTk):
             self,
             self._manager.get_config(),
             on_save=self._on_settings_save,
-            on_test=self._on_settings_test,
-            on_discover_provider_models=self._on_discover_provider_models,
         )
 
     def _on_settings_save(self, values: dict) -> None:
@@ -841,12 +830,6 @@ class App(ctk.CTk):
         self._update_ai_button_state()
         self._refresh_status_bar_info()
         self._set_status(f"Ayarlar kaydedildi | AI: {config.ai_provider}")
-
-    def _on_settings_test(self, values: dict) -> dict:
-        return self._manager.test_settings_connection(values)
-
-    def _on_discover_provider_models(self, provider: str, base_url: str = "") -> list[str]:
-        return self._manager.discover_provider_models(provider, base_url)
 
 
 def launch() -> None:

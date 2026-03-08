@@ -71,6 +71,9 @@ class ProductManager:
         logger.info("Analyzed %s products", len(products))
         return scored_products
 
+    def analyze_product(self, product: Product) -> SeoScore:
+        return self.score_products([product])[0][1]
+
     def analyze_products(
         self,
         products: List[Product],
@@ -181,6 +184,12 @@ class ProductManager:
 
         logger.info(f"Applied {applied}/{len(suggestions)} suggestions")
         return applied
+
+    async def apply_approved_suggestions(self) -> tuple[int, bool]:
+        approved = self.get_approved_suggestions()
+        if not approved:
+            return 0, False
+        return await self.apply_suggestions(approved), True
 
     def get_pending_suggestions(self) -> List[SeoSuggestion]:
         return db.get_pending_suggestions()
