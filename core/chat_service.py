@@ -1785,12 +1785,28 @@ class ChatService:
                                 tool_calls = raw_tool_calls
                         else:
                             pending_data_lines: list[str] = []
+                            sse_event_name = ""
+                            # Non-delta LM Studio native event names that carry no text content
+                            _LM_STUDIO_NON_CONTENT_EVENTS = frozenset({
+                                "chat.start", "chat.end",
+                                "model_load.start", "model_load.progress", "model_load.end",
+                                "prompt_processing.start", "prompt_processing.progress",
+                                "prompt_processing.end",
+                                "reasoning.start", "reasoning.end",
+                                "tool_call.start", "tool_call.arguments",
+                                "tool_call.success", "tool_call.failure",
+                                "message.start", "message.end",
+                                "error",
+                            })
                             async for line in resp.aiter_lines():
                                 if not line:
                                     if not pending_data_lines:
+                                        sse_event_name = ""
                                         continue
                                     event_data = "\n".join(pending_data_lines)
                                     pending_data_lines.clear()
+                                    current_sse_event = sse_event_name
+                                    sse_event_name = ""
                                     if event_data == "[DONE]":
                                         break
                                     try:
@@ -1802,6 +1818,20 @@ class ChatService:
                                     meta_payload = _merge_stream_meta_payload(meta_payload, data)
                                     choices = data.get("choices", [])
                                     if not isinstance(choices, list) or not choices:
+                                        # Fallback: handle LM Studio native streaming format where
+                                        # the compat endpoint returns {"content": "..."} payloads
+                                        # (event: message.delta) instead of OpenAI choices structure.
+                                        if current_sse_event not in _LM_STUDIO_NON_CONTENT_EVENTS:
+                                            native_content = data.get("content")
+                                            if isinstance(native_content, str) and native_content:
+                                                message_content += native_content
+                                                visible_chunk = visible_text_filter.consume(native_content)
+                                                if visible_chunk and not tool_calls_by_index:
+                                                    streamed_chunk_emitted = True
+                                                    yield {
+                                                        "type": "chunk",
+                                                        "content": visible_chunk,
+                                                    }
                                         continue
 
                                     choice = choices[0]
@@ -1835,6 +1865,9 @@ class ChatService:
                                     continue
 
                                 if line.startswith(":"):
+                                    continue
+                                if line.startswith("event:"):
+                                    sse_event_name = line[6:].strip()
                                     continue
                                 if line.startswith("data:"):
                                     pending_data_lines.append(line[5:].lstrip())
