@@ -8,6 +8,7 @@ from core.chat_service import (
     ChatService,
     SAVE_SEO_SUGGESTION_TOOL_NAME,
     _StreamingVisibleTextFilter,
+    _LMStudioNativeUnavailable,
     _append_false_action_disclaimer,
     _build_completion_meta,
     _build_product_context,
@@ -731,6 +732,7 @@ async def test_handle_apply_intent_creates_suggestion(monkeypatch):
 class _FakeStreamResponse:
     def __init__(self, lines, content_type: str = "text/event-stream"):
         self._lines = lines
+        self.status_code = 200
         self.headers = {"content-type": content_type}
 
     def raise_for_status(self):
@@ -831,6 +833,97 @@ async def test_async_stream_chat_emits_first_chunk_before_stream_ends(monkeypatc
 
 
 @pytest.mark.anyio
+async def test_stream_lm_studio_native_rejects_non_sse_content_type(monkeypatch):
+    config = _make_config(ai_provider="lm-studio", ai_base_url="http://localhost:1234/v1")
+    service = ChatService(config)
+
+    def fake_stream(self_client, method, url, **kwargs):
+        assert method == "POST"
+        assert url.endswith("/api/v1/chat")
+        return _FakeStreamContext(_FakeStreamResponse([], content_type="application/json"))
+
+    monkeypatch.setattr(httpx.AsyncClient, "stream", fake_stream)
+
+    with pytest.raises(_LMStudioNativeUnavailable, match="did not return SSE"):
+        _ = [
+            event
+            async for event in service._stream_lm_studio_native(
+                [{"role": "user", "content": "Merhaba"}],
+                None,
+                "turkish-gemma-9b",
+            )
+        ]
+
+
+@pytest.mark.anyio
+async def test_stream_lm_studio_native_emits_reasoning_as_thinking_chunk(monkeypatch):
+    config = _make_config(ai_provider="lm-studio", ai_base_url="http://localhost:1234/v1")
+    service = ChatService(config)
+
+    lines = [
+        'event: reasoning.delta',
+        'data: {"type":"reasoning.delta","content":"plan"}',
+        "",
+        'event: message.delta',
+        'data: {"type":"message.delta","content":"Mer"}',
+        "",
+        'event: message.delta',
+        'data: {"type":"message.delta","content":"haba"}',
+        "",
+        'event: chat.end',
+        'data: {"type":"chat.end","result":{"model":"turkish-gemma-9b-t1","stats":{"input_tokens":3,"total_output_tokens":2}}}',
+        "",
+    ]
+
+    def fake_stream(self_client, method, url, **kwargs):
+        assert method == "POST"
+        assert url.endswith("/api/v1/chat")
+        return _FakeStreamContext(_FakeStreamResponse(lines))
+
+    monkeypatch.setattr(httpx.AsyncClient, "stream", fake_stream)
+
+    events = [
+        event
+        async for event in service._stream_lm_studio_native(
+            [{"role": "user", "content": "Merhaba"}],
+            None,
+            "turkish-gemma-9b-t1",
+        )
+    ]
+
+    assert [event["type"] for event in events] == [
+        "thinking_chunk",
+        "chunk",
+        "chunk",
+        "completion_result",
+    ]
+    assert events[0]["content"] == "plan"
+    assert events[-1]["thinking"] == "plan"
+    assert events[-1]["content"] == "Merhaba"
+
+
+@pytest.mark.anyio
+async def test_async_stream_chat_lm_studio_raises_when_native_unavailable():
+    config = _make_config(ai_provider="lm-studio", ai_base_url="http://localhost:1234/v1")
+    service = ChatService(config)
+
+    async def fake_native_stream(messages, tools, model):  # pragma: no cover
+        raise _LMStudioNativeUnavailable("LM Studio native endpoint returned 404")
+        yield {"type": "chunk", "content": "never"}
+
+    service._stream_lm_studio_native = fake_native_stream  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="LM Studio native streaming endpoint"):
+        _ = [
+            event
+            async for event in service.async_stream_chat(
+                [{"role": "user", "content": "Merhaba"}],
+                None,
+            )
+        ]
+
+
+@pytest.mark.anyio
 async def test_async_stream_chat_buffers_tool_calls_until_final_response(monkeypatch):
     config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1")
     service = ChatService(config)
@@ -906,3 +999,25 @@ async def test_stream_message_emits_response_done_after_chunks():
     assert [event["content"] for event in events[:2]] == ["Mer", "haba"]
     assert events[-1]["content"].startswith("Merhaba")
     assert events[-1]["meta"]["model"] == "stream-test"
+
+
+@pytest.mark.anyio
+async def test_stream_message_emits_thinking_chunk_when_stream_provides_it():
+    config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1")
+    service = ChatService(config)
+    _stub_routing(service, False)
+
+    async def fake_chat_completion_stream(messages, tools, chunk_handler, event_handler=None):
+        if event_handler is not None:
+            await event_handler({"type": "thinking_chunk", "content": "plan"})
+        await chunk_handler("Mer")
+        await chunk_handler("haba")
+        return "Merhaba", "plan", [], {"model": "stream-test"}
+
+    service._chat_completion_stream = fake_chat_completion_stream  # type: ignore[method-assign]
+
+    events = [event async for event in service.stream_message("selam")]
+
+    assert [event["type"] for event in events] == ["thinking_chunk", "chunk", "chunk", "response_done"]
+    assert events[0]["content"] == "plan"
+    assert events[-1]["thinking"] == "plan"

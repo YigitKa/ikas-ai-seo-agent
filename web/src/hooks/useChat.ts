@@ -142,25 +142,23 @@ export function useChat(productContext?: ChatProductContext) {
       return;
     }
 
-    startTransition(() => {
-      setMessages((prev) => {
-        const next = [...prev];
-        const lastMessage = next[next.length - 1];
+    setMessages((prev) => {
+      const next = [...prev];
+      const lastMessage = next[next.length - 1];
 
-        if (lastMessage?.role === 'assistant') {
-          next[next.length - 1] = {
-            ...lastMessage,
-            content: `${lastMessage.content}${chunk}`,
-          };
-          return next;
-        }
-
-        next.push({
-          role: 'assistant',
-          content: chunk,
-        });
+      if (lastMessage?.role === 'assistant') {
+        next[next.length - 1] = {
+          ...lastMessage,
+          content: `${lastMessage.content}${chunk}`,
+        };
         return next;
+      }
+
+      next.push({
+        role: 'assistant',
+        content: chunk,
       });
+      return next;
     });
   }, []);
 
@@ -169,26 +167,24 @@ export function useChat(productContext?: ChatProductContext) {
       return;
     }
 
-    startTransition(() => {
-      setMessages((prev) => {
-        const next = [...prev];
-        const lastMessage = next[next.length - 1];
+    setMessages((prev) => {
+      const next = [...prev];
+      const lastMessage = next[next.length - 1];
 
-        if (lastMessage?.role === 'assistant') {
-          next[next.length - 1] = {
-            ...lastMessage,
-            thinking: `${lastMessage.thinking ?? ''}${chunk}`,
-          };
-          return next;
-        }
-
-        next.push({
-          role: 'assistant',
-          content: '',
-          thinking: chunk,
-        });
+      if (lastMessage?.role === 'assistant') {
+        next[next.length - 1] = {
+          ...lastMessage,
+          thinking: `${lastMessage.thinking ?? ''}${chunk}`,
+        };
         return next;
+      }
+
+      next.push({
+        role: 'assistant',
+        content: '',
+        thinking: chunk,
       });
+      return next;
     });
   }, []);
 

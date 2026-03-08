@@ -14,6 +14,7 @@ Use cases:
 
 import asyncio
 import contextlib
+import inspect
 import json
 import logging
 import re
@@ -1430,9 +1431,25 @@ class ChatService:
                 "content": chunk,
             })
 
+        async def emit_stream_event(event: dict[str, Any]) -> None:
+            event_type = str(event.get("type") or "")
+            if event_type not in {"chunk", "thinking_chunk"}:
+                return
+            content = str(event.get("content") or "")
+            if not content:
+                return
+            await queue.put({
+                "type": event_type,
+                "content": content,
+            })
+
         async def runner() -> ChatResponse:
             try:
-                return await self._run_message_flow(user_message, chunk_handler=emit_chunk)
+                return await self._run_message_flow(
+                    user_message,
+                    chunk_handler=emit_chunk,
+                    event_handler=emit_stream_event,
+                )
             finally:
                 await queue.put(None)
 
@@ -1463,6 +1480,7 @@ class ChatService:
         self,
         user_message: str,
         chunk_handler: Callable[[str], Awaitable[None]] | None = None,
+        event_handler: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> ChatResponse:
         """Run the full chat flow, optionally streaming assistant chunks."""
         cleaned_message, routing_instruction, allow_tools = await self._extract_message_directives(user_message)
@@ -1574,11 +1592,20 @@ class ChatService:
             if chunk_handler is None:
                 completion_result = await self._chat_completion(messages, tools)
             else:
-                completion_result = await self._chat_completion_stream(
-                    messages,
-                    tools,
-                    chunk_handler,
-                )
+                stream_signature = inspect.signature(self._chat_completion_stream)
+                if "event_handler" in stream_signature.parameters:
+                    completion_result = await self._chat_completion_stream(
+                        messages,
+                        tools,
+                        chunk_handler,
+                        event_handler=event_handler,
+                    )
+                else:
+                    completion_result = await self._chat_completion_stream(
+                        messages,
+                        tools,
+                        chunk_handler,
+                    )
             response_text, thinking_text, completion_tool_results, meta, suggestion_saved = (
                 self._normalize_completion_result(completion_result)
             )
@@ -1668,18 +1695,26 @@ class ChatService:
         messages: list[dict],
         tools: list[dict] | None,
         chunk_handler: Callable[[str], Awaitable[None]],
+        event_handler: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> tuple[str, str, list[dict], dict, dict[str, Any] | None]:
         """Consume the streaming completion generator and forward text chunks."""
         final_event: dict[str, Any] | None = None
 
         async for event in self.async_stream_chat(messages, tools):
-            if event.get("type") == "chunk":
+            event_type = str(event.get("type") or "")
+            if event_type in {"chunk", "thinking_chunk"}:
                 chunk = str(event.get("content") or "")
                 if chunk:
-                    await chunk_handler(chunk)
+                    if event_handler is not None:
+                        await event_handler({
+                            "type": event_type,
+                            "content": chunk,
+                        })
+                    elif event_type == "chunk":
+                        await chunk_handler(chunk)
                 continue
 
-            if event.get("type") == "completion_result":
+            if event_type == "completion_result":
                 final_event = event
 
         if final_event is None:
@@ -1820,6 +1855,7 @@ class ChatService:
 
         timeout = httpx.Timeout(600.0, connect=10.0)
         message_content = ""
+        thinking_content = ""
         finish_reason = "stop"
         meta: dict[str, Any] = {"model": model}
         visible_text_filter = _StreamingVisibleTextFilter()
@@ -1835,6 +1871,12 @@ class ChatService:
                             f"LM Studio native endpoint returned {resp.status_code}"
                         )
                     resp.raise_for_status()
+                    content_type = resp.headers.get("content-type", "").lower()
+                    if "text/event-stream" not in content_type:
+                        raise _LMStudioNativeUnavailable(
+                            "LM Studio native endpoint did not return SSE "
+                            f"(content-type={content_type or 'unknown'})"
+                        )
 
                     sse_event = ""
                     pending_lines: list[str] = []
@@ -1863,13 +1905,15 @@ class ChatService:
                                     pass
 
                             elif event_name == "reasoning.delta":
-                                # Thinking tokens — wrap in <think> tags so the existing
-                                # thinking-text extractor can strip them from the response.
                                 try:
                                     data = json.loads(data_str)
                                     chunk = data.get("content", "")
                                     if isinstance(chunk, str) and chunk:
-                                        message_content += chunk
+                                        thinking_content += chunk
+                                        yield {
+                                            "type": "thinking_chunk",
+                                            "content": chunk,
+                                        }
                                 except json.JSONDecodeError:
                                     pass
 
@@ -1879,6 +1923,36 @@ class ChatService:
                                     result = data.get("result") or {}
                                     stats = result.get("stats") or {}
                                     usage = result.get("usage") or {}
+                                    output_items = result.get("output")
+                                    if isinstance(output_items, list):
+                                        for item in output_items:
+                                            if not isinstance(item, dict):
+                                                continue
+                                            output_type = str(item.get("type") or "")
+                                            output_raw = item.get("content")
+                                            output_text = ""
+                                            if isinstance(output_raw, str):
+                                                output_text = output_raw
+                                            elif isinstance(output_raw, list):
+                                                parts: list[str] = []
+                                                for part in output_raw:
+                                                    if isinstance(part, str):
+                                                        parts.append(part)
+                                                        continue
+                                                    if not isinstance(part, dict):
+                                                        continue
+                                                    text_part = part.get("text")
+                                                    if isinstance(text_part, str):
+                                                        parts.append(text_part)
+                                                output_text = "".join(parts)
+
+                                            if not output_text:
+                                                continue
+                                            if output_type == "message" and not message_content:
+                                                message_content = output_text
+                                            elif output_type == "reasoning" and not thinking_content:
+                                                thinking_content = output_text
+
                                     meta = {
                                         "model": result.get("model", model),
                                         "finish_reason": (
@@ -1931,10 +2005,16 @@ class ChatService:
             streamed_chunk_emitted = True
             yield {"type": "chunk", "content": trailing}
 
-        thinking_text = self._extract_thinking(message_content)
+        embedded_thinking = self._extract_thinking(message_content)
         response_text = (
-            self._remove_thinking(message_content) if thinking_text else message_content
+            self._remove_thinking(message_content) if embedded_thinking else message_content
         )
+        if embedded_thinking and thinking_content:
+            thinking_text = f"{thinking_content}\n\n{embedded_thinking}".strip()
+        elif embedded_thinking:
+            thinking_text = embedded_thinking
+        else:
+            thinking_text = thinking_content.strip()
 
         if response_text and not streamed_chunk_emitted:
             yield {"type": "chunk", "content": response_text}
@@ -1964,12 +2044,13 @@ class ChatService:
                 async for event in self._stream_lm_studio_native(messages, tools, model_name):
                     yield event
                 return
-            except _LMStudioNativeUnavailable:
-                logger.warning(
-                    "LM Studio native /api/v1/chat unavailable; "
-                    "falling back to compat endpoint (real-time streaming disabled)"
-                )
-                # Fall through to the compat endpoint path below
+            except _LMStudioNativeUnavailable as exc:
+                logger.error("LM Studio native streaming unavailable: %s", exc)
+                raise RuntimeError(
+                    "LM Studio native streaming endpoint (/api/v1/chat) kullanilamiyor. "
+                    "Gercek zamanli streaming icin LM Studio 0.4+ surumu ve "
+                    "AI_BASE_URL=http://localhost:1234/v1 kullanin."
+                ) from exc
 
         base_url = self._get_base_url()
         model = self._config.ai_model_name or self._get_default_model()
@@ -2339,3 +2420,4 @@ class ChatService:
             await self._mcp.close()
             self._mcp = None
             self._mcp_initialized = False
+
