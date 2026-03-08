@@ -7,6 +7,11 @@ def main():
     if mode == "desktop":
         from ui.app import launch
         launch()
+    elif mode == "dev":
+        import subprocess
+        import os
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "start.sh")
+        subprocess.run(["bash", script, "dev"])
     else:
         import uvicorn
         uvicorn.run(
