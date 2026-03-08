@@ -31,7 +31,19 @@ class SettingsPanel(ctk.CTkToplevel):
         self._section(main, "ikas API Ayarlari")
         self._store_name = self._field(main, "Magaza Adi:", config.ikas_store_name)
         self._client_id = self._field(main, "Client ID:", config.ikas_client_id)
-        self._client_secret = self._field(main, "Client Secret:", config.ikas_client_secret, show="*")
+        self._client_secret = self._field(main, “Client Secret:”, config.ikas_client_secret, show=”*”)
+
+        # â”€â”€ ikas MCP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        self._section(main, “ikas MCP Entegrasyonu”, top_pad=20)
+        ctk.CTkLabel(
+            main,
+            text=”MCP (Model Context Protocol) ile AI modelleriniz ikas magaza verilerine “
+                 “erisebilir. ikas admin panelinden MCP Client uygulamasi olusturup token alin.”,
+            text_color=COLORS[“text_secondary”],
+            wraplength=820,
+            justify=”left”,
+        ).pack(anchor=”w”, pady=(0, 4))
+        self._mcp_token = self._field(main, “MCP Token (mcp_...):”, config.ikas_mcp_token, show=”*”)
 
         # â”€â”€ AI Provider â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self._section(main, "AI Provider", top_pad=20)
@@ -503,6 +515,7 @@ class SettingsPanel(ctk.CTkToplevel):
             "store_name": self._store_name.get(),
             "client_id": self._client_id.get(),
             "client_secret": self._client_secret.get(),
+            "mcp_token": self._mcp_token.get(),
             "ai_provider": provider,
             "ai_api_key": api_key,
             "ai_base_url": base_url,

@@ -442,6 +442,21 @@ class _PendingEntry(ctk.CTkFrame):
         return time.time() - self._started_at
 
 
+_CLR_MCP_OK = "#69f0ae"
+_CLR_MCP_OFF = "#9ca3af"
+_CLR_QUICK_BTN = "#1e2a3a"
+_CLR_QUICK_BTN_HOVER = "#2a3a4a"
+_CLR_INPUT_BG = "#1c2026"
+
+_QUICK_ACTIONS = [
+    ("SEO Analiz", "Bu urunun SEO skorunu detayli analiz et ve iyilestirme onerileri ver."),
+    ("Baslik Onerisi", "Bu urun icin SEO uyumlu 3 farkli baslik onerisi ver."),
+    ("Aciklama Yaz", "Bu urun icin 200-300 kelimelik SEO uyumlu bir aciklama yaz."),
+    ("Rakip Analizi", "Bu urun kategorisindeki rakip urunlerle karsilastirma yap."),
+    ("Kampanya Fikri", "Bu urun icin kampanya ve pazarlama fikirleri onerisi ver."),
+]
+
+
 class AIChatPanel(ctk.CTkFrame):
     _FIELD_LABELS = {
         "all": "Tam Urun",
@@ -450,12 +465,16 @@ class AIChatPanel(ctk.CTkFrame):
         "meta_desc": "Meta Description",
         "desc_tr": "Aciklama (TR)",
         "desc_en": "Aciklama (EN)",
+        "chat": "Sohbet",
     }
 
-    def __init__(self, master, **kwargs):
+    def __init__(self, master, *, on_chat_send: Callable[[str], None] | None = None, **kwargs):
         kwargs.setdefault("fg_color", COLORS["bg_primary"])
         super().__init__(master, **kwargs)
 
+        self._on_chat_send = on_chat_send
+
+        # ── Header ────────────────────────────────────────────────────────
         header = ctk.CTkFrame(self, fg_color=COLORS["bg_secondary"], height=38)
         header.pack(fill="x")
         header.pack_propagate(False)
@@ -466,6 +485,14 @@ class AIChatPanel(ctk.CTkFrame):
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color=_CLR_SUCCESS,
         ).pack(side="left", padx=10, pady=6)
+
+        self._mcp_indicator = ctk.CTkLabel(
+            header,
+            text="",
+            font=ctk.CTkFont(size=10),
+            text_color=_CLR_MCP_OFF,
+        )
+        self._mcp_indicator.pack(side="left", padx=(4, 0))
 
         self._status_lbl = ctk.CTkLabel(
             header,
@@ -493,11 +520,59 @@ class AIChatPanel(ctk.CTkFrame):
             command=self.clear,
         ).pack(side="right", padx=6, pady=6)
 
+        # ── Scrollable message area ──────────────────────────────────────
         self._scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
         self._scroll.pack(fill="both", expand=True, padx=6, pady=6)
 
         self._entries: list[ctk.CTkFrame] = []
         self._pending: Optional[_PendingEntry] = None
+
+        # ── Quick actions ────────────────────────────────────────────────
+        self._quick_frame = ctk.CTkFrame(self, fg_color="transparent", height=36)
+        self._quick_frame.pack(fill="x", padx=8, pady=(0, 4))
+        for label, prompt in _QUICK_ACTIONS:
+            ctk.CTkButton(
+                self._quick_frame,
+                text=label,
+                width=0,
+                height=26,
+                font=ctk.CTkFont(size=11),
+                fg_color=_CLR_QUICK_BTN,
+                hover_color=_CLR_QUICK_BTN_HOVER,
+                text_color=_CLR_MUTED,
+                corner_radius=999,
+                command=lambda p=prompt: self._send_quick_action(p),
+            ).pack(side="left", padx=2)
+
+        # ── Chat input ──────────────────────────────────────────────────
+        input_frame = ctk.CTkFrame(self, fg_color=_CLR_INPUT_BG, corner_radius=12)
+        input_frame.pack(fill="x", padx=8, pady=(0, 8))
+
+        self._chat_input = ctk.CTkTextbox(
+            input_frame,
+            height=44,
+            fg_color="transparent",
+            text_color=COLORS["text_primary"],
+            font=ctk.CTkFont(size=13),
+            wrap="word",
+            border_width=0,
+        )
+        self._chat_input.pack(fill="x", side="left", expand=True, padx=(10, 0), pady=4)
+        self._chat_input.bind("<Return>", self._on_enter_key)
+        self._chat_input.bind("<Shift-Return>", lambda e: None)  # Allow newlines
+
+        self._send_btn = ctk.CTkButton(
+            input_frame,
+            text="Gonder",
+            width=68,
+            height=32,
+            fg_color=COLORS["accent"],
+            hover_color="#c93050",
+            corner_radius=8,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=self._on_send_click,
+        )
+        self._send_btn.pack(side="right", padx=8, pady=6)
 
     def start_thinking(
         self,
@@ -801,3 +876,161 @@ class AIChatPanel(ctk.CTkFrame):
         if pending:
             parts.append("running")
         self._count_lbl.configure(text=" | ".join(parts))
+
+    # ── Chat input methods ───────────────────────────────────────────────
+
+    def _on_enter_key(self, event) -> str:
+        """Handle Enter key in chat input (Shift+Enter for newline)."""
+        if event.state & 0x1:  # Shift held
+            return ""  # Allow default behavior (newline)
+        self._on_send_click()
+        return "break"  # Prevent default newline
+
+    def _on_send_click(self) -> None:
+        """Send the chat input content."""
+        text = self._chat_input.get("1.0", "end-1c").strip()
+        if not text:
+            return
+        self._chat_input.delete("1.0", "end")
+        if self._on_chat_send:
+            self._on_chat_send(text)
+
+    def _send_quick_action(self, prompt: str) -> None:
+        """Send a quick action prompt."""
+        if self._on_chat_send:
+            self._on_chat_send(prompt)
+
+    def set_chat_enabled(self, enabled: bool) -> None:
+        """Enable or disable the chat input."""
+        state = "normal" if enabled else "disabled"
+        self._chat_input.configure(state=state)
+        self._send_btn.configure(state=state)
+
+    def set_mcp_status(self, connected: bool, tool_count: int = 0) -> None:
+        """Update the MCP connection indicator."""
+        if connected:
+            self._mcp_indicator.configure(
+                text=f"\u25CF MCP ({tool_count} arac)",
+                text_color=_CLR_MCP_OK,
+            )
+        else:
+            self._mcp_indicator.configure(
+                text="",
+                text_color=_CLR_MCP_OFF,
+            )
+
+    def add_chat_message(
+        self,
+        *,
+        role: str,
+        content: str,
+        thinking: str = "",
+        model_name: str = "",
+        meta: Optional[dict] = None,
+        tool_results: Optional[list[dict]] = None,
+    ) -> None:
+        """Add a chat message (user or assistant) to the panel."""
+        if role == "user":
+            bubble = _PromptBubble(self._scroll, content, datetime.now().strftime("%H:%M:%S"))
+            bubble.pack(fill="x")
+            self._entries.append(bubble)
+        else:
+            # Build result text including tool results if any
+            result_text = content
+            if tool_results:
+                tool_summary = "\n\n---\n**Kullanilan Araclar:**\n"
+                for tr in tool_results:
+                    tool_summary += f"- `{tr.get('tool', '?')}` "
+                    args_preview = json.dumps(tr.get("arguments", {}), ensure_ascii=False)
+                    if len(args_preview) > 80:
+                        args_preview = args_preview[:77] + "..."
+                    tool_summary += f"({args_preview})\n"
+                result_text = result_text + tool_summary
+
+            entry = self._build_completed_entry(
+                field="chat",
+                product_name="",
+                prompt="",
+                thinking=thinking,
+                result=result_text,
+                error=bool(meta and meta.get("error")),
+                elapsed=0.0,
+                model_name=model_name,
+                meta=meta or {},
+            )
+            entry.pack(fill="x", pady=(0, 10))
+            self._entries.append(entry)
+
+        self._update_count()
+        self._scroll_to_bottom()
+
+    def start_chat_thinking(self, *, model_name: str = "") -> None:
+        """Show a thinking indicator for chat responses."""
+        if self._pending is not None:
+            self._pending.stop()
+            self._pending.destroy()
+            self._pending = None
+
+        self._pending = _PendingEntry(
+            self._scroll,
+            field="chat",
+            product_name="Sohbet",
+            field_labels=self._FIELD_LABELS,
+            model_name=model_name,
+            on_cancel=None,
+        )
+        self._pending.pack(fill="x", pady=(0, 10))
+        self._entries.append(self._pending)
+        self._status_lbl.configure(text="Yanit bekleniyor...")
+        self._update_count()
+        self._scroll_to_bottom()
+
+    def complete_chat_response(
+        self,
+        *,
+        content: str,
+        thinking: str = "",
+        model_name: str = "",
+        meta: Optional[dict] = None,
+        tool_results: Optional[list[dict]] = None,
+        error: bool = False,
+    ) -> None:
+        """Complete the chat thinking indicator and show the response."""
+        elapsed = 0.0
+        if self._pending is not None:
+            elapsed = self._pending.get_elapsed()
+            self._pending.stop()
+            self._pending.destroy()
+            try:
+                self._entries.remove(self._pending)
+            except ValueError:
+                pass
+            self._pending = None
+
+        result_text = content
+        if tool_results:
+            tool_summary = "\n\n---\n**Kullanilan Araclar:**\n"
+            for tr in tool_results:
+                tool_summary += f"- `{tr.get('tool', '?')}` "
+                args_preview = json.dumps(tr.get("arguments", {}), ensure_ascii=False)
+                if len(args_preview) > 80:
+                    args_preview = args_preview[:77] + "..."
+                tool_summary += f"({args_preview})\n"
+            result_text = result_text + tool_summary
+
+        entry = self._build_completed_entry(
+            field="chat",
+            product_name="",
+            prompt="",
+            thinking=thinking,
+            result="" if error else result_text,
+            error=result_text if error else "",
+            elapsed=elapsed,
+            model_name=model_name,
+            meta=meta or {},
+        )
+        entry.pack(fill="x", pady=(0, 10))
+        self._entries.append(entry)
+        self._status_lbl.configure(text="")
+        self._update_count()
+        self._scroll_to_bottom()
