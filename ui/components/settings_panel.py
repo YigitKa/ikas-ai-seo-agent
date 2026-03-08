@@ -1,9 +1,16 @@
-"""Settings panel with multi-AI-provider support."""
+﻿"""Settings panel with multi-AI-provider support."""
 
 import threading
 
 import customtkinter as ctk
 
+from core.provider_service import (
+    PROVIDER_LABELS,
+    discover_provider_models,
+    get_provider_model_options,
+    provider_key_from_label,
+    test_settings_connection,
+)
 from core.prompt_store import (
     get_prompt_editor_groups,
     get_prompt_editor_meta,
@@ -13,66 +20,17 @@ from core.prompt_store import (
 )
 from ui.themes.dark import COLORS
 
-PROVIDERS = [
-    "none",
-    "anthropic",
-    "openai",
-    "gemini",
-    "openrouter",
-    "ollama",
-    "lm-studio",
-    "custom",
-]
-
-PROVIDER_LABELS = {
-    "none": "None (yalnizca analiz)",
-    "anthropic": "Anthropic (Claude)",
-    "openai": "OpenAI (GPT)",
-    "gemini": "Google Gemini",
-    "openrouter": "OpenRouter",
-    "ollama": "Ollama (yerel)",
-    "lm-studio": "LM Studio (yerel)",
-    "custom": "Custom OpenAI-compatible",
-}
-
-ANTHROPIC_MODELS = [
-    "claude-haiku-4-5-20251001",
-    "claude-sonnet-4-5-20250514",
-    "claude-opus-4-5-20250514",
-    "claude-haiku-3-5-20241022",
-]
-
-OPENAI_MODELS = [
-    "gpt-4o-mini",
-    "gpt-4o",
-    "gpt-4-turbo",
-    "gpt-3.5-turbo",
-]
-
-GEMINI_MODELS = [
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
-    "gemini-2.0-flash",
-]
-
-OPENROUTER_MODELS = [
-    "openai/gpt-4o-mini",
-    "openai/gpt-4o",
-    "anthropic/claude-3-haiku",
-    "anthropic/claude-3-sonnet",
-    "google/gemini-flash-1.5",
-    "meta-llama/llama-3-8b-instruct",
-]
-
 
 class SettingsPanel(ctk.CTkToplevel):
-    def __init__(self, master, config, on_save=None, **kwargs):
+    def __init__(self, master, config, on_save=None, on_test=None, on_discover_provider_models=None, **kwargs):
         super().__init__(master, **kwargs)
         self.title("Ayarlar")
         self.geometry("900x920")
         self.resizable(True, True)
         self.configure(fg_color=COLORS["bg_primary"])
         self._on_save = on_save
+        self._on_test = on_test
+        self._on_discover_provider_models = on_discover_provider_models
         self._config = config
         self._prompt_editors: dict[str, ctk.CTkTextbox] = {}
 
@@ -83,13 +41,13 @@ class SettingsPanel(ctk.CTkToplevel):
         main = ctk.CTkScrollableFrame(self, fg_color=COLORS["bg_primary"])
         main.pack(fill="both", expand=True, padx=20, pady=20)
 
-        # ── ikas API ──────────────────────────────────────────────────────────
+        # â”€â”€ ikas API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self._section(main, "ikas API Ayarlari")
         self._store_name = self._field(main, "Magaza Adi:", config.ikas_store_name)
         self._client_id = self._field(main, "Client ID:", config.ikas_client_id)
         self._client_secret = self._field(main, "Client Secret:", config.ikas_client_secret, show="*")
 
-        # ── AI Provider ───────────────────────────────────────────────────────
+        # â”€â”€ AI Provider â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self._section(main, "AI Provider", top_pad=20)
 
         ctk.CTkLabel(main, text="Provider:", text_color=COLORS["text_secondary"]).pack(anchor="w", pady=(5, 0))
@@ -107,7 +65,7 @@ class SettingsPanel(ctk.CTkToplevel):
         self._provider_frame = ctk.CTkFrame(main, fg_color=COLORS["bg_secondary"], corner_radius=8)
         self._provider_frame.pack(fill="x", pady=(5, 0))
 
-        # ── Shared temperature/max_tokens ─────────────────────────────────────
+        # â”€â”€ Shared temperature/max_tokens â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self._section(main, "Model Parametreleri", top_pad=20)
         params_row = ctk.CTkFrame(main, fg_color="transparent")
         params_row.pack(fill="x", pady=5)
@@ -125,12 +83,12 @@ class SettingsPanel(ctk.CTkToplevel):
 
         self._thinking_mode_var = ctk.BooleanVar(value=config.ai_thinking_mode)
         ctk.CTkCheckBox(
-            main, text="AI Thinking Mode (düşünme zinciri)",
+            main, text="AI Thinking Mode (dÃ¼ÅŸÃ¼nme zinciri)",
             variable=self._thinking_mode_var,
             text_color=COLORS["text_secondary"],
         ).pack(anchor="w", pady=(10, 0))
 
-        # ── General ───────────────────────────────────────────────────────────
+        # â”€â”€ General â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self._section(main, "Genel Ayarlar", top_pad=20)
         self._languages = self._field(main, "Magaza Dilleri (virgul ile):", ",".join(config.store_languages))
         self._keywords = self._field(main, "Hedef Keywordler (virgul ile):", ",".join(config.seo_target_keywords))
@@ -151,7 +109,7 @@ class SettingsPanel(ctk.CTkToplevel):
         ).pack(anchor="w", pady=(0, 8))
         self._build_prompt_editor(main)
 
-        # ── Buttons ───────────────────────────────────────────────────────────
+        # â”€â”€ Buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         btn_frame = ctk.CTkFrame(main, fg_color="transparent")
         btn_frame.pack(fill="x", pady=20)
 
@@ -174,7 +132,7 @@ class SettingsPanel(ctk.CTkToplevel):
         self.attributes("-topmost", True)
         self.after(200, lambda: self.attributes("-topmost", False))
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
+    # â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _section(self, parent, text: str, top_pad: int = 0) -> None:
         ctk.CTkLabel(
@@ -208,7 +166,7 @@ class SettingsPanel(ctk.CTkToplevel):
         return var
 
     def _inner_entry_var(self, parent, label: str, value: str, show: str = "") -> ctk.CTkEntry:
-        """Same as _inner_field — kept for naming clarity."""
+        """Same as _inner_field â€” kept for naming clarity."""
         return self._inner_field(parent, label, value, show=show)
 
     def _set_status(self, text: str, color: str = "text_secondary") -> None:
@@ -330,11 +288,10 @@ class SettingsPanel(ctk.CTkToplevel):
         except Exception as exc:
             self._set_status(f"Promptlar sifirlanamadi: {exc}", "warning")
 
-    # ── Provider change ───────────────────────────────────────────────────────
+    # â”€â”€ Provider change â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _on_provider_change(self, label: str) -> None:
-        # Resolve label → key
-        provider = next((k for k, v in PROVIDER_LABELS.items() if v == label), "none")
+        provider = provider_key_from_label(label)
 
         # Clear the frame
         for widget in self._provider_frame.winfo_children():
@@ -366,7 +323,7 @@ class SettingsPanel(ctk.CTkToplevel):
             self._model_var = self._inner_dropdown(
                 self._provider_frame, "Model:",
                 config.ai_model_name or "claude-haiku-4-5-20251001",
-                ANTHROPIC_MODELS,
+                get_provider_model_options("anthropic"),
             )
 
         elif provider == "openai":
@@ -376,7 +333,7 @@ class SettingsPanel(ctk.CTkToplevel):
             self._model_var = self._inner_dropdown(
                 self._provider_frame, "Model:",
                 config.ai_model_name or "gpt-4o-mini",
-                OPENAI_MODELS,
+                get_provider_model_options("openai"),
             )
 
         elif provider == "gemini":
@@ -385,7 +342,7 @@ class SettingsPanel(ctk.CTkToplevel):
             self._model_var = self._inner_dropdown(
                 self._provider_frame, "Model:",
                 config.ai_model_name or "gemini-1.5-flash",
-                GEMINI_MODELS,
+                get_provider_model_options("gemini"),
             )
 
         elif provider == "openrouter":
@@ -399,7 +356,7 @@ class SettingsPanel(ctk.CTkToplevel):
             self._model_var = self._inner_dropdown(
                 self._provider_frame, "Model:",
                 config.ai_model_name or "openai/gpt-4o-mini",
-                OPENROUTER_MODELS,
+                get_provider_model_options("openrouter"),
             )
 
         elif provider == "ollama":
@@ -464,23 +421,19 @@ class SettingsPanel(ctk.CTkToplevel):
             self._base_url_entry = self._inner_field(self._provider_frame, "Base URL (zorunlu):", config.ai_base_url)
             self._model_entry = self._inner_field(self._provider_frame, "Model Adi:", config.ai_model_name)
 
-    # ── Ollama discovery ──────────────────────────────────────────────────────
+    # â”€â”€ Ollama discovery â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _discover_ollama(self) -> None:
-        base_url = (self._base_url_entry.get().rstrip("/") if self._base_url_entry else "http://localhost:11434")
+        base_url = self._base_url_entry.get().rstrip("/") if self._base_url_entry else "http://localhost:11434"
         self._ollama_status.configure(text="Kontrol ediliyor...", text_color=COLORS["warning"])
 
         def _check():
             try:
-                import httpx
-                # Health check
-                r = httpx.get(f"{base_url}/api/tags", timeout=5)
-                if r.status_code == 200:
-                    data = r.json()
-                    models = [m["name"] for m in data.get("models", [])]
-                    self.after(0, lambda: self._ollama_found(models))
+                if self._on_discover_provider_models is not None:
+                    models = self._on_discover_provider_models("ollama", base_url)
                 else:
-                    self.after(0, lambda: self._ollama_not_found(f"HTTP {r.status_code}"))
+                    models = discover_provider_models("ollama", base_url)
+                self.after(0, lambda: self._ollama_found(models))
             except Exception as exc:
                 self.after(0, lambda: self._ollama_not_found(str(exc)))
 
@@ -499,22 +452,19 @@ class SettingsPanel(ctk.CTkToplevel):
     def _ollama_not_found(self, reason: str) -> None:
         self._ollama_status.configure(text=f"Bulunamadi: {reason[:40]}", text_color=COLORS["error"] if "error" in COLORS else "#ff6b6b")
 
-    # ── LM Studio discovery ───────────────────────────────────────────────────
+    # â”€â”€ LM Studio discovery â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _discover_lm_studio(self) -> None:
-        base_url = (self._base_url_entry.get().rstrip("/") if self._base_url_entry else "http://localhost:1234")
+        base_url = self._base_url_entry.get().rstrip("/") if self._base_url_entry else "http://localhost:1234"
         self._lm_studio_status.configure(text="Kontrol ediliyor...", text_color=COLORS["warning"])
 
         def _check():
             try:
-                import httpx
-                r = httpx.get(f"{base_url}/v1/models", timeout=5)
-                if r.status_code == 200:
-                    data = r.json()
-                    models = [m["id"] for m in data.get("data", [])]
-                    self.after(0, lambda: self._lm_studio_found(models))
+                if self._on_discover_provider_models is not None:
+                    models = self._on_discover_provider_models("lm-studio", base_url)
                 else:
-                    self.after(0, lambda: self._lm_studio_not_found(f"HTTP {r.status_code}"))
+                    models = discover_provider_models("lm-studio", base_url)
+                self.after(0, lambda: self._lm_studio_found(models))
             except Exception as exc:
                 self.after(0, lambda: self._lm_studio_not_found(str(exc)))
 
@@ -536,11 +486,10 @@ class SettingsPanel(ctk.CTkToplevel):
             text_color=COLORS.get("error", "#ff6b6b"),
         )
 
-    # ── Save / Test ───────────────────────────────────────────────────────────
+    # â”€â”€ Save / Test â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _collect_provider_key(self) -> str:
-        label = self._provider_var.get()
-        return next((k for k, v in PROVIDER_LABELS.items() if v == label), "none")
+        return provider_key_from_label(self._provider_var.get())
 
     def _collect_model(self) -> str:
         provider = self._collect_provider_key()
@@ -553,10 +502,7 @@ class SettingsPanel(ctk.CTkToplevel):
         else:
             return self._model_var.get() if self._model_var else ""
 
-    def _save(self) -> None:
-        if not self._save_prompt_templates(show_status=False):
-            return
-
+    def _collect_settings_payload(self) -> dict:
         provider = self._collect_provider_key()
         api_key = self._api_key_entry.get() if self._api_key_entry else ""
         base_url = self._base_url_entry.get() if self._base_url_entry else ""
@@ -571,7 +517,7 @@ class SettingsPanel(ctk.CTkToplevel):
         except ValueError:
             max_tokens = 2000
 
-        payload = {
+        return {
             "store_name": self._store_name.get(),
             "client_id": self._client_id.get(),
             "client_secret": self._client_secret.get(),
@@ -586,6 +532,12 @@ class SettingsPanel(ctk.CTkToplevel):
             "keywords": self._keywords.get(),
             "dry_run": self._dry_run_var.get(),
         }
+
+    def _save(self) -> None:
+        if not self._save_prompt_templates(show_status=False):
+            return
+
+        payload = self._collect_settings_payload()
 
         if self._on_save:
             self._on_save(payload)
@@ -604,37 +556,17 @@ class SettingsPanel(ctk.CTkToplevel):
             return
 
         self._set_status("Test ediliyor...", "warning")
+        payload = self._collect_settings_payload()
 
         def _run():
             try:
-                import httpx
-                from config.settings import get_config
-                config = get_config()
+                result = self._on_test(payload) if self._on_test is not None else test_settings_connection(payload)
+                color = "text_secondary" if provider == "none" else ("success" if result.get("ok") else "warning")
+                self.after(0, lambda: self._set_status(str(result.get("message") or "Test tamamlandi."), color))
+                return
 
-                if provider == "none":
-                    self.after(0, lambda: self._set_status("Provider 'none' — test gerekmiyor.", "text_secondary"))
-                    return
-
-                # ikas connection test
-                ikas_url = config.ikas_api_url
-                if ikas_url:
-                    r = httpx.post(
-                        f"https://{config.ikas_store_name}.myikas.com/api/admin/oauth/token",
-                        data={
-                            "grant_type": "client_credentials",
-                            "client_id": self._client_id.get(),
-                            "client_secret": self._client_secret.get(),
-                        },
-                        timeout=10,
-                    )
-                    ikas_ok = r.status_code == 200
-                else:
-                    ikas_ok = False
-
-                msg = f"ikas: {'OK' if ikas_ok else 'Hata'} | AI provider: {provider} (anahtar girildi: {'evet' if self._api_key_entry and self._api_key_entry.get() else 'hayir'})"
-                color = "success" if ikas_ok else "warning"
-                self.after(0, lambda: self._set_status(msg, color))
             except Exception as exc:
                 self.after(0, lambda: self._set_status(f"Hata: {exc}", "warning"))
 
         threading.Thread(target=_run, daemon=True).start()
+

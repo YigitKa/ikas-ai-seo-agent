@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import re
 import threading
 import tkinter as tk
 from datetime import datetime
@@ -9,16 +8,9 @@ from typing import Callable, Optional
 
 import customtkinter as ctk
 
-from config.settings import get_config
-from core.ai_client import (
-    build_en_translation_request,
-    build_field_rewrite_request,
-    build_product_rewrite_request,
-)
 from core.models import Product, SeoScore, SeoSuggestion
-from core.prompt_store import ensure_prompt_files
+from core.presentation import summarize_suggestion_result
 from core.product_manager import ProductManager
-from data import db
 from ui.components.ai_chat_panel import AIChatPanel
 from ui.components.diff_viewer import DiffViewer
 from ui.components.dockable_panel import DockablePanel
@@ -31,24 +23,6 @@ logger = logging.getLogger(__name__)
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
-
-
-def _normalize_prompt_block(text: str) -> str:
-    lines = [line.rstrip() for line in text.splitlines()]
-    normalized: list[str] = []
-    blank_pending = False
-
-    for line in lines:
-        if line.strip():
-            if blank_pending and normalized:
-                normalized.append("")
-            normalized.append(line.strip())
-            blank_pending = False
-        else:
-            blank_pending = True
-
-    result = "\n".join(normalized).strip()
-    return re.sub(r"\n{3,}", "\n\n", result)
 
 
 class ConsoleLogHandler(logging.Handler):
@@ -79,7 +53,6 @@ class App(ctk.CTk):
         self._sash_set = False
         self.after(50, lambda: self.state("zoomed"))
         self.bind("<Configure>", self._on_configure)
-        ensure_prompt_files()
 
         self._manager = ProductManager()
         self._image_service = get_image_service()
@@ -106,8 +79,7 @@ class App(ctk.CTk):
         self._update_ai_button_state()
         self._schedule_llm_check()
 
-        config = get_config()
-        if not config.ikas_store_name or not config.ikas_client_id:
+        if self._manager.is_setup_incomplete():
             self.after(300, self._open_settings)
 
     def _build_toolbar(self) -> None:
@@ -230,7 +202,7 @@ class App(ctk.CTk):
         ctk.CTkFrame(self._status_bar, fg_color=COLORS["border"], width=1).pack(side="right", fill="y", padx=2, pady=4)
 
     def _refresh_status_bar_info(self) -> None:
-        config = get_config()
+        config = self._manager.get_config()
         self._store_label.configure(text=f"Magaza: {config.ikas_store_name or '-'}")
         model_name = config.ai_model_name or "-"
         if "/" in model_name:
@@ -247,7 +219,7 @@ class App(ctk.CTk):
         self._check_llm_status()
 
     def _check_llm_status(self) -> None:
-        config = get_config()
+        config = self._manager.get_config()
         provider = config.ai_provider.lower()
         if provider == "none":
             self._llm_status_label.configure(text="\u25CF Provider yok", text_color=COLORS["text_secondary"])
@@ -255,33 +227,21 @@ class App(ctk.CTk):
         self._llm_status_label.configure(text="\u25CF Kontrol ediliyor...", text_color=COLORS["warning"])
 
         def ping() -> None:
-            try:
-                import httpx
-                from core.ai_client import PROVIDER_BASE_URLS
-
-                base = config.ai_base_url.rstrip("/") if config.ai_base_url else PROVIDER_BASE_URLS.get(provider, "")
-                if not base:
-                    self.after(0, lambda: self._llm_status_label.configure(text="\u25CF URL yok", text_color=COLORS["error"]))
-                    return
-                if provider in ("ollama", "lm-studio", "custom", "openai") and not base.endswith("/v1"):
-                    base = base + "/v1"
-                url = f"{base}/models" if provider in ("ollama", "lm-studio", "custom", "openai") else base
-                response = httpx.get(url, timeout=5)
-                if response.status_code != 200:
-                    self.after(0, lambda: self._llm_status_label.configure(text=f"\u25CF HTTP {response.status_code}", text_color=COLORS["error"]))
-                    return
-                model_info = ""
-                try:
-                    payload = response.json()
-                    if payload.get("data"):
-                        model_id = payload["data"][0].get("id", "")
-                        if model_id:
-                            model_info = f" [{model_id}]"
-                except Exception:
-                    pass
-                self.after(0, lambda: self._llm_status_label.configure(text=f"\u25CF Bagli{model_info}", text_color=COLORS["success"]))
-            except Exception:
-                self.after(0, lambda: self._llm_status_label.configure(text="\u25CF Cevrimdisi", text_color=COLORS["error"]))
+            health = self._manager.get_provider_health()
+            color_map = {
+                "ok": COLORS["success"],
+                "disabled": COLORS["text_secondary"],
+                "missing_url": COLORS["error"],
+                "error": COLORS["error"],
+                "offline": COLORS["error"],
+            }
+            self.after(
+                0,
+                lambda: self._llm_status_label.configure(
+                    text=str(health.get("message") or "\u25CF Cevrimdisi"),
+                    text_color=color_map.get(str(health.get("status")), COLORS["warning"]),
+                ),
+            )
 
         threading.Thread(target=ping, daemon=True).start()
 
@@ -329,16 +289,6 @@ class App(ctk.CTk):
                 self.after(0, lambda result=result: on_success(result))
 
         threading.Thread(target=thread_target, daemon=True).start()
-
-    def _format_prompt_display(self, request: dict) -> str:
-        system_prompt = _normalize_prompt_block(request.get("system_prompt") or "")
-        user_prompt = _normalize_prompt_block(request.get("user_prompt") or "")
-        parts = []
-        if system_prompt:
-            parts.append("[system]\n" + system_prompt)
-        if user_prompt:
-            parts.append("[user]\n" + user_prompt)
-        return "\n\n".join(parts).strip()
 
     def _begin_ai_job(
         self,
@@ -446,11 +396,9 @@ class App(ctk.CTk):
         self._current_page = page
 
         def background_work():
-            products = asyncio.run(self._manager.fetch_products(limit=self._page_size, page=page))
-            total_count = self._manager._ikas.total_count
-            self.after(0, lambda count=len(products): self._set_status(f"{count} urun analiz ediliyor..."))
-            products_data = self._manager.score_products(products)
-            return products_data, total_count, len(products)
+            products_data, total_count = asyncio.run(self._manager.fetch_and_score_products(limit=self._page_size, page=page))
+            self.after(0, lambda count=len(products_data): self._set_status(f"{count} urun analiz ediliyor..."))
+            return products_data, total_count, len(products_data)
 
         def on_complete(result: object) -> None:
             products_data, total_count, count = result
@@ -593,18 +541,15 @@ class App(ctk.CTk):
             self._diff_viewer.set_product_action_loading_done("rewrite")
             return
 
-        config = get_config()
         product = self._selected_product
         score = self._selected_score
-        self._set_status(f"AI ile yeniden yaziliyor ({config.ai_provider})...")
-        request = build_product_rewrite_request(config, config.ai_provider, product, score)
-        prompt_text = self._format_prompt_display(request)
-        model_name = config.ai_model_name or config.ai_provider
+        provider = self._manager.get_config().ai_provider
+        self._set_status(f"AI ile yeniden yaziliyor ({provider})...")
+        prompt_text = self._manager.format_product_rewrite_prompt(product, score)
+        model_name = self._manager.get_active_model_name()
 
         def do_rewrite():
-            suggestion = self._manager._ai.rewrite_product(product, score)
-            db.save_suggestion(suggestion)
-            return suggestion
+            return self._manager.rewrite_product(product, score)
 
         def on_done(result: object) -> None:
             suggestion = result
@@ -618,21 +563,13 @@ class App(ctk.CTk):
                 token_text = f" | {last.get('input', 0)}+{last.get('output', 0)} tok"
             self._set_status(f"Rewrite tamamlandi{token_text}{cost_text}")
 
-            result_dict = {
-                "suggested_name": suggestion.suggested_name,
-                "suggested_meta_title": suggestion.suggested_meta_title,
-                "suggested_meta_description": suggestion.suggested_meta_description,
-            }
-            if suggestion.suggested_description:
-                result_dict["suggested_description"] = suggestion.suggested_description[:200] + "..."
-
             meta = self._manager.get_last_ai_meta()
             self._ai_chat.complete_entry(
                 field="all",
                 product_name=product.name,
                 prompt=prompt_text,
                 thinking=suggestion.thinking_text or "",
-                result=json.dumps(result_dict, ensure_ascii=False, indent=2),
+                result=json.dumps(summarize_suggestion_result(suggestion), ensure_ascii=False, indent=2),
                 model_name=model_name,
                 meta=meta,
             )
@@ -670,22 +607,18 @@ class App(ctk.CTk):
             return
 
         product = self._selected_product
-        if not (product.description or product.description_translations.get("tr", "")):
+        if not self._manager.has_translatable_description(product):
             self._set_status("Ceviri icin Turkce aciklama bulunamadi")
             self._diff_viewer.set_product_action_loading_done("translate")
             return
 
-        config = get_config()
-        request = build_en_translation_request(config, config.ai_provider, product)
-        prompt_text = self._format_prompt_display(request)
-        model_name = config.ai_model_name or config.ai_provider
-        self._set_status(f"AI ile ceviri yapiliyor ({config.ai_provider})...")
+        provider = self._manager.get_config().ai_provider
+        prompt_text = self._manager.format_translation_prompt(product)
+        model_name = self._manager.get_active_model_name()
+        self._set_status(f"AI ile ceviri yapiliyor ({provider})...")
 
         def do_translate():
-            result = self._manager._ai.translate_description_to_en(product)
-            if isinstance(result, tuple):
-                return result
-            return result, ""
+            return self._manager.translate_description_to_en(product)
 
         def on_done(result: object) -> None:
             value, thinking_text = result
@@ -744,19 +677,15 @@ class App(ctk.CTk):
             "desc_en": "Aciklama (EN)",
         }
         field_label = labels.get(field, field)
-        config = get_config()
         product = self._selected_product
         score = self._selected_score
-        self._set_status(f"{field_label} AI ile yaziliyor ({config.ai_provider})...")
-        request = build_field_rewrite_request(config, config.ai_provider, field, product)
-        prompt_text = self._format_prompt_display(request)
-        model_name = config.ai_model_name or config.ai_provider
+        provider = self._manager.get_config().ai_provider
+        self._set_status(f"{field_label} AI ile yaziliyor ({provider})...")
+        prompt_text = self._manager.format_field_rewrite_prompt(field, product)
+        model_name = self._manager.get_active_model_name()
 
         def do_rewrite():
-            result = self._manager._ai.rewrite_field(field, product, score)
-            if isinstance(result, tuple):
-                return result
-            return result, ""
+            return self._manager.rewrite_field(field, product, score)
 
         def on_done(result: object) -> None:
             value, thinking_text = result
@@ -824,8 +753,7 @@ class App(ctk.CTk):
 
     def _on_approve(self, suggestion: SeoSuggestion) -> None:
         def work():
-            self._manager.save_or_update_pending_suggestion(suggestion)
-            self._manager.approve_suggestion(suggestion.product_id)
+            self._manager.approve_pending_suggestion(suggestion)
             return suggestion.original_name
 
         def on_done(result: object) -> None:
@@ -836,7 +764,7 @@ class App(ctk.CTk):
 
     def _on_reject(self, suggestion: SeoSuggestion) -> None:
         def work():
-            self._manager.reject_suggestion(suggestion.product_id)
+            self._manager.reject_pending_suggestion(suggestion.product_id)
             return suggestion.original_name
 
         def on_done(result: object) -> None:
@@ -888,7 +816,7 @@ class App(ctk.CTk):
             self._filter_products_by_suggestion_status("approved")
 
     def _update_ai_button_state(self) -> None:
-        config = get_config()
+        config = self._manager.get_config()
         ikas_configured = bool(config.ikas_store_name and config.ikas_client_id)
         ai_configured = config.ai_provider != "none"
         has_product = self._selected_product is not None
@@ -899,18 +827,26 @@ class App(ctk.CTk):
             self._diff_viewer.set_ai_enabled(ai_configured and has_product)
 
     def _open_settings(self) -> None:
-        config = get_config()
-        SettingsPanel(self, config, on_save=self._on_settings_save)
+        SettingsPanel(
+            self,
+            self._manager.get_config(),
+            on_save=self._on_settings_save,
+            on_test=self._on_settings_test,
+            on_discover_provider_models=self._on_discover_provider_models,
+        )
 
     def _on_settings_save(self, values: dict) -> None:
-        from config.settings import save_config_to_env
-
-        save_config_to_env(values)
-        self._manager.reload_ai_client()
-        config = get_config()
+        self._manager.save_settings(values)
+        config = self._manager.get_config()
         self._update_ai_button_state()
         self._refresh_status_bar_info()
         self._set_status(f"Ayarlar kaydedildi | AI: {config.ai_provider}")
+
+    def _on_settings_test(self, values: dict) -> dict:
+        return self._manager.test_settings_connection(values)
+
+    def _on_discover_provider_models(self, provider: str, base_url: str = "") -> list[str]:
+        return self._manager.discover_provider_models(provider, base_url)
 
 
 def launch() -> None:

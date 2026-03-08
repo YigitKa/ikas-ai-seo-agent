@@ -1,18 +1,28 @@
 import logging
 from typing import List, Optional
 
-from config.settings import get_config
-from core.ai_client import BaseAIClient, create_ai_client
+from config.settings import get_config, save_config_to_env
+from core.ai_client import (
+    BaseAIClient,
+    build_en_translation_request,
+    build_field_rewrite_request,
+    build_product_rewrite_request,
+    create_ai_client,
+)
 from core.ikas_client import IkasClient
-from core.models import Product, SeoScore, SeoSuggestion
+from core.models import AppConfig, Product, SeoScore, SeoSuggestion
+from core.presentation import format_prompt_display, get_tr_description_value
+from core.provider_service import discover_provider_models, get_provider_health, test_settings_connection
 from core.seo_analyzer import analyze_product
 from data import db
+from core.prompt_store import ensure_prompt_files
 
 logger = logging.getLogger(__name__)
 
 
 class ProductManager:
     def __init__(self) -> None:
+        ensure_prompt_files()
         self._ikas = IkasClient()
         self._config = get_config()
         self._ai: BaseAIClient = create_ai_client(self._config)
@@ -23,11 +33,21 @@ class ProductManager:
         self._config = _get()
         self._ai = create_ai_client(self._config)
 
+    def get_config(self) -> AppConfig:
+        return self._config
+
+    def is_setup_incomplete(self) -> bool:
+        return not self._config.ikas_store_name or not self._config.ikas_client_id
+
     async def fetch_products(self, limit: int = 50, page: int = 1) -> List[Product]:
         products = await self._ikas.get_products(limit=limit, page=page)
         db.save_products(products)
         logger.info(f"Fetched and cached {len(products)} products (page {page})")
         return products
+
+    async def fetch_and_score_products(self, limit: int = 50, page: int = 1) -> tuple[list[tuple[Product, SeoScore]], int]:
+        products = await self.fetch_products(limit=limit, page=page)
+        return self.score_products(products), self._ikas.total_count
 
     async def fetch_product(self, product_id: str) -> Optional[Product]:
         product = await self._ikas.get_product_by_id(product_id)
@@ -70,6 +90,61 @@ class ProductManager:
             db.save_suggestion(s)
         logger.info(f"Generated {len(suggestions)} suggestions")
         return suggestions
+
+    def format_product_rewrite_prompt(self, product: Product, score: SeoScore) -> str:
+        request = build_product_rewrite_request(self._config, self._config.ai_provider, product, score)
+        return format_prompt_display(request)
+
+    def format_field_rewrite_prompt(self, field: str, product: Product) -> str:
+        request = build_field_rewrite_request(self._config, self._config.ai_provider, field, product)
+        return format_prompt_display(request)
+
+    def format_translation_prompt(self, product: Product) -> str:
+        request = build_en_translation_request(self._config, self._config.ai_provider, product)
+        return format_prompt_display(request)
+
+    def get_active_model_name(self) -> str:
+        return self._config.ai_model_name or self._config.ai_provider
+
+    def rewrite_product(self, product: Product, score: SeoScore) -> SeoSuggestion:
+        suggestion = self._ai.rewrite_product(product, score)
+        db.save_suggestion(suggestion)
+        return suggestion
+
+    def rewrite_field(self, field: str, product: Product, score: SeoScore) -> tuple[str, str]:
+        result = self._ai.rewrite_field(field, product, score)
+        if isinstance(result, tuple):
+            return result
+        return result, ""
+
+    def translate_description_to_en(self, product: Product) -> tuple[str, str]:
+        result = self._ai.translate_description_to_en(product)
+        if isinstance(result, tuple):
+            return result
+        return result, ""
+
+    def has_translatable_description(self, product: Product) -> bool:
+        return bool(get_tr_description_value(product.description, product.description_translations))
+
+    def approve_pending_suggestion(self, suggestion: SeoSuggestion) -> None:
+        self.save_or_update_pending_suggestion(suggestion)
+        self.approve_suggestion(suggestion.product_id)
+
+    def reject_pending_suggestion(self, product_id: str) -> None:
+        self.reject_suggestion(product_id)
+
+    def save_settings(self, values: dict) -> None:
+        save_config_to_env(values)
+        self.reload_ai_client()
+
+    def get_provider_health(self) -> dict[str, str]:
+        return get_provider_health(self._config)
+
+    def discover_provider_models(self, provider: str, base_url: str = "") -> list[str]:
+        return discover_provider_models(provider, base_url=base_url)
+
+    def test_settings_connection(self, values: dict) -> dict:
+        return test_settings_connection(values)
 
     async def apply_suggestions(self, suggestions: List[SeoSuggestion]) -> int:
         applied = 0

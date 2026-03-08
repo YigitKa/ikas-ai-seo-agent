@@ -6,70 +6,13 @@ import customtkinter as ctk
 
 from core.html_utils import has_html_markup, html_to_plain_text
 from core.models import Product, SeoScore, SeoSuggestion
+from core.presentation import (
+    clean_suggestion_value,
+    get_en_description_value,
+    get_tr_description_value,
+    group_score_issues,
+)
 from ui.themes.dark import COLORS, score_color
-
-_EMPTY_SUGGESTION_VALUES = {"", "-", "AI ile yeniden yazma icin butonu kullanin"}
-_ISSUE_PATTERNS = {
-    "Baslik": ("urun adi", "baslik", "url-dostu"),
-    "Aciklama": (
-        "aciklama",
-        "paragraf",
-        "html ogeleri",
-        "cumle",
-        "kelime cesitliligi",
-        "tekrarlanan ifadeler",
-        "gecis kelimeleri",
-        "icerik kalite",
-    ),
-    "Meta Title": ("meta title",),
-    "Meta Desc": ("meta description",),
-    "Keyword": ("keyword", "kategori adi", "urun adi kelimeleri", "icerik uyumsuzlugu"),
-}
-
-
-def _clean_suggestion_value(value: str) -> str:
-    normalized = (value or "").strip()
-    return "" if normalized in _EMPTY_SUGGESTION_VALUES else normalized
-
-
-def _issue_bucket(issue: str) -> str | None:
-    lowered = issue.lower()
-    for bucket, patterns in _ISSUE_PATTERNS.items():
-        if any(pattern in lowered for pattern in patterns):
-            return bucket
-    return None
-
-
-def _group_score_issues(issues: list[str]) -> tuple[dict[str, list[str]], list[str]]:
-    grouped = {name: [] for name in _ISSUE_PATTERNS}
-    other: list[str] = []
-
-    for issue in issues:
-        bucket = _issue_bucket(issue)
-        if bucket is None:
-            other.append(issue)
-        else:
-            grouped[bucket].append(issue)
-
-    return grouped, other
-
-
-def _get_tr_description_value(description: str, translations: dict[str, str] | None = None) -> str:
-    if translations:
-        tr_desc = translations.get("tr", "")
-        if tr_desc and tr_desc.strip():
-            return tr_desc
-    if description and description.strip():
-        return description
-    return ""
-
-
-def _get_en_description_value(translations: dict[str, str] | None = None) -> str:
-    if translations:
-        en_desc = translations.get("en", "")
-        if en_desc and en_desc.strip():
-            return en_desc
-    return ""
 
 
 class _FieldWidget:
@@ -938,7 +881,7 @@ class DiffViewer(ctk.CTkFrame):
     def _apply_field_to_current_suggestion(self, field: str, value: str) -> None:
         if self._current_suggestion is None:
             return
-        cleaned = _clean_suggestion_value(value)
+        cleaned = clean_suggestion_value(value)
         if field == "name":
             self._current_suggestion.suggested_name = cleaned or None
         elif field == "meta_title":
@@ -991,7 +934,7 @@ class DiffViewer(ctk.CTkFrame):
 
         labels = {"desc_tr": "Aciklama (TR)", "desc_en": "Aciklama (EN)"}
         original_value = self._fields_orig[field].get_value()
-        suggestion_value = _clean_suggestion_value(self._fields_sugg[field].get_value())
+        suggestion_value = clean_suggestion_value(self._fields_sugg[field].get_value())
         window = _HtmlEditorWindow(
             self,
             title=f"{labels[field]} HTML Editor",
@@ -1015,7 +958,7 @@ class DiffViewer(ctk.CTkFrame):
         color = score_color(score.total_score)
         self._score_total_label.configure(text=str(score.total_score), text_color=color)
         self._score_summary_label.configure(text=f"Skor: {score.total_score}", text_color=color)
-        grouped_issues, other_issues = _group_score_issues(score.issues)
+        grouped_issues, other_issues = group_score_issues(score.issues)
         for name, (value, max_val) in {
             "Baslik": (score.title_score, 25),
             "Aciklama": (score.description_score, 30),
@@ -1076,8 +1019,8 @@ class DiffViewer(ctk.CTkFrame):
         self._current_product = product
         self._current_suggestion = None
         self.set_product_info(product)
-        desc_tr = _get_tr_description_value(product.description, product.description_translations)
-        desc_en = _get_en_description_value(product.description_translations)
+        desc_tr = get_tr_description_value(product.description, product.description_translations)
+        desc_en = get_en_description_value(product.description_translations)
         self._rewrite_product_btn.configure(state="normal", text="AI ile yeniden yaz")
         self._translate_en_btn.configure(state="normal", text="AI ile ceviri")
         self._set_field(self._fields_orig, "name", product.name)
