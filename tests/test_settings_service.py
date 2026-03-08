@@ -29,3 +29,40 @@ def test_settings_service_saves_prompt_templates(monkeypatch):
         ("description_system", "SYSTEM"),
         ("translation_user", "USER"),
     ]
+
+
+def test_settings_service_loads_prompt_templates(monkeypatch):
+    monkeypatch.setattr(
+        "core.settings_service.load_prompt_template",
+        lambda prompt_key: f"content:{prompt_key}",
+    )
+
+    service = SettingsService()
+    loaded = service.load_prompt_templates(["description_system", "translation_user"])
+
+    assert loaded == {
+        "description_system": "content:description_system",
+        "translation_user": "content:translation_user",
+    }
+
+
+def test_settings_service_resets_prompt_templates(monkeypatch):
+    reset_calls = []
+
+    def fake_reset(prompt_key: str):
+        reset_calls.append(prompt_key)
+
+    monkeypatch.setattr("core.settings_service.reset_prompt_template", fake_reset)
+    monkeypatch.setattr(
+        "core.settings_service.load_prompt_template",
+        lambda prompt_key: f"default:{prompt_key}",
+    )
+
+    service = SettingsService()
+    loaded = service.reset_prompt_templates(["description_system", "translation_user"])
+
+    assert reset_calls == ["description_system", "translation_user"]
+    assert loaded == {
+        "description_system": "default:description_system",
+        "translation_user": "default:translation_user",
+    }

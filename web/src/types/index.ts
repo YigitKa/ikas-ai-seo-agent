@@ -86,6 +86,20 @@ export interface ProviderHealth {
   message: string;
 }
 
+export interface PromptTemplate {
+  key: string;
+  title: string;
+  description: string;
+  variables: string[];
+  height: number;
+  content: string;
+}
+
+export interface PromptGroup {
+  label: string;
+  prompts: PromptTemplate[];
+}
+
 export interface RewriteResponse {
   suggestion: SeoSuggestion | null;
   field_value: string;

@@ -7,6 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from api.dependencies import get_manager
 from api.schemas import (
     MessageResponse,
+    PromptGroupResponse,
+    PromptResetRequest,
+    PromptTemplateResponse,
+    PromptTemplatesResponse,
+    PromptTemplatesUpdateRequest,
     ProviderHealthResponse,
     ProviderModelsResponse,
     SettingsResponse,
@@ -15,8 +20,36 @@ from api.schemas import (
 )
 from core.product_manager import ProductManager
 from core.provider_service import PROVIDERS, PROVIDER_LABELS
+from core.settings_service import SettingsService
 
 router = APIRouter()
+settings_service = SettingsService()
+
+
+def _build_prompt_templates_response() -> PromptTemplatesResponse:
+    groups: list[PromptGroupResponse] = []
+    for group_label, prompt_keys in settings_service.get_prompt_editor_groups():
+        prompts: list[PromptTemplateResponse] = []
+        for prompt_key in prompt_keys:
+            meta = settings_service.get_prompt_editor_meta(prompt_key)
+            prompts.append(
+                PromptTemplateResponse(
+                    key=prompt_key,
+                    title=str(meta.get("title") or prompt_key),
+                    description=str(meta.get("description") or ""),
+                    variables=[str(name) for name in meta.get("variables", ())],
+                    height=int(meta.get("height", 150)),
+                    content=settings_service.load_prompt_template(prompt_key),
+                )
+            )
+        groups.append(PromptGroupResponse(label=group_label, prompts=prompts))
+    return PromptTemplatesResponse(groups=groups)
+
+
+def _raise_prompt_http_error(exc: Exception) -> None:
+    if isinstance(exc, KeyError):
+        raise HTTPException(status_code=404, detail=str(exc))
+    raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("", response_model=SettingsResponse)
@@ -51,6 +84,43 @@ async def update_settings(
     """Persist settings to .env and reload."""
     manager.save_settings(body.values)
     return MessageResponse(message="Settings updated")
+
+
+@router.get("/prompts", response_model=PromptTemplatesResponse)
+async def get_prompt_templates() -> PromptTemplatesResponse:
+    """Return editable prompt templates with metadata."""
+    return _build_prompt_templates_response()
+
+
+@router.put("/prompts", response_model=MessageResponse)
+async def update_prompt_templates(
+    body: PromptTemplatesUpdateRequest,
+) -> MessageResponse:
+    """Persist prompt template updates."""
+    try:
+        settings_service.save_prompt_templates(body.templates)
+    except Exception as exc:
+        _raise_prompt_http_error(exc)
+    return MessageResponse(message="Prompt templates updated")
+
+
+@router.post("/prompts/reset", response_model=PromptTemplatesResponse)
+async def reset_prompt_templates(
+    body: PromptResetRequest,
+) -> PromptTemplatesResponse:
+    """Reset selected prompt templates or all templates to defaults."""
+    try:
+        prompt_keys = list(body.prompt_keys)
+        if not prompt_keys:
+            prompt_keys = [
+                prompt.key
+                for group in _build_prompt_templates_response().groups
+                for prompt in group.prompts
+            ]
+        settings_service.reset_prompt_templates(prompt_keys)
+    except Exception as exc:
+        _raise_prompt_http_error(exc)
+    return _build_prompt_templates_response()
 
 
 @router.get("/providers")

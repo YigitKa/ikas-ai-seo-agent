@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ProductTable from '../components/ProductTable';
 import ScoreCard from '../components/ScoreCard';
@@ -115,6 +116,17 @@ export default function Dashboard() {
       <div className="flex w-[420px] flex-col border-r border-gray-700">
         {/* Toolbar */}
         <div className="border-b border-gray-700 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              ikas AI SEO Agent
+            </div>
+            <Link
+              to="/settings"
+              className="rounded-md border border-gray-700 px-2.5 py-1 text-xs font-medium text-gray-300 transition hover:border-gray-500 hover:text-white"
+            >
+              Ayarlar
+            </Link>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={() => fetchMut.mutate()}

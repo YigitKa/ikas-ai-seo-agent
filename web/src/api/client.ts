@@ -17,6 +17,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 import type {
   ProductListResponse,
   ProductWithScore,
+  PromptGroup,
   SettingsData,
   ProviderInfo,
   ProviderHealth,
@@ -104,6 +105,28 @@ export async function updateSettings(values: Record<string, unknown>): Promise<{
   return request('/api/settings', {
     method: 'PUT',
     body: JSON.stringify({ values }),
+  });
+}
+
+export async function getPromptTemplates(): Promise<{ groups: PromptGroup[] }> {
+  return request('/api/settings/prompts');
+}
+
+export async function savePromptTemplates(
+  templates: Record<string, string>,
+): Promise<{ message: string }> {
+  return request('/api/settings/prompts', {
+    method: 'PUT',
+    body: JSON.stringify({ templates }),
+  });
+}
+
+export async function resetPromptTemplates(
+  promptKeys: string[] = [],
+): Promise<{ groups: PromptGroup[] }> {
+  return request('/api/settings/prompts/reset', {
+    method: 'POST',
+    body: JSON.stringify({ prompt_keys: promptKeys }),
   });
 }
 

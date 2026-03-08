@@ -105,6 +105,32 @@ class SettingsUpdateRequest(BaseModel):
     values: dict[str, Any]
 
 
+class PromptTemplateResponse(BaseModel):
+    key: str
+    title: str
+    description: str
+    variables: list[str] = Field(default_factory=list)
+    height: int = 150
+    content: str = ""
+
+
+class PromptGroupResponse(BaseModel):
+    label: str
+    prompts: list[PromptTemplateResponse] = Field(default_factory=list)
+
+
+class PromptTemplatesResponse(BaseModel):
+    groups: list[PromptGroupResponse] = Field(default_factory=list)
+
+
+class PromptTemplatesUpdateRequest(BaseModel):
+    templates: dict[str, str]
+
+
+class PromptResetRequest(BaseModel):
+    prompt_keys: list[str] = Field(default_factory=list)
+
+
 class ProviderHealthResponse(BaseModel):
     status: str
     message: str

@@ -1,229 +1,724 @@
 import { useEffect, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  getSettings,
-  updateSettings,
-  getProviders,
-  getProviderHealth,
-  testConnection,
   getMcpStatus,
+  getPromptTemplates,
+  getProviderHealth,
+  getProviderModels,
+  getProviders,
+  getSettings,
   initializeMcp,
+  resetPromptTemplates,
+  savePromptTemplates,
+  testConnection,
+  updateSettings,
 } from '../api/client';
-import type { SettingsData } from '../types';
+import type { PromptGroup, PromptTemplate, SettingsData } from '../types';
+
+type BannerTone = 'success' | 'error' | 'info';
+
+type BannerState = {
+  tone: BannerTone;
+  message: string;
+} | null;
+
+type ProviderMeta = {
+  summary: string;
+  apiKeyLabel?: string;
+  apiKeyPlaceholder?: string;
+  baseUrlLabel?: string;
+  baseUrlPlaceholder?: string;
+  defaultBaseUrl?: string;
+  lockedBaseUrl?: string;
+  modelHint: string;
+};
+
+const PROVIDER_META: Record<string, ProviderMeta> = {
+  none: {
+    summary: 'AI yeniden yazma kapali. Sadece SEO analizi calisir.',
+    modelHint: 'Model secimi gerekmiyor.',
+  },
+  anthropic: {
+    summary: 'Claude modelleri ile urun rewrite ve ceviri uretir.',
+    apiKeyLabel: 'API Key',
+    apiKeyPlaceholder: 'sk-ant-...',
+    modelHint: 'Hazir Claude modellerinden birini secin.',
+  },
+  openai: {
+    summary: 'OpenAI Responses/Chat uyumlu endpoint kullanir.',
+    apiKeyLabel: 'API Key',
+    apiKeyPlaceholder: 'sk-...',
+    baseUrlLabel: 'Base URL',
+    baseUrlPlaceholder: 'https://api.openai.com/v1',
+    defaultBaseUrl: 'https://api.openai.com/v1',
+    modelHint: 'Hazir GPT modelleri listelenir.',
+  },
+  gemini: {
+    summary: 'Google Gemini API ile rewrite ve translation calisir.',
+    apiKeyLabel: 'API Key',
+    apiKeyPlaceholder: 'AIza...',
+    modelHint: 'Gemini modelini secin.',
+  },
+  openrouter: {
+    summary: 'OpenRouter ile tek API key uzerinden farkli saglayicilari kullanir.',
+    apiKeyLabel: 'API Key',
+    apiKeyPlaceholder: 'sk-or-...',
+    baseUrlLabel: 'Base URL',
+    lockedBaseUrl: 'https://openrouter.ai/api/v1',
+    modelHint: 'Saglayici/model formatinda model secin.',
+  },
+  ollama: {
+    summary: 'Yerel Ollama instance uzerinden calisir. Model listesini tarayabilirsiniz.',
+    baseUrlLabel: 'Base URL',
+    baseUrlPlaceholder: 'http://localhost:11434/v1',
+    defaultBaseUrl: 'http://localhost:11434/v1',
+    modelHint: 'Kurulu modelleri tarayin ya da elle model girin.',
+  },
+  'lm-studio': {
+    summary: 'Yerel LM Studio OpenAI-compatible endpoint kullanir.',
+    baseUrlLabel: 'Base URL',
+    baseUrlPlaceholder: 'http://localhost:1234/v1',
+    defaultBaseUrl: 'http://localhost:1234/v1',
+    modelHint: 'Yuklu modelleri tarayin ya da elle model girin.',
+  },
+  custom: {
+    summary: 'OpenAI-compatible herhangi bir endpoint ile calisir.',
+    apiKeyLabel: 'API Key',
+    apiKeyPlaceholder: 'Opsiyonel',
+    baseUrlLabel: 'Base URL',
+    baseUrlPlaceholder: 'https://your-endpoint.example/v1',
+    modelHint: 'Model adini manuel girin.',
+  },
+};
+
+const PRESET_MODELS: Record<string, string[]> = {
+  anthropic: [
+    'claude-haiku-4-5-20251001',
+    'claude-sonnet-4-5-20250514',
+    'claude-opus-4-5-20250514',
+    'claude-haiku-3-5-20241022',
+  ],
+  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+  gemini: ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'],
+  openrouter: [
+    'openai/gpt-4o-mini',
+    'openai/gpt-4o',
+    'anthropic/claude-3-haiku',
+    'anthropic/claude-3-sonnet',
+    'google/gemini-flash-1.5',
+    'meta-llama/llama-3-8b-instruct',
+  ],
+};
+
+const DISCOVERABLE_PROVIDERS = new Set(['ollama', 'lm-studio']);
 
 export default function Settings() {
   const qc = useQueryClient();
   const [form, setForm] = useState<SettingsData | null>(null);
+  const [promptGroups, setPromptGroups] = useState<PromptGroup[]>([]);
+  const [promptValues, setPromptValues] = useState<Record<string, string>>({});
+  const [activePromptGroup, setActivePromptGroup] = useState('');
+  const [discoveredModels, setDiscoveredModels] = useState<Record<string, string[]>>({});
+  const [banner, setBanner] = useState<BannerState>(null);
 
   const settingsQ = useQuery({ queryKey: ['settings'], queryFn: getSettings });
+  const promptsQ = useQuery({ queryKey: ['prompt-templates'], queryFn: getPromptTemplates });
   const providersQ = useQuery({ queryKey: ['providers'], queryFn: getProviders });
   const healthQ = useQuery({ queryKey: ['provider-health'], queryFn: getProviderHealth });
   const mcpQ = useQuery({ queryKey: ['mcp-status'], queryFn: getMcpStatus });
 
   useEffect(() => {
-    if (settingsQ.data && !form) setForm(settingsQ.data);
-  }, [settingsQ.data, form]);
+    if (settingsQ.data) {
+      setForm((prev) => prev ?? settingsQ.data);
+    }
+  }, [settingsQ.data]);
 
-  const saveMut = useMutation({
-    mutationFn: (values: Record<string, unknown>) => updateSettings(values),
+  useEffect(() => {
+    if (!promptsQ.data || promptGroups.length > 0) {
+      return;
+    }
+    syncPromptGroups(promptsQ.data.groups);
+  }, [promptGroups.length, promptsQ.data]);
+
+  useEffect(() => {
+    if (!form) {
+      return;
+    }
+
+    const provider = form.ai_provider || 'none';
+    const meta = PROVIDER_META[provider] ?? PROVIDER_META.none;
+    const fallbackModel = buildModelOptions(provider, '', discoveredModels[provider] ?? [])[0] ?? '';
+
+    setForm((prev) => {
+      if (!prev || prev.ai_provider !== provider) {
+        return prev;
+      }
+
+      let changed = false;
+      let next = prev;
+
+      if (meta.lockedBaseUrl && prev.ai_base_url !== meta.lockedBaseUrl) {
+        next = { ...next, ai_base_url: meta.lockedBaseUrl };
+        changed = true;
+      } else if (!prev.ai_base_url && meta.defaultBaseUrl) {
+        next = { ...next, ai_base_url: meta.defaultBaseUrl };
+        changed = true;
+      }
+
+      if (!prev.ai_model_name && fallbackModel) {
+        next = { ...next, ai_model_name: fallbackModel };
+        changed = true;
+      }
+
+      return changed ? next : prev;
+    });
+  }, [discoveredModels, form]);
+
+  const saveAllMut = useMutation({
+    mutationFn: async (payload: { settings: SettingsData; prompts: Record<string, string> }) => {
+      await savePromptTemplates(payload.prompts);
+      return updateSettings(payload.settings as unknown as Record<string, unknown>);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['settings'] });
+      qc.invalidateQueries({ queryKey: ['prompt-templates'] });
       qc.invalidateQueries({ queryKey: ['provider-health'] });
       qc.invalidateQueries({ queryKey: ['mcp-status'] });
-      alert('Ayarlar kaydedildi.');
+      setBanner({ tone: 'success', message: 'Ayarlar ve promptlar kaydedildi.' });
+    },
+    onError: (error) => {
+      setBanner({ tone: 'error', message: formatError(error, 'Kaydetme sirasinda hata olustu.') });
+    },
+  });
+
+  const resetPromptMut = useMutation({
+    mutationFn: (promptKeys: string[]) => resetPromptTemplates(promptKeys),
+    onSuccess: (data, promptKeys) => {
+      syncPromptGroups(data.groups);
+      qc.invalidateQueries({ queryKey: ['prompt-templates'] });
+      setBanner({
+        tone: 'success',
+        message:
+          promptKeys.length === 1
+            ? 'Prompt varsayilan haline donduruldu.'
+            : 'Tum promptlar varsayilan haline donduruldu.',
+      });
+    },
+    onError: (error) => {
+      setBanner({ tone: 'error', message: formatError(error, 'Prompt sifirlama basarisiz oldu.') });
     },
   });
 
   const testMut = useMutation({
     mutationFn: (values: Record<string, unknown>) => testConnection(values),
+    onError: (error) => {
+      setBanner({ tone: 'error', message: formatError(error, 'Baglanti testi calismadi.') });
+    },
   });
 
   const mcpInitMut = useMutation({
     mutationFn: () => initializeMcp(),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['mcp-status'] }),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['mcp-status'] });
+      setBanner({
+        tone: result.initialized ? 'success' : 'error',
+        message: result.message || 'MCP durumu guncellendi.',
+      });
+    },
+    onError: (error) => {
+      setBanner({ tone: 'error', message: formatError(error, 'MCP baglantisi kurulamadi.') });
+    },
   });
 
-  if (!form) {
-    return <div className="flex h-screen items-center justify-center text-gray-500">Yukleniyor...</div>;
+  const discoverModelsMut = useMutation({
+    mutationFn: async ({ provider, baseUrl }: { provider: string; baseUrl: string }) => {
+      const result = await getProviderModels(provider, baseUrl);
+      return { provider, models: result.models };
+    },
+    onSuccess: ({ provider, models }) => {
+      setDiscoveredModels((prev) => ({ ...prev, [provider]: models }));
+      setForm((prev) => {
+        if (!prev || prev.ai_provider !== provider) {
+          return prev;
+        }
+        if (prev.ai_model_name && models.includes(prev.ai_model_name)) {
+          return prev;
+        }
+        if (!models[0]) {
+          return prev;
+        }
+        return { ...prev, ai_model_name: models[0] };
+      });
+      setBanner({
+        tone: models.length > 0 ? 'success' : 'info',
+        message: models.length > 0 ? `${models.length} model bulundu.` : 'Baglanti kuruldu ama model listesi bos dondu.',
+      });
+    },
+    onError: (error) => {
+      setBanner({ tone: 'error', message: formatError(error, 'Model listesi alinamadi.') });
+    },
+  });
+
+  if ((settingsQ.isLoading && !form) || (promptsQ.isLoading && promptGroups.length === 0)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-300">
+        Ayar arayuzu yukleniyor...
+      </div>
+    );
   }
 
-  const set = <K extends keyof SettingsData>(key: K, value: SettingsData[K]) =>
-    setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
+  if (!form) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-center text-slate-300">
+        {formatError(settingsQ.error, 'Ayarlar okunamadi.')}
+      </div>
+    );
+  }
 
-  const handleSave = () => saveMut.mutate(form as unknown as Record<string, unknown>);
-  const handleTest = () => testMut.mutate(form as unknown as Record<string, unknown>);
+  const currentProvider = form.ai_provider || 'none';
+  const providerMeta = PROVIDER_META[currentProvider] ?? PROVIDER_META.none;
+  const providerOptions =
+    providersQ.data?.providers?.length
+      ? providersQ.data.providers
+      : [{ key: currentProvider, label: currentProvider }];
+  const availablePromptGroups = promptGroups.length > 0 ? promptGroups : promptsQ.data?.groups ?? [];
+  const selectedPromptGroup =
+    availablePromptGroups.find((group) => group.label === activePromptGroup) ??
+    availablePromptGroups[0];
+  const modelOptions = buildModelOptions(
+    currentProvider,
+    form.ai_model_name,
+    discoveredModels[currentProvider] ?? [],
+  );
+  const showApiKey = !['none', 'ollama', 'lm-studio'].includes(currentProvider);
+  const showBaseUrl = ['openai', 'openrouter', 'ollama', 'lm-studio', 'custom'].includes(
+    currentProvider,
+  );
+  const useModelSelect = currentProvider !== 'custom' && modelOptions.length > 0;
+  const canDiscoverModels = DISCOVERABLE_PROVIDERS.has(currentProvider);
+  const promptCount = availablePromptGroups.reduce((total, group) => total + group.prompts.length, 0);
+
+  const setValue = <K extends keyof SettingsData>(key: K, value: SettingsData[K]) => {
+    setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
+  };
+
+  const handleProviderChange = (nextProvider: string) => {
+    const meta = PROVIDER_META[nextProvider] ?? PROVIDER_META.none;
+    setForm((prev) => {
+      if (!prev) {
+        return prev;
+      }
+      const nextModel =
+        prev.ai_model_name || PRESET_MODELS[nextProvider]?.[0] || discoveredModels[nextProvider]?.[0] || '';
+      let nextBaseUrl = prev.ai_base_url;
+      if (meta.lockedBaseUrl) {
+        nextBaseUrl = meta.lockedBaseUrl;
+      } else if (!nextBaseUrl && meta.defaultBaseUrl) {
+        nextBaseUrl = meta.defaultBaseUrl;
+      }
+      return {
+        ...prev,
+        ai_provider: nextProvider,
+        ai_base_url: nextBaseUrl,
+        ai_model_name: nextModel,
+      };
+    });
+  };
+
+  const handleSaveAll = () => {
+    setBanner(null);
+    saveAllMut.mutate({ settings: form, prompts: promptValues });
+  };
+
+  const handleConnectionTest = () => {
+    setBanner(null);
+    testMut.mutate(form as unknown as Record<string, unknown>);
+  };
+
+  const handlePromptChange = (promptKey: string, value: string) => {
+    setPromptValues((prev) => ({ ...prev, [promptKey]: value }));
+  };
+
+  const handlePromptReset = (promptKey: string) => {
+    setBanner(null);
+    resetPromptMut.mutate([promptKey]);
+  };
+
+  const handleResetAllPrompts = () => {
+    setBanner(null);
+    resetPromptMut.mutate([]);
+  };
+
+  const handleModelDiscovery = () => {
+    setBanner(null);
+    discoverModelsMut.mutate({
+      provider: currentProvider,
+      baseUrl: form.ai_base_url,
+    });
+  };
 
   return (
-    <div className="mx-auto max-w-3xl p-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Ayarlar</h1>
-        <a href="/" className="text-sm text-blue-400 hover:underline">
-          &larr; Dashboard
-        </a>
-      </div>
-
-      <div className="space-y-6">
-        {/* ikas */}
-        <section className="rounded-xl border border-gray-700 bg-gray-800/50 p-5">
-          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-400">
-            ikas Baglantisi
-          </h2>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Magaza Adi" value={form.store_name} onChange={(v) => set('store_name', v)} />
-            <Field label="Client ID" value={form.client_id} onChange={(v) => set('client_id', v)} />
-            <Field
-              label="Client Secret"
-              value={form.client_secret}
-              onChange={(v) => set('client_secret', v)}
-              type="password"
-            />
-          </div>
-        </section>
-
-        {/* MCP */}
-        <section className="rounded-xl border border-gray-700 bg-gray-800/50 p-5">
-          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-400">
-            ikas MCP Entegrasyonu
-            {mcpQ.data && (
-              <span
-                className={`ml-3 text-xs font-normal ${
-                  mcpQ.data.initialized ? 'text-green-400' : 'text-gray-500'
-                }`}
-              >
-                {mcpQ.data.message}
-              </span>
-            )}
-          </h2>
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(37,99,235,0.25),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(14,165,233,0.18),_transparent_24%),linear-gradient(180deg,_#020617,_#0f172a_42%,_#020617)] text-slate-100">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-slate-800/80 bg-slate-950/65 p-6 shadow-2xl shadow-slate-950/40 backdrop-blur md:flex-row md:items-end md:justify-between">
           <div className="space-y-3">
-            <Field
-              label="MCP Token"
-              value={form.mcp_token}
-              onChange={(v) => set('mcp_token', v)}
-              type="password"
-            />
-            <p className="text-xs text-gray-500">
-              ikas Admin MCP token'i ile AI chat'te magaza verilerine gercek zamanli erisim
-              saglanir. Token, ikas admin panelinden alinabilir.
-            </p>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => mcpInitMut.mutate()}
-                disabled={mcpInitMut.isPending || !form.mcp_token}
-                className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-purple-500 disabled:opacity-50"
-              >
-                {mcpInitMut.isPending ? 'Baglaniyor...' : 'MCP Baglan'}
-              </button>
-              {mcpQ.data?.initialized && (
-                <span className="flex items-center gap-1.5 text-sm text-green-400">
-                  <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
-                  Bagli
-                </span>
-              )}
-              {mcpInitMut.data && !mcpInitMut.data.initialized && (
-                <span className="text-sm text-red-400">{mcpInitMut.data.message}</span>
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* AI Provider */}
-        <section className="rounded-xl border border-gray-700 bg-gray-800/50 p-5">
-          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-400">
-            AI Provider
-            {healthQ.data && (
-              <span className="ml-3 text-xs font-normal text-gray-500">
-                {healthQ.data.message}
-              </span>
-            )}
-          </h2>
-          <div className="grid grid-cols-2 gap-4">
+            <Link to="/" className="inline-flex text-sm text-sky-300 transition hover:text-sky-200">
+              &larr; Dashboard
+            </Link>
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Provider</label>
-              <select
-                value={form.ai_provider}
-                onChange={(e) => set('ai_provider', e.target.value)}
-                className="w-full rounded-lg border border-gray-600 bg-gray-900 px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500"
-              >
-                {providersQ.data?.providers.map((p) => (
-                  <option key={p.key} value={p.key}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
+              <h1 className="text-3xl font-semibold tracking-tight text-white">Ayar Merkezi</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+                AI provider, ikas baglantisi, SEO ayarlari ve prompt dosyalari tek ekrandan
+                yonetilir. Prompt degisiklikleri bir sonraki AI isteginde aktif olur.
+              </p>
             </div>
-            <Field label="API Key" value={form.ai_api_key} onChange={(v) => set('ai_api_key', v)} type="password" />
-            <Field label="Base URL" value={form.ai_base_url} onChange={(v) => set('ai_base_url', v)} />
-            <Field label="Model" value={form.ai_model_name} onChange={(v) => set('ai_model_name', v)} />
-            <Field
-              label="Temperature"
-              value={String(form.ai_temperature)}
-              onChange={(v) => set('ai_temperature', parseFloat(v) || 0.7)}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <StatusPill
+              label="Provider"
+              value={healthQ.data?.message || currentProvider}
+              tone={toneFromHealth(healthQ.data?.status)}
             />
-            <Field
-              label="Max Tokens"
-              value={String(form.ai_max_tokens)}
-              onChange={(v) => set('ai_max_tokens', parseInt(v) || 2000)}
+            <StatusPill
+              label="MCP"
+              value={mcpQ.data?.message || 'Durum okunuyor'}
+              tone={mcpQ.data?.initialized ? 'success' : 'info'}
+            />
+            <StatusPill
+              label="Prompt"
+              value={`${promptCount} dosya aktif`}
+              tone="info"
             />
           </div>
-          <div className="mt-3 flex items-center gap-3">
-            <label className="flex items-center gap-2 text-sm text-gray-300">
-              <input
-                type="checkbox"
-                checked={form.ai_thinking_mode}
-                onChange={(e) => set('ai_thinking_mode', e.target.checked)}
-                className="rounded"
-              />
-              Thinking Mode
-            </label>
-          </div>
-        </section>
+        </div>
 
-        {/* General */}
-        <section className="rounded-xl border border-gray-700 bg-gray-800/50 p-5">
-          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-400">Genel</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Diller (virgul)" value={form.languages} onChange={(v) => set('languages', v)} />
-            <Field label="Hedef Keywordler (virgul)" value={form.keywords} onChange={(v) => set('keywords', v)} />
-          </div>
-          <div className="mt-3">
-            <label className="flex items-center gap-2 text-sm text-gray-300">
-              <input
-                type="checkbox"
-                checked={form.dry_run}
-                onChange={(e) => set('dry_run', e.target.checked)}
-                className="rounded"
-              />
-              Dry Run (ikas'a yazma)
-            </label>
-          </div>
-        </section>
-
-        {/* Actions */}
-        <div className="flex gap-3">
-          <button
-            onClick={handleSave}
-            disabled={saveMut.isPending}
-            className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500 disabled:opacity-50"
-          >
-            {saveMut.isPending ? 'Kaydediliyor...' : 'Kaydet'}
-          </button>
-          <button
-            onClick={handleTest}
-            disabled={testMut.isPending}
-            className="rounded-lg border border-gray-600 px-6 py-2.5 text-sm font-medium text-gray-300 transition hover:border-gray-500 hover:text-white disabled:opacity-50"
-          >
-            {testMut.isPending ? 'Test ediliyor...' : 'Baglanti Testi'}
-          </button>
-          {testMut.data && (
-            <span
-              className={`self-center text-sm ${testMut.data.ok ? 'text-green-400' : 'text-red-400'}`}
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-6">
+            <SectionCard
+              eyebrow="ikas"
+              title="Magaza ve SEO Ayarlari"
+              description="Magaza baglantisi ve rewrite islerinde kullanilan genel hedefler."
             >
-              {testMut.data.message}
-            </span>
-          )}
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field
+                  label="Magaza Adi"
+                  value={form.store_name}
+                  onChange={(value) => setValue('store_name', value)}
+                  placeholder="my-store"
+                />
+                <Field
+                  label="Client ID"
+                  value={form.client_id}
+                  onChange={(value) => setValue('client_id', value)}
+                  placeholder="ikas oauth client id"
+                />
+                <Field
+                  label="Client Secret"
+                  value={form.client_secret}
+                  onChange={(value) => setValue('client_secret', value)}
+                  type="password"
+                  placeholder="ikas oauth client secret"
+                />
+                <Field
+                  label="MCP Token"
+                  value={form.mcp_token}
+                  onChange={(value) => setValue('mcp_token', value)}
+                  type="password"
+                  placeholder="mcp_..."
+                />
+                <Field
+                  label="Magaza Dilleri"
+                  value={form.languages}
+                  onChange={(value) => setValue('languages', value)}
+                  placeholder="tr,en,de"
+                  hint="Virgul ile ayirin. Ilk dil ana dil olarak kabul edilir."
+                />
+                <Field
+                  label="Hedef Keywordler"
+                  value={form.keywords}
+                  onChange={(value) => setValue('keywords', value)}
+                  placeholder="spor ayakkabi, kosu ayakkabisi"
+                  hint="Rewrite ve SEO analizinde kullanilir."
+                />
+              </div>
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                <ToggleField
+                  title="Dry Run"
+                  description="Aciksa onaylanan oneriler ikas'a yazilmaz."
+                  checked={form.dry_run}
+                  onChange={(checked) => setValue('dry_run', checked)}
+                />
+                <ToggleField
+                  title="Thinking Mode"
+                  description="Destekleyen providerlarda daha detayli reasoning ister."
+                  checked={form.ai_thinking_mode}
+                  onChange={(checked) => setValue('ai_thinking_mode', checked)}
+                />
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              eyebrow="AI"
+              title="Provider ve Model"
+              description={providerMeta.summary}
+            >
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <SelectField
+                    label="Provider"
+                    value={currentProvider}
+                    onChange={handleProviderChange}
+                    options={providerOptions.map((provider) => ({
+                      value: provider.key,
+                      label: provider.label,
+                    }))}
+                  />
+                </div>
+
+                {showApiKey && (
+                  <Field
+                    label={providerMeta.apiKeyLabel || 'API Key'}
+                    value={form.ai_api_key}
+                    onChange={(value) => setValue('ai_api_key', value)}
+                    type="password"
+                    placeholder={providerMeta.apiKeyPlaceholder}
+                  />
+                )}
+
+                {showBaseUrl && (
+                  <Field
+                    label={providerMeta.baseUrlLabel || 'Base URL'}
+                    value={providerMeta.lockedBaseUrl || form.ai_base_url}
+                    onChange={(value) => setValue('ai_base_url', value)}
+                    placeholder={providerMeta.baseUrlPlaceholder}
+                    disabled={Boolean(providerMeta.lockedBaseUrl)}
+                    hint={providerMeta.lockedBaseUrl ? 'Bu provider icin sabit endpoint kullanilir.' : undefined}
+                  />
+                )}
+
+                <Field
+                  label="Temperature"
+                  value={String(form.ai_temperature)}
+                  onChange={(value) => setValue('ai_temperature', Number.parseFloat(value) || 0.7)}
+                  placeholder="0.7"
+                />
+                <Field
+                  label="Max Tokens"
+                  value={String(form.ai_max_tokens)}
+                  onChange={(value) => setValue('ai_max_tokens', Number.parseInt(value, 10) || 2000)}
+                  placeholder="2000"
+                />
+
+                <div className="md:col-span-2">
+                  {useModelSelect ? (
+                    <SelectField
+                      label="Model"
+                      value={form.ai_model_name}
+                      onChange={(value) => setValue('ai_model_name', value)}
+                      options={modelOptions.map((model) => ({ value: model, label: model }))}
+                      hint={providerMeta.modelHint}
+                    />
+                  ) : (
+                    <Field
+                      label="Model"
+                      value={form.ai_model_name}
+                      onChange={(value) => setValue('ai_model_name', value)}
+                      placeholder="Model adini girin"
+                      hint={providerMeta.modelHint}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {canDiscoverModels && (
+                <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="text-sm font-medium text-white">Yerel model tarama</div>
+                    <p className="mt-1 text-sm text-slate-400">
+                      Base URL uzerinden kurulu modelleri okuyup dropdown'u doldurur.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleModelDiscovery}
+                    disabled={discoverModelsMut.isPending}
+                    className="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-500/40 bg-sky-500/10 px-4 text-sm font-medium text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {discoverModelsMut.isPending ? 'Taraniyor...' : 'Modelleri Tara'}
+                  </button>
+                </div>
+              )}
+
+              {providersQ.error && (
+                <p className="mt-4 text-sm text-amber-300">
+                  Provider listesi API'den alinamadi. Mevcut secim korunuyor.
+                </p>
+              )}
+            </SectionCard>
+
+            <SectionCard
+              eyebrow="Prompt"
+              title="Prompt Editoru"
+              description="Aciklama ve ceviri promptlarini dosya bazli olarak yonetin."
+              actions={
+                <button
+                  onClick={handleResetAllPrompts}
+                  disabled={resetPromptMut.isPending || availablePromptGroups.length === 0}
+                  className="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Tumunu Varsayilana Don
+                </button>
+              }
+            >
+              {availablePromptGroups.length === 0 ? (
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-sm text-slate-400">
+                  Prompt metadata yuklenemedi.
+                </div>
+              ) : (
+                <>
+                  <div className="mb-5 flex flex-wrap gap-2">
+                    {availablePromptGroups.map((group) => (
+                      <button
+                        key={group.label}
+                        onClick={() => setActivePromptGroup(group.label)}
+                        className={`rounded-2xl px-4 py-2 text-sm font-medium transition ${
+                          selectedPromptGroup?.label === group.label
+                            ? 'bg-sky-500 text-slate-950'
+                            : 'border border-slate-700 bg-slate-900/80 text-slate-300 hover:border-slate-500 hover:text-white'
+                        }`}
+                      >
+                        {group.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="space-y-4">
+                    {selectedPromptGroup?.prompts.map((prompt) => (
+                      <PromptCard
+                        key={prompt.key}
+                        template={prompt}
+                        value={promptValues[prompt.key] ?? prompt.content}
+                        onChange={(value) => handlePromptChange(prompt.key, value)}
+                        onReset={() => handlePromptReset(prompt.key)}
+                        disabled={resetPromptMut.isPending}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </SectionCard>
+          </div>
+
+          <aside className="space-y-6 xl:sticky xl:top-6 xl:self-start">
+            <SectionCard
+              eyebrow="Kontrol"
+              title="Kaydet ve Test Et"
+              description="Tum degisiklikler bu panelden yonetilir."
+            >
+              <div className="space-y-3">
+                <button
+                  onClick={handleSaveAll}
+                  disabled={saveAllMut.isPending}
+                  className="inline-flex h-12 w-full items-center justify-center rounded-2xl bg-sky-500 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {saveAllMut.isPending ? 'Kaydediliyor...' : 'Tumunu Kaydet'}
+                </button>
+                <button
+                  onClick={handleConnectionTest}
+                  disabled={testMut.isPending}
+                  className="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-slate-700 bg-slate-900/70 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {testMut.isPending ? 'Test Ediliyor...' : 'Baglanti Testi'}
+                </button>
+                <button
+                  onClick={() => {
+                    setBanner(null);
+                    mcpInitMut.mutate();
+                  }}
+                  disabled={mcpInitMut.isPending || !form.mcp_token.trim()}
+                  className="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-fuchsia-500/35 bg-fuchsia-500/10 text-sm font-medium text-fuchsia-100 transition hover:bg-fuchsia-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {mcpInitMut.isPending ? 'Baglaniyor...' : 'MCP Baglan'}
+                </button>
+              </div>
+
+              {banner && <Banner tone={banner.tone} message={banner.message} className="mt-4" />}
+
+              {testMut.data && (
+                <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-300">
+                  <div className="font-medium text-white">Son baglanti testi</div>
+                  <p className="mt-2 leading-6">{testMut.data.message}</p>
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard
+              eyebrow="Durum"
+              title="Canli Ozet"
+              description="Kayitli konfigirasyonun aktif durumu."
+            >
+              <dl className="space-y-4 text-sm">
+                <StatusRow label="Secili provider" value={currentProvider} />
+                <StatusRow label="Model" value={form.ai_model_name || 'Secilmedi'} />
+                <StatusRow label="Magaza" value={form.store_name || 'Tanimlanmadi'} />
+                <StatusRow label="Diller" value={form.languages || 'tr'} />
+                <StatusRow
+                  label="Keywords"
+                  value={form.keywords || 'Tanimsiz'}
+                  mono={false}
+                />
+                <StatusRow
+                  label="Promptlar"
+                  value={`${promptCount} duzenlenebilir dosya`}
+                />
+              </dl>
+            </SectionCard>
+          </aside>
         </div>
       </div>
     </div>
+  );
+
+  function syncPromptGroups(groups: PromptGroup[]) {
+    setPromptGroups(groups);
+    setPromptValues(flattenPromptValues(groups));
+    setActivePromptGroup((prev) => {
+      if (prev && groups.some((group) => group.label === prev)) {
+        return prev;
+      }
+      return groups[0]?.label ?? '';
+    });
+  }
+}
+
+function SectionCard({
+  eyebrow,
+  title,
+  description,
+  actions,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-3xl border border-slate-800/80 bg-slate-950/65 p-5 shadow-xl shadow-slate-950/30 backdrop-blur sm:p-6">
+      <div className="mb-5 flex flex-col gap-4 border-b border-slate-800 pb-5 md:flex-row md:items-end md:justify-between">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-300/80">
+            {eyebrow}
+          </div>
+          <h2 className="mt-2 text-xl font-semibold text-white">{title}</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">{description}</p>
+        </div>
+        {actions}
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -232,21 +727,252 @@ function Field({
   value,
   onChange,
   type = 'text',
+  placeholder,
+  hint,
+  disabled = false,
 }: {
   label: string;
   value: string;
-  onChange: (v: string) => void;
+  onChange: (value: string) => void;
   type?: string;
+  placeholder?: string;
+  hint?: string;
+  disabled?: boolean;
 }) {
   return (
-    <div>
-      <label className="mb-1 block text-xs text-gray-500">{label}</label>
+    <label className="block">
+      <span className="mb-1.5 block text-sm font-medium text-slate-200">{label}</span>
       <input
         type={type}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-gray-600 bg-gray-900 px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500"
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        className="h-11 w-full rounded-2xl border border-slate-700 bg-slate-950/90 px-4 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-400 disabled:cursor-not-allowed disabled:bg-slate-900 disabled:text-slate-400"
       />
+      {hint && <span className="mt-2 block text-xs leading-5 text-slate-500">{hint}</span>}
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  hint,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+  hint?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-sm font-medium text-slate-200">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 w-full rounded-2xl border border-slate-700 bg-slate-950/90 px-4 text-sm text-slate-100 outline-none transition focus:border-sky-400"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      {hint && <span className="mt-2 block text-xs leading-5 text-slate-500">{hint}</span>}
+    </label>
+  );
+}
+
+function ToggleField({
+  title,
+  description,
+  checked,
+  onChange,
+}: {
+  title: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-start gap-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-900 text-sky-500"
+      />
+      <span className="block">
+        <span className="block text-sm font-medium text-white">{title}</span>
+        <span className="mt-1 block text-sm leading-6 text-slate-400">{description}</span>
+      </span>
+    </label>
+  );
+}
+
+function PromptCard({
+  template,
+  value,
+  onChange,
+  onReset,
+  disabled,
+}: {
+  template: PromptTemplate;
+  value: string;
+  onChange: (value: string) => void;
+  onReset: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <article className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
+      <div className="flex flex-col gap-3 border-b border-slate-800 pb-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-white">{template.title}</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">{template.description}</p>
+        </div>
+        <button
+          onClick={onReset}
+          disabled={disabled}
+          className="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Varsayilan
+        </button>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <span className="rounded-full border border-slate-800 bg-slate-900 px-3 py-1 text-xs uppercase tracking-[0.2em] text-slate-400">
+          {template.key}
+        </span>
+        {template.variables.map((variable) => (
+          <span
+            key={variable}
+            className="rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1 text-xs text-sky-200"
+          >
+            {'{{'}
+            {variable}
+            {'}}'}
+          </span>
+        ))}
+        {template.variables.length === 0 && (
+          <span className="rounded-full border border-slate-800 bg-slate-900 px-3 py-1 text-xs text-slate-500">
+            Degisken yok
+          </span>
+        )}
+      </div>
+
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        style={{ minHeight: `${Math.max(template.height, 180)}px` }}
+        className="mt-4 w-full rounded-2xl border border-slate-700 bg-slate-950/90 px-4 py-3 font-mono text-sm leading-6 text-slate-100 outline-none transition focus:border-sky-400"
+      />
+    </article>
+  );
+}
+
+function StatusPill({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: BannerTone;
+}) {
+  return (
+    <div className={`rounded-2xl border px-4 py-3 ${toneClasses(tone)}`}>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.24em] opacity-80">{label}</div>
+      <div className="mt-2 text-sm font-medium">{value}</div>
     </div>
   );
+}
+
+function StatusRow({
+  label,
+  value,
+  mono = true,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-4 last:border-b-0 last:pb-0">
+      <dt className="text-slate-500">{label}</dt>
+      <dd className={`max-w-[60%] text-right text-slate-200 ${mono ? 'font-mono text-xs' : ''}`}>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function Banner({
+  tone,
+  message,
+  className = '',
+}: {
+  tone: BannerTone;
+  message: string;
+  className?: string;
+}) {
+  return <div className={`rounded-2xl border px-4 py-3 text-sm ${toneClasses(tone)} ${className}`}>{message}</div>;
+}
+
+function toneClasses(tone: BannerTone) {
+  if (tone === 'success') {
+    return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100';
+  }
+  if (tone === 'error') {
+    return 'border-rose-500/30 bg-rose-500/10 text-rose-100';
+  }
+  return 'border-sky-500/30 bg-sky-500/10 text-sky-100';
+}
+
+function toneFromHealth(status?: string): BannerTone {
+  if (status === 'ok') {
+    return 'success';
+  }
+  if (status === 'error' || status === 'offline' || status === 'missing_url') {
+    return 'error';
+  }
+  return 'info';
+}
+
+function buildModelOptions(provider: string, currentModel: string, discovered: string[]) {
+  return uniqueStrings([currentModel, ...discovered, ...(PRESET_MODELS[provider] ?? [])]);
+}
+
+function uniqueStrings(values: string[]) {
+  const seen = new Set<string>();
+  const items: string[] = [];
+  for (const value of values) {
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    items.push(normalized);
+  }
+  return items;
+}
+
+function flattenPromptValues(groups: PromptGroup[]) {
+  const values: Record<string, string> = {};
+  for (const group of groups) {
+    for (const prompt of group.prompts) {
+      values[prompt.key] = prompt.content;
+    }
+  }
+  return values;
+}
+
+function formatError(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return fallback;
 }
