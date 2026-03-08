@@ -11,7 +11,6 @@ from core.chat_service import (
     _append_false_action_disclaimer,
     _build_completion_meta,
     _build_product_context,
-    _extract_message_directives,
     _has_mutation_tool_result,
 )
 from core.models import AppConfig, ChatMessage, Product, SeoScore
@@ -63,6 +62,13 @@ def _make_score(**overrides) -> SeoScore:
     return SeoScore(**defaults)
 
 
+def _stub_routing(service: ChatService, allow_tools: bool) -> None:
+    async def fake_get_routing_mode(user_message: str) -> bool:
+        return allow_tools
+
+    service._get_routing_mode = fake_get_routing_mode  # type: ignore[method-assign]
+
+
 def test_chat_service_init():
     config = _make_config()
     service = ChatService(config)
@@ -97,6 +103,63 @@ def test_clear_history():
     assert service.history == []
 
 
+@pytest.mark.anyio
+async def test_summarize_and_compress_history_replaces_old_messages_with_summary(monkeypatch):
+    service = ChatService(_make_config())
+    service._history = [
+        ChatMessage(
+            role="user" if idx % 2 == 0 else "assistant",
+            content=f"mesaj {idx}",
+        )
+        for idx in range(13)
+    ]
+    captured: dict[str, object] = {}
+
+    class _FakeSummaryResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [{
+                    "message": {
+                        "content": "kisa ozet",
+                    },
+                }],
+            }
+
+    async def fake_post(self_client, url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        captured["headers"] = kwargs["headers"]
+        return _FakeSummaryResponse()
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+    await service._summarize_and_compress_history()
+
+    assert str(captured["url"]).endswith("/chat/completions")
+    summary_payload = captured["json"]  # type: ignore[assignment]
+    assert summary_payload["stream"] is False
+    assert summary_payload["temperature"] == 0.2
+    summary_messages = summary_payload["messages"]  # type: ignore[index]
+    assert summary_messages[0]["role"] == "system"
+    assert "tek bir" in summary_messages[0]["content"].lower()
+    assert "paragraf" in summary_messages[0]["content"].lower()
+    assert "role: user" in summary_messages[1]["content"]
+    assert "content: mesaj 0" in summary_messages[1]["content"]
+    assert len(service.history) == 5
+    assert service.history[0].role == "system"
+    assert service.history[0].content.startswith("\u00d6nceki sohbetlerin")
+    assert service.history[0].content.endswith("kisa ozet")
+    assert [msg.content for msg in service.history[1:]] == [
+        "mesaj 9",
+        "mesaj 10",
+        "mesaj 11",
+        "mesaj 12",
+    ]
+
+
 def test_build_product_context_without_product():
     ctx = _build_product_context(None, None)
     assert "asistan" in ctx.lower() or "mağaza" in ctx.lower()
@@ -121,15 +184,19 @@ def test_build_product_context_limits_default_scope_to_current_seo_data():
     assert "eldeki alanlariyla sinirla" in ctx.lower()
 
 
-def test_extract_message_directives_ikas_forces_tools():
-    cleaned, instruction, allow_tools = _extract_message_directives("@ikas stok durumunu kontrol et")
+@pytest.mark.anyio
+async def test_extract_message_directives_ikas_forces_tools():
+    service = ChatService(_make_config())
+    cleaned, instruction, allow_tools = await service._extract_message_directives("@ikas stok durumunu kontrol et")
     assert cleaned == "stok durumunu kontrol et"
     assert instruction is not None and "@ikas" in instruction
     assert allow_tools is True
 
 
-def test_extract_message_directives_local_disables_tools():
-    cleaned, instruction, allow_tools = _extract_message_directives("@local seo skorunu yorumla")
+@pytest.mark.anyio
+async def test_extract_message_directives_local_disables_tools():
+    service = ChatService(_make_config())
+    cleaned, instruction, allow_tools = await service._extract_message_directives("@local seo skorunu yorumla")
     assert cleaned == "seo skorunu yorumla"
     assert instruction is not None and "@local" in instruction
     assert "mevcut seo metrikleri" in instruction.lower()
@@ -137,15 +204,21 @@ def test_extract_message_directives_local_disables_tools():
     assert allow_tools is False
 
 
-def test_extract_message_directives_without_mentions_stays_local():
-    cleaned, instruction, allow_tools = _extract_message_directives("seo skorunu yorumla")
+@pytest.mark.anyio
+async def test_extract_message_directives_without_mentions_stays_local():
+    service = ChatService(_make_config())
+    _stub_routing(service, False)
+    cleaned, instruction, allow_tools = await service._extract_message_directives("seo skorunu yorumla")
     assert cleaned == "seo skorunu yorumla"
     assert instruction is not None
     assert allow_tools is False
 
 
-def test_extract_message_directives_combined_mentions():
-    cleaned, instruction, allow_tools = _extract_message_directives("@ikas @local varyantlari ozetle")
+@pytest.mark.anyio
+async def test_extract_message_directives_combined_mentions():
+    service = ChatService(_make_config())
+    _stub_routing(service, True)
+    cleaned, instruction, allow_tools = await service._extract_message_directives("@ikas @local varyantlari ozetle")
     assert cleaned == "varyantlari ozetle"
     assert instruction is not None
     assert allow_tools is True
@@ -231,6 +304,88 @@ def test_get_default_model():
     assert service2._get_default_model() == "gpt-4o-mini"
 
 
+class _FakeJSONResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+@pytest.mark.anyio
+async def test_get_routing_mode_ikas_tag_bypasses_semantic_request(monkeypatch):
+    service = ChatService(_make_config())
+    called = False
+
+    async def fake_post(self_client, url, **kwargs):
+        nonlocal called
+        called = True
+        return _FakeJSONResponse({"choices": []})
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+    assert await service._get_routing_mode("@ikas stok durumunu kontrol et") is True
+    assert called is False
+
+
+@pytest.mark.anyio
+async def test_get_routing_mode_uses_semantic_llm_request(monkeypatch):
+    service = ChatService(_make_config(
+        ai_provider="openai",
+        ai_base_url="https://example.com/v1",
+        ai_model_name="gpt-test",
+    ))
+    captured = {}
+
+    async def fake_post(self_client, url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        captured["headers"] = kwargs["headers"]
+        return _FakeJSONResponse({
+            "choices": [{
+                "message": {
+                    "content": '{"needs_mcp": true}',
+                },
+            }],
+        })
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+    assert await service._get_routing_mode("stok durumunu kontrol et") is True
+    assert captured["url"] == "https://example.com/v1/chat/completions"
+    assert captured["json"]["model"] == "gpt-test"
+    assert captured["json"]["temperature"] == 0.0
+    assert captured["json"]["max_tokens"] == 15
+    assert captured["json"]["stream"] is False
+    assert captured["json"]["messages"][0]["role"] == "system"
+    assert "needs_mcp" in captured["json"]["messages"][0]["content"]
+
+
+@pytest.mark.anyio
+async def test_get_routing_mode_falls_back_to_live_data_hints_on_invalid_payload(monkeypatch):
+    service = ChatService(_make_config(
+        ai_provider="openai",
+        ai_base_url="https://example.com/v1",
+    ))
+
+    async def fake_post(self_client, url, **kwargs):
+        return _FakeJSONResponse({
+            "choices": [{
+                "message": {
+                    "content": "invalid",
+                },
+            }],
+        })
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+    assert await service._get_routing_mode("stokta kac tane kaldi") is True
+    assert await service._get_routing_mode("seo skorunu yorumla") is False
+
+
 def test_build_completion_meta_uses_stats_and_context_length():
     meta = _build_completion_meta(
         {
@@ -306,6 +461,29 @@ async def test_send_message_local_passes_only_save_suggestion_tool_even_if_mcp_r
     ]
     assert any("/no_think" in content for content in system_messages)
     assert any("save_seo_suggestion" in content for content in system_messages)
+
+
+@pytest.mark.anyio
+async def test_send_message_schedules_history_summarization_in_background(monkeypatch):
+    service = ChatService(_make_config(ai_provider="lm-studio", ai_thinking_mode=False))
+    _stub_routing(service, False)
+    scheduled: dict[str, str] = {}
+
+    async def fake_chat_completion(messages, tools):
+        return "Kisa yanit", "", [], {"model": "lm-studio-test"}
+
+    def fake_create_task(coro):
+        scheduled["name"] = coro.cr_code.co_name
+        coro.close()
+        return object()
+
+    service._chat_completion = fake_chat_completion  # type: ignore[method-assign]
+    monkeypatch.setattr(asyncio, "create_task", fake_create_task)
+
+    response = await service.send_message("selam")
+
+    assert response.error is False
+    assert scheduled["name"] == "_summarize_and_compress_history"
 
 
 @pytest.mark.anyio
@@ -438,16 +616,21 @@ def test_save_suggestion_tool_name_is_stable():
     assert SAVE_SEO_SUGGESTION_TOOL_NAME == "save_seo_suggestion"
 
 
-def test_local_routing_keeps_mcp_tools_disabled():
-    cleaned, instruction, allow_tools = _extract_message_directives("@local bunu uygula")
+@pytest.mark.anyio
+async def test_local_routing_keeps_mcp_tools_disabled():
+    service = ChatService(_make_config())
+    cleaned, instruction, allow_tools = await service._extract_message_directives("@local bunu uygula")
     assert cleaned == "bunu uygula"
     assert instruction is not None
     assert "save_seo_suggestion" in instruction
     assert allow_tools is False
 
 
-def test_default_routing_is_local_without_mentions():
-    cleaned, instruction, allow_tools = _extract_message_directives("bunu kaydet")
+@pytest.mark.anyio
+async def test_default_routing_is_local_without_mentions():
+    service = ChatService(_make_config())
+    _stub_routing(service, False)
+    cleaned, instruction, allow_tools = await service._extract_message_directives("bunu kaydet")
     assert cleaned == "bunu kaydet"
     assert instruction is not None
     assert allow_tools is False
@@ -458,6 +641,7 @@ async def test_handle_apply_intent_no_history():
     """Tool call path saves suggestions without any secondary extraction request."""
     config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1")
     service = ChatService(config)
+    _stub_routing(service, False)
     product = _make_product()
     service.set_product_context(product, _make_score())
 
@@ -502,6 +686,7 @@ async def test_handle_apply_intent_no_history():
 async def test_handle_apply_intent_creates_suggestion(monkeypatch):
     config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1")
     service = ChatService(config)
+    _stub_routing(service, False)
     product = _make_product(name="60X Mikroskop")
     service.set_product_context(product, _make_score())
 
@@ -706,6 +891,7 @@ async def test_async_stream_chat_buffers_tool_calls_until_final_response(monkeyp
 async def test_stream_message_emits_response_done_after_chunks():
     config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1")
     service = ChatService(config)
+    _stub_routing(service, False)
 
     async def fake_chat_completion_stream(messages, tools, chunk_handler):
         await chunk_handler("Mer")

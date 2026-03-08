@@ -34,6 +34,7 @@ export function useChat(productContext?: ChatProductContext) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [pendingSince, setPendingSince] = useState<number | null>(null);
+  const [liveChunkCount, setLiveChunkCount] = useState(0);
   const [mcpState, setMcpState] = useState<MCPState>({
     hasToken: false,
     initialized: false,
@@ -52,6 +53,7 @@ export function useChat(productContext?: ChatProductContext) {
     const startedAt = performance.now();
     pendingSinceRef.current = startedAt;
     setPendingSince(startedAt);
+    setLiveChunkCount(0);
     setIsLoading(true);
   }, []);
 
@@ -94,6 +96,34 @@ export function useChat(productContext?: ChatProductContext) {
         next.push({
           role: 'assistant',
           content: chunk,
+        });
+        return next;
+      });
+    });
+  }, []);
+
+  const appendThinkingChunk = useCallback((chunk: string) => {
+    if (!chunk) {
+      return;
+    }
+
+    startTransition(() => {
+      setMessages((prev) => {
+        const next = [...prev];
+        const lastMessage = next[next.length - 1];
+
+        if (lastMessage?.role === 'assistant') {
+          next[next.length - 1] = {
+            ...lastMessage,
+            thinking: `${lastMessage.thinking ?? ''}${chunk}`,
+          };
+          return next;
+        }
+
+        next.push({
+          role: 'assistant',
+          content: '',
+          thinking: chunk,
         });
         return next;
       });
@@ -156,10 +186,17 @@ export function useChat(productContext?: ChatProductContext) {
 
     ws.onmessage = (event) => {
       const data: ChatWsMessage = JSON.parse(event.data);
+      if (data.type === 'chunk' || data.type === 'thinking_chunk') {
+        setLiveChunkCount((prev) => prev + 1);
+      }
 
       switch (data.type) {
         case 'chunk':
           appendAssistantChunk(data.content || '');
+          break;
+
+        case 'thinking_chunk':
+          appendThinkingChunk(data.content || '');
           break;
 
         case 'response':
@@ -212,7 +249,7 @@ export function useChat(productContext?: ChatProductContext) {
       wsRef.current = null;
       finishPendingRequest();
     };
-  }, [appendAssistantChunk, finalizeAssistantMessage, finishPendingRequest, resetToContextIntro]);
+  }, [appendAssistantChunk, appendThinkingChunk, finalizeAssistantMessage, finishPendingRequest, resetToContextIntro]);
 
   useEffect(() => {
     const nextProductId = productContext?.id;
@@ -293,6 +330,7 @@ export function useChat(productContext?: ChatProductContext) {
     messages,
     isLoading,
     pendingSince,
+    liveChunkCount,
     mcpState,
     sendMessage,
     cancelMessage,

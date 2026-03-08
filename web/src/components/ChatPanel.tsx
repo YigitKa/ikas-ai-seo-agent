@@ -852,7 +852,15 @@ function ThinkingBlock({
   assistantLabel: string;
   durationSeconds?: number;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const isLive = typeof durationSeconds !== 'number' || durationSeconds <= 0;
+  const [expanded, setExpanded] = useState(isLive);
+
+  useEffect(() => {
+    if (isLive && text) {
+      setExpanded(true);
+    }
+  }, [isLive, text]);
+
   const title =
     typeof durationSeconds === 'number' && durationSeconds > 0
       ? `Thought for ${formatThoughtDuration(durationSeconds)}`
@@ -927,6 +935,7 @@ function MessageBubble({
   const isUser = msg.role === 'user';
   const isSystem = msg.role === 'system';
   const isAssistant = msg.role === 'assistant';
+  const hasVisibleAssistantContent = isAssistant ? Boolean(msg.content.trim()) : true;
   const roleMeta = getRoleMeta(msg.role, assistantLabel);
   const assistantMetrics = isAssistant ? getAssistantMetrics(msg.meta) : [];
   const thoughtDuration = readMetaNumber(msg.meta, 'elapsed_seconds');
@@ -955,40 +964,42 @@ function MessageBubble({
         />
       ) : null}
 
-      <div className={`${isUser ? 'ml-6' : isSystem ? '' : 'mr-6'}`}>
-        <div
-          className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-[0.16em]"
-          style={{ color: roleMeta.color }}
-        >
-          {roleMeta.label}
+      {hasVisibleAssistantContent && (
+        <div className={`${isUser ? 'ml-6' : isSystem ? '' : 'mr-6'}`}>
+          <div
+            className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-[0.16em]"
+            style={{ color: roleMeta.color }}
+          >
+            {roleMeta.label}
+          </div>
+          <div
+            className="rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed"
+            style={{
+              background: isUser
+                ? 'rgba(99, 102, 241, 0.15)'
+                : isSystem
+                  ? 'rgba(255, 255, 255, 0.03)'
+                  : 'var(--color-bg-elevated)',
+              border: isSystem ? 'none' : `1px solid ${isUser ? 'rgba(99, 102, 241, 0.2)' : 'var(--color-border)'}`,
+              color: isUser
+                ? '#c7d2fe'
+                : isSystem
+                  ? 'var(--color-text-muted)'
+                  : 'var(--color-text-primary)',
+              fontStyle: isSystem ? 'italic' : 'normal',
+              fontSize: isSystem ? '12px' : '13px',
+            }}
+          >
+            {isAssistant ? (
+              <AssistantMessageContent
+                content={msg.content}
+                onApplyOption={onApplyOption}
+                applyDisabled={applyDisabled}
+              />
+            ) : msg.content}
+          </div>
         </div>
-        <div
-          className="rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed"
-          style={{
-            background: isUser
-              ? 'rgba(99, 102, 241, 0.15)'
-              : isSystem
-                ? 'rgba(255, 255, 255, 0.03)'
-                : 'var(--color-bg-elevated)',
-            border: isSystem ? 'none' : `1px solid ${isUser ? 'rgba(99, 102, 241, 0.2)' : 'var(--color-border)'}`,
-            color: isUser
-              ? '#c7d2fe'
-              : isSystem
-                ? 'var(--color-text-muted)'
-                : 'var(--color-text-primary)',
-            fontStyle: isSystem ? 'italic' : 'normal',
-            fontSize: isSystem ? '12px' : '13px',
-          }}
-        >
-          {isAssistant ? (
-            <AssistantMessageContent
-              content={msg.content}
-              onApplyOption={onApplyOption}
-              applyDisabled={applyDisabled}
-            />
-          ) : msg.content}
-        </div>
-      </div>
+      )}
 
       {isAssistant && assistantMetrics.length > 0 ? (
         <div className="mr-6 flex flex-wrap justify-end gap-1.5">
@@ -1083,6 +1094,7 @@ export default function ChatPanel({
     messages,
     isLoading,
     pendingSince,
+    liveChunkCount,
     mcpState,
     sendMessage,
     cancelMessage,
@@ -1337,6 +1349,13 @@ export default function ChatPanel({
               label="Sure"
               value={formatDuration(liveElapsedSeconds)}
               tone="warn"
+            />
+          )}
+          {isLoading && liveElapsedSeconds > 0 && (
+            <StatusPill
+              label="Canli Hiz"
+              value={`${Math.round(liveChunkCount / liveElapsedSeconds)} tok/sn`}
+              tone="success"
             />
           )}
         </div>

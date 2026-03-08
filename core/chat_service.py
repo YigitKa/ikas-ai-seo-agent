@@ -31,6 +31,14 @@ logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 5  # Max sequential tool-call rounds per message
 MAX_HISTORY_MESSAGES = 40  # Keep conversation manageable for context window
+HISTORY_SUMMARY_TRIGGER_MESSAGES = 12
+HISTORY_SUMMARY_KEEP_RECENT_MESSAGES = 4
+MEMORY_SUMMARIZATION_PROMPT = (
+    "A\u015fa\u011f\u0131daki sohbet ge\u00e7mi\u015fini, kullan\u0131c\u0131n\u0131n "
+    "niyetini, tercihlerini ve onaylanan i\u015fleri kaybetmeden tek bir "
+    "k\u0131sa paragraf olarak \u00f6zetle."
+)
+HISTORY_SUMMARY_SYSTEM_PREFIX = "\u00d6nceki sohbetlerin \u00f6zeti: "
 
 CHAT_FLOW_SYSTEM_PROMPT_TR = """Sen bir ikas e-ticaret magazasi SEO asistansin.
 Bu sohbette 3 rol vardir:
@@ -217,6 +225,27 @@ LIVE_PRODUCT_HINT_PATTERNS = (
     PRICE_HINT_PATTERN,
     VARIANT_HINT_PATTERN,
 )
+LIVE_DATA_HINT_PATTERNS = (
+    STOCK_HINT_PATTERN,
+    PRICE_HINT_PATTERN,
+    VARIANT_HINT_PATTERN,
+    ORDER_HINT_PATTERN,
+    CUSTOMER_HINT_PATTERN,
+)
+NORMALIZED_LIVE_DATA_HINT_PATTERN = re.compile(
+    r"\bstok\b|\benvanter\b|\bkac tane\b|\bkac kaldi\b|\bfiyat\b|\bucret\b|"
+    r"\bprice\b|\bvaryant\b|\bvariant\b|\bsiparis\b|\border\b|\bmusteri\b|\bcustomer\b",
+    re.IGNORECASE,
+)
+SEMANTIC_ROUTING_SYSTEM_PROMPT = (
+    "Sen bir niyet tespit (intent detection) asistanisin. "
+    "Kullanicinin mesaji magazanin canli veritabanindan "
+    "(stok, fiyat, siparisler, musteri, varyant) anlik veri cekmeyi "
+    "gerektiriyorsa 'true', sadece SEO metin yazarligi, icerik analizi "
+    "veya genel bir sohbet ise 'false' don. "
+    'SADECE ASAGIDAKI GIBI GECERLI BIR JSON DON: {"needs_mcp": true/false}'
+)
+SEMANTIC_ROUTING_JSON_PATTERN = re.compile(r"\{.*\}", re.DOTALL)
 
 # Patterns that detect when the LLM falsely claims to have performed actions
 # These are checked post-response when no MCP mutation was actually executed
@@ -339,16 +368,78 @@ SELECTED_PRODUCT_LIVE_QUERY = """query listProduct($id: StringFilterInput, $pagi
 }"""
 
 
-def _get_routing_mode(user_message: str) -> str:
-    has_ikas = bool(IKAS_MENTION_PATTERN.search(user_message))
-    has_local = bool(LOCAL_MENTION_PATTERN.search(user_message))
-    if has_ikas and has_local:
-        return "hybrid"
-    if has_ikas:
-        return "ikas"
-    if has_local:
-        return "local"
-    return "local"
+def _clean_routing_mentions(user_message: str) -> str:
+    cleaned = IKAS_MENTION_PATTERN.sub("", user_message)
+    cleaned = LOCAL_MENTION_PATTERN.sub("", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned or user_message.strip()
+
+
+def _extract_chat_completion_content(data: Any) -> str:
+    if not isinstance(data, dict):
+        return ""
+
+    choices = data.get("choices", [])
+    if not isinstance(choices, list) or not choices:
+        return ""
+
+    choice = choices[0]
+    if not isinstance(choice, dict):
+        return ""
+
+    message = choice.get("message", {})
+    if not isinstance(message, dict):
+        return ""
+
+    content = message.get("content")
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+        return "".join(parts).strip()
+    return ""
+
+
+def _parse_needs_mcp_flag(content: str) -> bool | None:
+    candidate = (content or "").strip()
+    if not candidate:
+        return None
+
+    if candidate.startswith("```"):
+        candidate = re.sub(r"^```(?:json)?\s*", "", candidate, flags=re.IGNORECASE)
+        candidate = re.sub(r"\s*```$", "", candidate)
+
+    if not candidate.startswith("{"):
+        match = SEMANTIC_ROUTING_JSON_PATTERN.search(candidate)
+        if not match:
+            return None
+        candidate = match.group(0)
+
+    try:
+        payload = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+
+    needs_mcp = payload.get("needs_mcp")
+    if isinstance(needs_mcp, bool):
+        return needs_mcp
+    if isinstance(needs_mcp, str):
+        normalized = needs_mcp.strip().lower()
+        if normalized in {"true", "false"}:
+            return normalized == "true"
+    return None
+
+
+def _fallback_needs_mcp(user_message: str) -> bool:
+    if any(pattern.search(user_message) for pattern in LIVE_DATA_HINT_PATTERNS):
+        return True
+    return bool(NORMALIZED_LIVE_DATA_HINT_PATTERN.search(_normalize_matching_text(user_message)))
 
 
 def _build_product_context(product: Product | None, score: SeoScore | None) -> str:
@@ -390,63 +481,6 @@ def _build_product_context(product: Product | None, score: SeoScore | None) -> s
         product_context=product_ctx,
         score_context=score_ctx,
     ) + "\n\n" + IKAS_OPERATION_GUIDE_TR
-
-
-def _extract_message_directives(user_message: str) -> tuple[str, str | None, bool]:
-    """Parse @ikas / @local mentions into routing instructions.
-
-    Returns (cleaned_message, routing_instruction, allow_tools).
-    """
-    routing_mode = _get_routing_mode(user_message)
-
-    cleaned = IKAS_MENTION_PATTERN.sub("", user_message)
-    cleaned = LOCAL_MENTION_PATTERN.sub("", cleaned)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    cleaned_message = cleaned or user_message.strip()
-
-    if routing_mode == "hybrid":
-        return (
-            cleaned_message,
-            (
-                "Bu mesaj hem @ikas hem @local ile etiketlendi. "
-                "Yanitini once mevcut SEO metrikleri ve eldeki urun alanlariyla sinirla. "
-                "Canli veri ancak kullanicinin acik talebiyle gerekiyorsa uygun bir ikas MCP araci kullan, sonra sonucu kisa ve net bicimde yorumla. "
-                "Gerekirse `listProduct` veya `updateProduct` etrafinda sonraki adimi oner; mutation icin onay iste. "
-                "ONEMLI: Bir MCP araci gercekten cagirmadan 'guncelledim' veya 'uyguladim' deme."
-            ),
-            True,
-        )
-
-    if routing_mode == "ikas":
-        return (
-            cleaned_message,
-            (
-                "Bu mesaj @ikas ile etiketlendi. "
-                "Mumkunse uygun bir ikas MCP araci kullanmadan yanit verme. "
-                "Canli veri cekemiyorsan bunu acikca belirt. "
-                "Yanitta tavsiyeyi yine mevcut SEO problemi ve secili urun baglami etrafinda tut. "
-                "Operasyon onerisi gerekiyorsa once `listProduct`, gerekiyorsa `updateProduct` oner; mutation gerekiyorsa onay iste. "
-                "ONEMLI: Yalnizca MCP araci gercekten cagirilip basarili sonuc dondugunde islemi raporla. Arac cagirmadan 'guncelledim' deme."
-            ),
-            True,
-        )
-
-    if routing_mode == "local":
-        return (
-            cleaned_message,
-            (
-                "Bu mesaj @local ile etiketlendi veya mention icermiyor. "
-                "ikas MCP araci kullanma; yalnizca mevcut SEO metrikleri, secili urunun promptta bulunan alanlari ve sohbet baglamina gore yanit ver. "
-                "Stok, fiyat, siparis, kampanya veya musteri verisi uydurma. "
-                "Kullanici urun aciklamasi, meta title veya meta description gibi mevcut alanlari yorumlamani isterse bunu local baglamla yap. "
-                "KRITIK: Bu modda ikas'a dogrudan degisiklik uygulayamazsin. Kullanici sohbet sirasinda sunulan SEO onerilerini onaylarsa "
-                "`save_seo_suggestion` araciyla pending suggestion kaydi olusturabilirsin. "
-                "Uygun oldugunda @ikas ile MCP uzerinden veya uygulamadaki Oneriler paneliyle nasil ilerlenebilecegini oner."
-            ),
-            False,
-        )
-
-    return cleaned_message, None, False
 
 
 def _build_tool_catalog_instruction(
@@ -885,6 +919,7 @@ class ChatService:
         self._mcp: IkasMCPClient | None = None
         self._mcp_initialized = False
         self._history: list[ChatMessage] = []
+        self._history_summary_lock = asyncio.Lock()
         self._product: Product | None = None
         self._score: SeoScore | None = None
         self._total_tokens = {"input": 0, "output": 0}
@@ -926,6 +961,78 @@ class ChatService:
         """Clear conversation history."""
         self._history.clear()
 
+    async def _summarize_and_compress_history(self) -> None:
+        async with self._history_summary_lock:
+            if len(self._history) <= HISTORY_SUMMARY_TRIGGER_MESSAGES:
+                return
+
+            messages_to_summarize = list(self._history[:-HISTORY_SUMMARY_KEEP_RECENT_MESSAGES])
+            if not messages_to_summarize:
+                return
+
+            history_block = "\n\n".join(
+                f"role: {msg.role}\ncontent: {msg.content}"
+                for msg in messages_to_summarize
+            ).strip()
+            if not history_block:
+                return
+
+            base_url = self._get_base_url()
+            model = self._config.ai_model_name or self._get_default_model()
+            request_body = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": MEMORY_SUMMARIZATION_PROMPT},
+                    {"role": "user", "content": history_block},
+                ],
+                "temperature": 0.2,
+                "max_tokens": max(128, min(self._config.ai_max_tokens, 256)),
+                "stream": False,
+            }
+            timeout = (
+                httpx.Timeout(60.0, connect=10.0)
+                if self._config.ai_provider in ("ollama", "lm-studio")
+                else httpx.Timeout(30.0, connect=10.0)
+            )
+            headers: dict[str, str] = {"Content-Type": "application/json"}
+            if self._config.ai_api_key:
+                headers["Authorization"] = f"Bearer {self._config.ai_api_key}"
+
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    response = await client.post(
+                        f"{base_url}/chat/completions",
+                        json=request_body,
+                        headers=headers,
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.warning("History summarization failed", exc_info=True)
+                return
+
+            summary = self._remove_thinking(_extract_chat_completion_content(payload)).strip()
+            if not summary:
+                return
+
+            current_history = list(self._history)
+            summarized_count = len(messages_to_summarize)
+            if len(current_history) < summarized_count:
+                return
+            if current_history[:summarized_count] != messages_to_summarize:
+                return
+
+            summary_message = ChatMessage(
+                role="system",
+                content=f"{HISTORY_SUMMARY_SYSTEM_PREFIX}{summary}",
+            )
+            self._history = [summary_message, *current_history[summarized_count:]]
+
+    def _schedule_history_summarization(self) -> None:
+        asyncio.create_task(self._summarize_and_compress_history())
+
     def cancel_active_request(self) -> bool:
         """Try to cancel the in-flight chat completion HTTP request."""
         with self._active_request_lock:
@@ -961,6 +1068,135 @@ class ChatService:
             logger.error("MCP connection failed: %s", exc)
             self._mcp_initialized = False
             return False, f"MCP baglanti hatasi: {exc}"
+
+    async def _get_routing_mode(self, user_message: str) -> bool:
+        has_ikas = bool(IKAS_MENTION_PATTERN.search(user_message))
+        has_local = bool(LOCAL_MENTION_PATTERN.search(user_message))
+
+        if has_ikas and not has_local:
+            return True
+        if has_local and not has_ikas:
+            return False
+
+        cleaned_message = _clean_routing_mentions(user_message)
+        if not cleaned_message:
+            return False
+
+        base_url = self._get_base_url()
+        model = self._config.ai_model_name or self._get_default_model()
+        request_body = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": SEMANTIC_ROUTING_SYSTEM_PROMPT},
+                {"role": "user", "content": cleaned_message},
+            ],
+            "temperature": 0.0,
+            "max_tokens": 15,
+            "stream": False,
+        }
+        timeout = (
+            httpx.Timeout(60.0, connect=10.0)
+            if self._config.ai_provider in ("ollama", "lm-studio")
+            else httpx.Timeout(30.0, connect=10.0)
+        )
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if self._config.ai_api_key:
+            headers["Authorization"] = f"Bearer {self._config.ai_api_key}"
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                with self._active_request_lock:
+                    self._active_http_client = client
+                try:
+                    response = await client.post(
+                        f"{base_url}/chat/completions",
+                        json=request_body,
+                        headers=headers,
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                finally:
+                    with self._active_request_lock:
+                        if self._active_http_client is client:
+                            self._active_http_client = None
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Semantic routing request failed: %s", exc)
+            return _fallback_needs_mcp(cleaned_message)
+
+        completion_text = _extract_chat_completion_content(payload)
+        needs_mcp = _parse_needs_mcp_flag(completion_text)
+        if needs_mcp is not None:
+            return needs_mcp
+
+        logger.warning("Semantic routing returned invalid payload: %s", completion_text[:200])
+        return _fallback_needs_mcp(cleaned_message)
+
+    async def _extract_message_directives(
+        self,
+        user_message: str,
+    ) -> tuple[str, str | None, bool]:
+        """Parse routing hints into instructions for the main completion."""
+        cleaned_message = _clean_routing_mentions(user_message)
+        allow_tools = await self._get_routing_mode(user_message)
+
+        has_ikas = bool(IKAS_MENTION_PATTERN.search(user_message))
+        has_local = bool(LOCAL_MENTION_PATTERN.search(user_message))
+
+        if allow_tools:
+            if has_ikas and has_local:
+                intro = (
+                    "Bu mesaj hem @ikas hem @local ile etiketlendi; semantic routing "
+                    "canli veri gerektigine karar verdi. "
+                )
+            elif has_ikas:
+                intro = "Bu mesaj @ikas ile etiketlendi. "
+            else:
+                intro = (
+                    "Semantic routing bu mesaj icin canli magaza verisine "
+                    "ihtiyac oldugunu tespit etti. "
+                )
+
+            return (
+                cleaned_message,
+                (
+                    f"{intro}"
+                    "Mumkunse uygun bir ikas MCP araci kullanmadan yanit verme. "
+                    "Canli veri cekemiyorsan bunu acikca belirt. "
+                    "Yanitta tavsiyeyi yine mevcut SEO problemi ve secili urun baglami etrafinda tut. "
+                    "Operasyon onerisi gerekiyorsa once `listProduct`, gerekiyorsa `updateProduct` oner; mutation gerekiyorsa onay iste. "
+                    "ONEMLI: Yalnizca MCP araci gercekten cagirilip basarili sonuc dondugunde islemi raporla. Arac cagirmadan 'guncelledim' deme."
+                ),
+                True,
+            )
+
+        if has_ikas and has_local:
+            intro = (
+                "Bu mesaj hem @ikas hem @local ile etiketlendi; semantic routing "
+                "arac kullanmaya gerek gormedi. "
+            )
+        elif has_local:
+            intro = "Bu mesaj @local ile etiketlendi. "
+        else:
+            intro = (
+                "Semantic routing bu mesajin mevcut baglam ve SEO metin "
+                "yazarligi ile yanitlanabilecegini tespit etti. "
+            )
+
+        return (
+            cleaned_message,
+            (
+                f"{intro}"
+                "ikas MCP araci kullanma; yalnizca mevcut SEO metrikleri, secili urunun promptta bulunan alanlari ve sohbet baglamina gore yanit ver. "
+                "Stok, fiyat, siparis, kampanya veya musteri verisi uydurma. "
+                "Kullanici urun aciklamasi, meta title veya meta description gibi mevcut alanlari yorumlamani isterse bunu local baglamla yap. "
+                "KRITIK: Bu modda ikas'a dogrudan degisiklik uygulayamazsin. Kullanici sohbet sirasinda sunulan SEO onerilerini onaylarsa "
+                "`save_seo_suggestion` araciyla pending suggestion kaydi olusturabilirsin. "
+                "Uygun oldugunda @ikas ile MCP uzerinden veya uygulamadaki Oneriler paneliyle nasil ilerlenebilecegini oner."
+            ),
+            False,
+        )
 
     async def _maybe_run_guided_mcp_request(
         self,
@@ -1217,8 +1453,10 @@ class ChatService:
         chunk_handler: Callable[[str], Awaitable[None]] | None = None,
     ) -> ChatResponse:
         """Run the full chat flow, optionally streaming assistant chunks."""
-        routing_mode = _get_routing_mode(user_message)
-        cleaned_message, routing_instruction, allow_tools = _extract_message_directives(user_message)
+        cleaned_message, routing_instruction, allow_tools = await self._extract_message_directives(user_message)
+        explicit_ikas_mode = bool(IKAS_MENTION_PATTERN.search(user_message)) and not bool(
+            LOCAL_MENTION_PATTERN.search(user_message)
+        )
 
         # Add user message to history
         user_msg = ChatMessage(role="user", content=cleaned_message)
@@ -1253,7 +1491,7 @@ class ChatService:
 
             if guided_result:
                 guided_context, guided_tool_results, guided_fallback = guided_result
-                if routing_mode == "ikas":
+                if explicit_ikas_mode:
                     guided_content = _append_operation_suggestion(
                         guided_fallback,
                         user_message=cleaned_message,
@@ -1274,6 +1512,7 @@ class ChatService:
                     )
                     if chunk_handler and response.content:
                         await chunk_handler(response.content)
+                    self._schedule_history_summarization()
                     return response
                 messages.append({
                     "role": "system",
@@ -1283,7 +1522,7 @@ class ChatService:
                         f"{guided_context}"
                     ),
                 })
-        elif routing_mode == "ikas":
+        elif allow_tools:
             messages.append({
                 "role": "system",
                 "content": (
@@ -1362,6 +1601,7 @@ class ChatService:
                 )
                 if chunk_handler and response.content:
                     await chunk_handler(response.content)
+                self._schedule_history_summarization()
                 return response
 
             response = ChatResponse(
@@ -1377,6 +1617,7 @@ class ChatService:
             )
             if chunk_handler and response.content:
                 await chunk_handler(response.content)
+            self._schedule_history_summarization()
             return response
 
         if not response_text and guided_fallback:
@@ -1399,6 +1640,7 @@ class ChatService:
 
         assistant_msg = ChatMessage(role="assistant", content=response_text)
         self._history.append(assistant_msg)
+        self._schedule_history_summarization()
 
         return ChatResponse(
             content=response_text,

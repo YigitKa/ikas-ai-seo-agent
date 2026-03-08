@@ -27,3 +27,23 @@ def test_filter_products_missing_english_translation_treats_empty_html_as_missin
     filtered = manager.filter_products_missing_english_translation(products)
 
     assert [product.id for product, _ in filtered] == ["missing", "html-only"]
+
+
+def test_stream_chat_message_returns_chat_stream_directly():
+    manager = ProductManager.__new__(ProductManager)
+
+    class _FakeChat:
+        def __init__(self):
+            self.calls = []
+            self.stream = object()
+
+        def stream_message(self, message: str):
+            self.calls.append(message)
+            return self.stream
+
+    manager._chat = _FakeChat()
+
+    result = manager.stream_chat_message("merhaba")
+
+    assert result is manager._chat.stream
+    assert manager._chat.calls == ["merhaba"]
