@@ -5,7 +5,13 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import get_manager
-from api.schemas import FetchProductsRequest, ProductListResponse, ProductWithScore
+from api.schemas import (
+    FetchProductsRequest,
+    LocalDataResetResponse,
+    ProductListResponse,
+    ProductSyncResponse,
+    ProductWithScore,
+)
 from core.product_manager import ProductManager
 from data import db
 
@@ -51,6 +57,10 @@ async def get_product(
 ) -> ProductWithScore:
     """Get a single product with its score."""
     product = db.get_product(product_id)
+    if not product or not product.slug:
+        fresh_product = await manager.fetch_product(product_id)
+        if fresh_product:
+            product = fresh_product
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
@@ -76,4 +86,28 @@ async def fetch_products(
         total_count=total_count,
         page=body.page,
         limit=body.limit,
+    )
+
+
+@router.post("/sync", response_model=ProductSyncResponse)
+async def sync_products(
+    manager: ProductManager = Depends(get_manager),
+) -> ProductSyncResponse:
+    """Fetch the full catalog from ikas and refresh local cache."""
+    fetched_count, total_count = await manager.sync_all_products()
+    return ProductSyncResponse(fetched_count=fetched_count, total_count=total_count)
+
+
+@router.post("/reset", response_model=LocalDataResetResponse)
+async def reset_local_product_data(
+    manager: ProductManager = Depends(get_manager),
+) -> LocalDataResetResponse:
+    """Clear local product cache, SEO scores, suggestions and logs."""
+    counts = manager.clear_local_data()
+    return LocalDataResetResponse(
+        message="Local product data cleared",
+        products_deleted=counts["products"],
+        scores_deleted=counts["seo_scores"],
+        suggestions_deleted=counts["suggestions"],
+        logs_deleted=counts["operation_log"],
     )

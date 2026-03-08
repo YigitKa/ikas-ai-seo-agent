@@ -17,6 +17,30 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _build_mcp_status_payload(
+    manager: ProductManager,
+    *,
+    message_override: str | None = None,
+) -> dict[str, object]:
+    has_token = manager.chat_has_mcp
+    initialized = manager.chat_mcp_initialized
+    if initialized:
+        message = "MCP bagli"
+    elif has_token:
+        message = "Token var, baglanti bekleniyor"
+    else:
+        message = "MCP token yok"
+
+    return {
+        "type": "mcp_status",
+        "has_token": has_token,
+        "initialized": initialized,
+        "tool_count": manager.chat_mcp_tool_count,
+        "tools": manager.chat_mcp_tools,
+        "message": message_override or message,
+    }
+
+
 # ── REST endpoints for MCP ───────────────────────────────────────────────────
 
 @router.get("/api/mcp/status", response_model=MCPStatusResponse)
@@ -30,6 +54,8 @@ async def mcp_status(
     return MCPStatusResponse(
         has_token=has_token,
         initialized=initialized,
+        tool_count=manager.chat_mcp_tool_count,
+        tools=manager.chat_mcp_tools,
         message="MCP bagli" if initialized else ("Token var, baglanti bekleniyor" if has_token else "MCP token yok"),
     )
 
@@ -63,14 +89,15 @@ async def ws_chat(ws: WebSocket) -> None:
     """Multi-turn AI chat with MCP tool calling support."""
     await ws.accept()
     manager = get_manager()
+    await ws.send_json(_build_mcp_status_payload(manager))
 
     # Auto-initialize MCP if token is configured
     if manager.chat_has_mcp and not manager.chat_mcp_initialized:
         try:
             success, msg = await manager.initialize_mcp()
-            await ws.send_json({"type": "mcp_status", "initialized": success, "message": msg})
+            await ws.send_json(_build_mcp_status_payload(manager, message_override=msg))
         except Exception as e:
-            await ws.send_json({"type": "mcp_status", "initialized": False, "message": str(e)})
+            await ws.send_json(_build_mcp_status_payload(manager, message_override=str(e)))
 
     try:
         while True:
@@ -89,7 +116,11 @@ async def ws_chat(ws: WebSocket) -> None:
                     product = db.get_product(product_id)
                     score = db.get_latest_score(product_id) if product else None
                     manager.set_chat_product_context(product, score)
-                    await ws.send_json({"type": "context_set", "product_id": product_id})
+                    await ws.send_json({
+                        "type": "context_set",
+                        "product_id": product_id,
+                        "product_name": product.name if product else "",
+                    })
                 continue
 
             if action == "clear":

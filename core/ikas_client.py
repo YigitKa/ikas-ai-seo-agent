@@ -21,7 +21,7 @@ class IkasClient:
                 name
                 description
                 translations { locale name description }
-                metaData { pageTitle description }
+                metaData { pageTitle description slug }
                 tags { id name }
                 categories { name }
                 variants { prices { sellPrice } sku images { imageId order fileName isMain } }
@@ -40,7 +40,7 @@ class IkasClient:
                 name
                 description
                 translations { locale name description }
-                metaData { pageTitle description }
+                metaData { pageTitle description slug }
                 tags { id name }
                 categories { name }
                 variants { prices { sellPrice } sku images { imageId order fileName isMain } }
@@ -275,6 +275,7 @@ class IkasClient:
         return Product(
             id=data["id"],
             name=data.get("name", ""),
+            slug=meta.get("slug"),
             description=description if isinstance(description, str) else "",
             description_translations=translations,
             meta_title=meta.get("pageTitle") or meta.get("title"),
@@ -314,6 +315,31 @@ class IkasClient:
                 all_products.append(self._parse_product(item))
 
             remaining -= len(product_list)
+            if not result.get("hasNext") or not product_list:
+                break
+            api_page += 1
+
+        return all_products
+
+    async def get_all_products(self, batch_size: int = 50) -> List[Product]:
+        all_products: List[Product] = []
+        api_page = 1
+        self.total_count = 0
+
+        while True:
+            data = await self._graphql(
+                self.PRODUCTS_QUERY,
+                {"pagination": {"page": api_page, "limit": min(batch_size, 50)}},
+            )
+            result = data["listProduct"]
+            product_list = result["data"]
+
+            if api_page == 1:
+                self.total_count = result.get("count", 0)
+
+            for item in product_list:
+                all_products.append(self._parse_product(item))
+
             if not result.get("hasNext") or not product_list:
                 break
             api_page += 1

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 class Product(BaseModel):
     id: str
     name: str
+    slug: Optional[str] = None
     description: str = ""
     description_translations: dict[str, str] = Field(default_factory=dict)
     meta_title: Optional[str] = None

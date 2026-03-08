@@ -10,6 +10,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.dependencies import get_manager
 from api.routers import products, seo, suggestions, settings, chat
@@ -17,6 +18,18 @@ from api.routers import products, seo, suggestions, settings, chat
 logger = logging.getLogger(__name__)
 
 WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
+
+
+class SPAStaticFiles(StaticFiles):
+    """Serve the React app for client-side routes that are not real files."""
+
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            return await super().get_response("index.html", scope)
 
 
 @asynccontextmanager
@@ -59,4 +72,4 @@ async def health() -> dict[str, str]:
 
 # ── Serve React static files (production build) ─────────────────────────────
 if WEB_DIST.is_dir():
-    app.mount("/", StaticFiles(directory=str(WEB_DIST), html=True), name="spa")
+    app.mount("/", SPAStaticFiles(directory=str(WEB_DIST), html=True), name="spa")

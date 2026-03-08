@@ -1,22 +1,17 @@
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ProductTable from '../components/ProductTable';
 import ScoreCard from '../components/ScoreCard';
-import DiffViewer from '../components/DiffViewer';
 import ChatPanel from '../components/ChatPanel';
 import {
-  fetchProducts,
-  fetchProductsFromIkas,
-  getProduct,
-  generateSuggestion,
-  generateFieldRewrite,
-  getSuggestions,
-  approveSuggestion,
-  rejectSuggestion,
   applyApproved,
+  fetchProducts,
+  getProduct,
+  resetLocalProductData,
+  getSettings,
+  syncProductsFromIkas,
 } from '../api/client';
-import type { SeoSuggestion } from '../types';
 
 type FilterTab = 'all' | 'low_score' | 'pending' | 'approved';
 
@@ -27,15 +22,73 @@ const FILTER_LABELS: Record<FilterTab, string> = {
   approved: 'Onaylanan',
 };
 
+function normalizeStoreBaseUrl(storeName: string) {
+  const normalizedStore = storeName.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  if (!normalizedStore) {
+    return '';
+  }
+  return normalizedStore.includes('.')
+    ? `https://${normalizedStore}`
+    : `https://${normalizedStore}.myikas.com`;
+}
+
+function slugifyProductName(name?: string | null) {
+  const value = (name || '')
+    .trim()
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i')
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ş/g, 's')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return value;
+}
+
+function buildIkasProductUrl(
+  storeName: string,
+  slug?: string | null,
+  productId?: string,
+  productName?: string | null,
+) {
+  const baseUrl = normalizeStoreBaseUrl(storeName);
+  if (!baseUrl) {
+    return '';
+  }
+
+  const normalizedSlug = slug?.trim().replace(/^\/+/, '');
+  if (normalizedSlug) {
+    return `${baseUrl}/${normalizedSlug}`;
+  }
+
+  const guessedSlug = slugifyProductName(productName);
+  if (guessedSlug) {
+    return `${baseUrl}/${guessedSlug}`;
+  }
+
+  const normalizedProductId = productId?.trim();
+  if (!normalizedProductId) {
+    return '';
+  }
+
+  return `${baseUrl}/product/edit/${normalizedProductId}`;
+}
+
 export default function Dashboard() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<FilterTab>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [rewritingField, setRewritingField] = useState<string | null>(null);
-  const [showChat, setShowChat] = useState(false);
 
-  // ── Queries ─────────────────────────────────────────────────────────────
+  const settingsQ = useQuery({
+    queryKey: ['settings'],
+    queryFn: getSettings,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const productsQ = useQuery({
     queryKey: ['products', page, filter],
     queryFn: () => fetchProducts(page, 50, filter),
@@ -47,48 +100,26 @@ export default function Dashboard() {
     enabled: !!selectedId,
   });
 
-  const suggestionsQ = useQuery({
-    queryKey: ['suggestions', selectedId],
-    queryFn: () => getSuggestions(selectedId!),
-    enabled: !!selectedId,
-  });
-
-  const latestSuggestion: SeoSuggestion | null =
-    suggestionsQ.data?.[0] ?? null;
-
-  // ── Mutations ───────────────────────────────────────────────────────────
   const fetchMut = useMutation({
-    mutationFn: () => fetchProductsFromIkas(page, 50),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['products'] }),
-  });
-
-  const rewriteMut = useMutation({
-    mutationFn: (productId: string) => generateSuggestion(productId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['suggestions', selectedId] });
+    mutationFn: () => syncProductsFromIkas(),
+    onSuccess: (data) => {
+      alert(`${data.fetched_count}/${data.total_count} urun ikas'tan senkronlandi.`);
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['product'] });
     },
   });
 
-  const fieldRewriteMut = useMutation({
-    mutationFn: ({ productId, field }: { productId: string; field: string }) =>
-      generateFieldRewrite(productId, field),
-    onSuccess: () => {
-      setRewritingField(null);
-      qc.invalidateQueries({ queryKey: ['suggestions', selectedId] });
+  const resetMut = useMutation({
+    mutationFn: () => resetLocalProductData(),
+    onSuccess: (data) => {
+      setSelectedId(null);
+      alert(
+        `${data.products_deleted} urun, ${data.scores_deleted} skor, ${data.suggestions_deleted} oneri ve ${data.logs_deleted} log silindi.`,
+      );
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['product'] });
+      qc.invalidateQueries({ queryKey: ['suggestions'] });
     },
-    onError: () => setRewritingField(null),
-  });
-
-  const approveMut = useMutation({
-    mutationFn: (productId: string) => approveSuggestion(productId),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ['suggestions', selectedId] }),
-  });
-
-  const rejectMut = useMutation({
-    mutationFn: (productId: string) => rejectSuggestion(productId),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ['suggestions', selectedId] }),
   });
 
   const applyMut = useMutation({
@@ -96,25 +127,28 @@ export default function Dashboard() {
     onSuccess: (data) => {
       alert(`${data.applied}/${data.total} oneri ikas'a uygulandi.`);
       qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['suggestions'] });
     },
   });
-
-  const handleRewriteField = useCallback(
-    (field: string) => {
-      if (!selectedId) return;
-      setRewritingField(field);
-      fieldRewriteMut.mutate({ productId: selectedId, field });
-    },
-    [selectedId, fieldRewriteMut],
-  );
 
   const totalPages = productsQ.data
     ? Math.ceil(productsQ.data.total_count / productsQ.data.limit)
     : 1;
 
+  const selectedProduct = detailQ.data?.product;
+
+  const productDetailUrl =
+    selectedProduct && settingsQ.data?.store_name
+      ? buildIkasProductUrl(
+          settingsQ.data.store_name,
+          selectedProduct.slug,
+          selectedProduct.id,
+          selectedProduct.name,
+        )
+      : '';
+
   return (
     <div className="flex h-screen flex-col" style={{ background: 'var(--color-bg-base)' }}>
-      {/* ── Top Navbar ──────────────────────────────────────────────── */}
       <header
         className="flex items-center justify-between px-5 py-3"
         style={{
@@ -123,7 +157,6 @@ export default function Dashboard() {
         }}
       >
         <div className="flex items-center gap-4">
-          {/* Logo */}
           <div className="flex items-center gap-2.5">
             <div
               className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white"
@@ -131,15 +164,13 @@ export default function Dashboard() {
             >
               iS
             </div>
-            <span className="text-[15px] font-semibold text-white tracking-tight">
+            <span className="text-[15px] font-semibold tracking-tight text-white">
               ikas <span style={{ color: 'var(--color-primary-light)' }}>SEO Agent</span>
             </span>
           </div>
 
-          {/* Divider */}
           <div className="h-5 w-px" style={{ background: 'var(--color-border-light)' }} />
 
-          {/* Actions */}
           <button
             onClick={() => fetchMut.mutate()}
             disabled={fetchMut.isPending}
@@ -149,7 +180,23 @@ export default function Dashboard() {
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            {fetchMut.isPending ? 'Cekiliyor...' : 'Urunleri Cek'}
+            {fetchMut.isPending ? 'Senkronlaniyor...' : 'Tum Urunleri Cek'}
+          </button>
+
+          <button
+            onClick={() => {
+              if (window.confirm('Local urun cache veritabani sifirlansin mi? Bu islem geri alinamaz.')) {
+                resetMut.mutate();
+              }
+            }}
+            disabled={resetMut.isPending}
+            className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[13px] font-medium text-white transition-all hover:opacity-90 disabled:opacity-40"
+            style={{ background: 'linear-gradient(135deg, #ef4444, #f97316)' }}
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V4h6v3m-7 4v6m4-6v6m4-6v6M5 7l1 13h12l1-13" />
+            </svg>
+            {resetMut.isPending ? 'Sifirlaniyor...' : 'DB Sifirla'}
           </button>
 
           <button
@@ -166,15 +213,14 @@ export default function Dashboard() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Product count */}
           {productsQ.data && (
             <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
               {productsQ.data.total_count} urun
             </span>
           )}
 
-          <a
-            href="/settings"
+          <Link
+            to="/settings"
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all"
             style={{
               color: 'var(--color-text-secondary)',
@@ -196,13 +242,11 @@ export default function Dashboard() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
             Ayarlar
-          </a>
+          </Link>
         </div>
       </header>
 
-      {/* ── Main Content ────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
-        {/* ── Left Sidebar: Product List ─────────────────────────────── */}
         <aside
           className="flex w-[340px] flex-col"
           style={{
@@ -210,7 +254,6 @@ export default function Dashboard() {
             borderRight: '1px solid var(--color-border)',
           }}
         >
-          {/* Filter Tabs */}
           <div
             className="flex gap-1 px-3 py-2.5"
             style={{ borderBottom: '1px solid var(--color-border)' }}
@@ -224,20 +267,18 @@ export default function Dashboard() {
                 }}
                 className="rounded-md px-2.5 py-1 text-xs font-medium transition-all"
                 style={{
-                  background:
-                    filter === key ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
-                  color:
-                    filter === key
-                      ? 'var(--color-primary-light)'
-                      : 'var(--color-text-muted)',
+                  background: filter === key ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                  color: filter === key ? 'var(--color-primary-light)' : 'var(--color-text-muted)',
                 }}
                 onMouseEnter={(e) => {
-                  if (filter !== key)
+                  if (filter !== key) {
                     e.currentTarget.style.color = 'var(--color-text-secondary)';
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  if (filter !== key)
+                  if (filter !== key) {
                     e.currentTarget.style.color = 'var(--color-text-muted)';
+                  }
                 }}
               >
                 {FILTER_LABELS[key]}
@@ -245,7 +286,6 @@ export default function Dashboard() {
             ))}
           </div>
 
-          {/* Product List */}
           <div className="flex-1 overflow-auto">
             {productsQ.isLoading ? (
               <div className="space-y-2 p-3">
@@ -262,7 +302,6 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <div
               className="flex items-center justify-between px-3 py-2"
@@ -293,133 +332,90 @@ export default function Dashboard() {
           )}
         </aside>
 
-        {/* ── Center: Detail ──────────────────────────────────────── */}
-        <main className="flex flex-1 flex-col overflow-hidden">
+        <main className="flex flex-1 overflow-hidden">
           {selectedId && detailQ.data ? (
             <>
-              {/* Product header bar */}
-              <div
-                className="flex items-center justify-between px-6 py-3"
-                style={{ borderBottom: '1px solid var(--color-border)' }}
-              >
-                <div className="flex items-center gap-3">
-                  {/* Product image thumbnail */}
-                  {(detailQ.data.product.image_url ||
-                    detailQ.data.product.image_urls[0]) && (
-                    <img
-                      src={
-                        detailQ.data.product.image_url ||
-                        detailQ.data.product.image_urls[0]
-                      }
-                      alt=""
-                      className="h-10 w-10 rounded-lg object-cover"
-                      style={{ border: '1px solid var(--color-border-light)' }}
+              <section className="min-w-0 flex flex-1 flex-col overflow-hidden p-6">
+                <div className="min-h-0 flex flex-1 flex-col gap-5 overflow-hidden">
+                  <div className="min-h-0 flex-1">
+                    <ChatPanel
+                      productId={selectedId}
+                      productName={detailQ.data.product.name}
+                      productCategory={detailQ.data.product.category}
+                      seoScore={detailQ.data.score?.total_score ?? null}
                     />
-                  )}
-                  <div>
-                    <h2 className="text-[15px] font-semibold text-white leading-tight">
-                      {detailQ.data.product.name}
-                    </h2>
-                    <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                      {detailQ.data.product.category || 'Kategori yok'}
-                      {detailQ.data.product.sku && (
-                        <>
-                          {' '}
-                          <span style={{ color: 'var(--color-border-light)' }}>
-                            /
-                          </span>{' '}
-                          {detailQ.data.product.sku}
-                        </>
-                      )}
-                    </p>
                   </div>
                 </div>
+              </section>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => rewriteMut.mutate(selectedId)}
-                    disabled={rewriteMut.isPending}
-                    className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[13px] font-medium text-white transition-all hover:opacity-90 disabled:opacity-40"
-                    style={{ background: 'linear-gradient(135deg, #8b5cf6, #a855f7)' }}
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    {rewriteMut.isPending ? 'Yaziliyor...' : 'Tumunu Yeniden Yaz'}
-                  </button>
-
-                  {latestSuggestion?.status === 'pending' && (
-                    <>
-                      <button
-                        onClick={() => approveMut.mutate(selectedId)}
-                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-white transition-all hover:opacity-90"
-                        style={{ background: 'linear-gradient(135deg, #10b981, #06b6d4)' }}
-                      >
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                        Onayla
-                      </button>
-                      <button
-                        onClick={() => rejectMut.mutate(selectedId)}
-                        className="rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all"
-                        style={{
-                          color: 'var(--color-danger)',
-                          border: '1px solid rgba(239, 68, 68, 0.3)',
-                          background: 'rgba(239, 68, 68, 0.08)',
-                        }}
-                      >
-                        Reddet
-                      </button>
-                    </>
-                  )}
-
-                  <div className="mx-1 h-5 w-px" style={{ background: 'var(--color-border-light)' }} />
-
-                  <button
-                    onClick={() => setShowChat((v) => !v)}
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all"
+              <aside
+                className="w-[360px] overflow-y-auto"
+                style={{
+                  borderLeft: '1px solid var(--color-border)',
+                  background: 'var(--color-bg-surface)',
+                }}
+              >
+                <div className="space-y-4 p-4">
+                  <div
+                    className="rounded-2xl px-4 py-3"
                     style={{
-                      background: showChat
-                        ? 'rgba(99, 102, 241, 0.15)'
-                        : 'transparent',
-                      color: showChat
-                        ? 'var(--color-primary-light)'
-                        : 'var(--color-text-secondary)',
-                      border: `1px solid ${showChat ? 'rgba(99, 102, 241, 0.3)' : 'var(--color-border-light)'}`,
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid var(--color-border)',
                     }}
                   >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                    Chat
-                  </button>
-                </div>
-              </div>
-
-              {/* Body */}
-              <div className="flex flex-1 overflow-hidden">
-                <div className="flex-1 overflow-y-auto p-6 space-y-5">
-                  {detailQ.data.score && (
-                    <ScoreCard score={detailQ.data.score} />
-                  )}
-                  <DiffViewer
-                    product={detailQ.data.product}
-                    suggestion={latestSuggestion}
-                    onRewriteField={handleRewriteField}
-                    rewritingField={rewritingField}
-                  />
-                </div>
-
-                {showChat && (
-                  <div
-                    className="w-[380px] p-3"
-                    style={{ borderLeft: '1px solid var(--color-border)' }}
-                  >
-                    <ChatPanel productId={selectedId} />
+                    <div
+                      className="text-[10px] font-semibold uppercase tracking-[0.18em]"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    >
+                      SEO Panel
+                    </div>
+                    <div className="mt-2 text-[13px] font-semibold text-white">
+                      {detailQ.data.product.name}
+                    </div>
+                    <p className="mt-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                      SEO skorunu buradan oku. Rewrite ve diger operasyonlari chat uzerinden yonet.
+                    </p>
+                    {productDetailUrl ? (
+                      <a
+                        href={productDetailUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-medium transition-all hover:opacity-90"
+                        style={{
+                          background: 'rgba(99, 102, 241, 0.12)',
+                          color: '#c7d2fe',
+                          border: '1px solid rgba(99, 102, 241, 0.2)',
+                        }}
+                      >
+                        Urun detayina git
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7m0 0v7m0-7L10 14" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 5v14h14" />
+                        </svg>
+                      </a>
+                    ) : (
+                      <p className="mt-3 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                        Urun detay linki icin magaza adi ayarlarda tanimli olmali.
+                      </p>
+                    )}
                   </div>
-                )}
-              </div>
+
+                  {detailQ.data.score ? (
+                    <ScoreCard score={detailQ.data.score} />
+                  ) : (
+                    <div
+                      className="rounded-2xl px-4 py-3 text-[12px]"
+                      style={{
+                        background: 'rgba(255,255,255,0.03)',
+                        border: '1px solid var(--color-border)',
+                        color: 'var(--color-text-muted)',
+                      }}
+                    >
+                      Bu urun icin SEO skoru bulunamadi.
+                    </div>
+                  )}
+                </div>
+              </aside>
             </>
           ) : (
             <div className="flex flex-1 items-center justify-center">
@@ -447,7 +443,7 @@ export default function Dashboard() {
                   Bir urun secin
                 </p>
                 <p className="mt-1 text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                  Soldaki listeden bir urun secin
+                  Soldaki listeden bir urun secin. SEO skoru ve chat paneli acilacak.
                 </p>
               </div>
             </div>

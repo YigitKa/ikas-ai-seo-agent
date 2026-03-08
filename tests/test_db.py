@@ -1,4 +1,5 @@
 import data.db as db
+from core.models import Product
 from core.models import SeoSuggestion
 
 
@@ -55,3 +56,26 @@ def test_update_latest_pending_suggestion(monkeypatch, tmp_path):
     latest = db.get_latest_suggestion_by_product("prod_edit")
     assert latest is not None
     assert latest.suggested_description == "<p>Kaydedilen yeni surum</p>"
+
+
+def test_clear_all_data(monkeypatch, tmp_path):
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "seo_test_clear.db")
+    db.init_db()
+
+    db.save_product(Product(id="prod-1", name="Test Product"))
+    db.log_operation("fetch", "prod-1", {"ok": True}, True)
+    suggestion = SeoSuggestion(
+        product_id="prod-1",
+        original_name="Test Product",
+        original_description="Original description",
+    )
+    db.save_suggestion(suggestion)
+
+    counts = db.clear_all_data()
+
+    assert counts["products"] == 1
+    assert counts["suggestions"] == 1
+    assert counts["operation_log"] == 1
+    assert db.get_all_products() == []
+    assert db.get_pending_suggestions() == []
+    assert db.get_operation_history() == []

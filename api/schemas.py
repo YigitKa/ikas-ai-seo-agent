@@ -35,6 +35,19 @@ class FetchProductsRequest(BaseModel):
     page: int = Field(default=1, ge=1)
 
 
+class ProductSyncResponse(BaseModel):
+    fetched_count: int
+    total_count: int
+
+
+class LocalDataResetResponse(BaseModel):
+    message: str
+    products_deleted: int
+    scores_deleted: int
+    suggestions_deleted: int
+    logs_deleted: int
+
+
 # ── SEO ──────────────────────────────────────────────────────────────────────
 
 class AnalyzeRequest(BaseModel):
@@ -153,6 +166,7 @@ class MCPStatusResponse(BaseModel):
     initialized: bool = False
     tool_count: int = 0
     message: str = ""
+    tools: list[dict[str, str]] = Field(default_factory=list)
 
 
 class ChatMessageSchema(BaseModel):

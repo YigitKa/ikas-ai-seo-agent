@@ -11,6 +11,7 @@ Usage:
 """
 
 import os
+import socket
 import signal
 import subprocess
 import sys
@@ -25,6 +26,42 @@ NPM = "npm.cmd" if IS_WINDOWS else "npm"
 
 _processes: list[subprocess.Popen] = []
 _shutdown = threading.Event()
+
+
+def _parse_requested_port() -> int:
+    args = sys.argv[1:]
+    for index, arg in enumerate(args):
+        if arg == "--port" and index + 1 < len(args):
+            return int(args[index + 1])
+        if arg.startswith("--port="):
+            return int(arg.split("=", 1)[1])
+    return int(os.environ.get("PORT", "8000"))
+
+
+def _can_bind_port(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("0.0.0.0", port))
+        except OSError:
+            return False
+    return True
+
+
+def _resolve_backend_port() -> tuple[int, bool]:
+    requested_port = _parse_requested_port()
+    if _can_bind_port(requested_port):
+        return requested_port, False
+
+    for candidate in range(requested_port + 1, requested_port + 21):
+        if _can_bind_port(candidate):
+            return candidate, True
+
+    print(
+        f"[start.py] Backend port {requested_port} is busy and no free fallback port was found in the next 20 ports.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 def _stream(proc: subprocess.Popen, prefix: str) -> None:
@@ -48,11 +85,17 @@ def _run(cmd: list[str], cwd: str | None = None, check: bool = True) -> int:
     return proc.returncode
 
 
-def _start(cmd: list[str], prefix: str, cwd: str | None = None) -> subprocess.Popen:
+def _start(
+    cmd: list[str],
+    prefix: str,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.Popen:
     """Start a process and stream its output in a background thread."""
     proc = subprocess.Popen(
         cmd,
         cwd=cwd,
+        env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -109,29 +152,34 @@ def build_frontend() -> None:
     print("[start.py] Frontend built.")
 
 
-def start_backend() -> subprocess.Popen:
+def start_backend(port: int) -> subprocess.Popen:
     return _start(
-        [sys.executable, "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"],
+        [sys.executable, "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", str(port)],
         prefix="backend",
         cwd=ROOT,
     )
 
 
-def start_frontend_dev() -> subprocess.Popen:
-    return _start([NPM, "run", "dev"], prefix="frontend", cwd=WEB_DIR)
+def start_frontend_dev(port: int) -> subprocess.Popen:
+    env = os.environ.copy()
+    env["VITE_BACKEND_PORT"] = str(port)
+    return _start([NPM, "run", "dev"], prefix="frontend", cwd=WEB_DIR, env=env)
 
 
 def mode_dev() -> None:
     install_python_deps()
     install_node_deps()
+    port, fallback_used = _resolve_backend_port()
 
     signal.signal(signal.SIGINT, _shutdown_all)
     if not IS_WINDOWS:
         signal.signal(signal.SIGTERM, _shutdown_all)
 
-    print("[start.py] Starting backend on :8000 and frontend dev server on :5173 ...")
-    start_backend()
-    start_frontend_dev()
+    if fallback_used:
+        print(f"[start.py] Port 8000 is busy. Using backend port {port} instead.")
+    print(f"[start.py] Starting backend on :{port} and frontend dev server on :5173 ...")
+    start_backend(port)
+    start_frontend_dev(port)
 
     print("[start.py] Both services running. Press Ctrl+C to stop.")
     try:
@@ -147,13 +195,16 @@ def mode_build() -> None:
 
 def mode_backend() -> None:
     install_python_deps()
+    port, fallback_used = _resolve_backend_port()
 
     signal.signal(signal.SIGINT, _shutdown_all)
     if not IS_WINDOWS:
         signal.signal(signal.SIGTERM, _shutdown_all)
 
-    print("[start.py] Starting backend on :8000 ...")
-    start_backend()
+    if fallback_used:
+        print(f"[start.py] Port 8000 is busy. Using backend port {port} instead.")
+    print(f"[start.py] Starting backend on http://localhost:{port} ...")
+    start_backend(port)
 
     try:
         _shutdown.wait()
@@ -164,6 +215,7 @@ def mode_backend() -> None:
 def mode_prod() -> None:
     install_python_deps()
     install_node_deps()
+    port, fallback_used = _resolve_backend_port()
 
     if not os.path.exists(DIST_DIR):
         build_frontend()
@@ -172,10 +224,12 @@ def mode_prod() -> None:
     if not IS_WINDOWS:
         signal.signal(signal.SIGTERM, _shutdown_all)
 
-    print("[start.py] Starting production server on http://localhost:8000 ...")
-    start_backend()
+    if fallback_used:
+        print(f"[start.py] Port 8000 is busy. Using backend port {port} instead.")
+    print(f"[start.py] Starting production server on http://localhost:{port} ...")
+    start_backend(port)
 
-    print("[start.py] Server running. Press Ctrl+C to stop.")
+    print(f"[start.py] Server running on http://localhost:{port}. Press Ctrl+C to stop.")
     try:
         _shutdown.wait()
     except KeyboardInterrupt:

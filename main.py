@@ -1,8 +1,10 @@
 import sys
+import os
 
 
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "web"
+    port = int(os.environ.get("PORT", "8000"))
 
     if mode == "desktop":
         from ui.app import launch
@@ -17,7 +19,7 @@ def main():
         uvicorn.run(
             "api.main:app",
             host="0.0.0.0",
-            port=8000,
+            port=port,
             reload="--reload" in sys.argv,
         )
 

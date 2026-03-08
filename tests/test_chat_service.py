@@ -1,8 +1,9 @@
 """Tests for core/chat_service.py — multi-turn chat with MCP."""
 
+import httpx
 import pytest
 
-from core.chat_service import ChatService, _build_product_context
+from core.chat_service import ChatService, _build_product_context, _extract_message_directives
 from core.models import AppConfig, ChatMessage, Product, SeoScore
 
 
@@ -91,6 +92,40 @@ def test_build_product_context_without_product():
     assert "asistan" in ctx.lower() or "mağaza" in ctx.lower()
 
 
+def test_build_product_context_mentions_chat_roles():
+    ctx = _build_product_context(None, None)
+    assert "local ai" in ctx.lower()
+    assert "ikas mcp" in ctx.lower()
+
+
+def test_extract_message_directives_ikas_forces_tools():
+    cleaned, instruction, allow_tools = _extract_message_directives("@ikas stok durumunu kontrol et")
+    assert cleaned == "stok durumunu kontrol et"
+    assert instruction is not None and "@ikas" in instruction
+    assert allow_tools is True
+
+
+def test_extract_message_directives_local_disables_tools():
+    cleaned, instruction, allow_tools = _extract_message_directives("@local seo skorunu yorumla")
+    assert cleaned == "seo skorunu yorumla"
+    assert instruction is not None and "@local" in instruction
+    assert allow_tools is False
+
+
+def test_extract_message_directives_without_mentions_stays_local():
+    cleaned, instruction, allow_tools = _extract_message_directives("seo skorunu yorumla")
+    assert cleaned == "seo skorunu yorumla"
+    assert instruction is not None
+    assert allow_tools is False
+
+
+def test_extract_message_directives_combined_mentions():
+    cleaned, instruction, allow_tools = _extract_message_directives("@ikas @local varyantlari ozetle")
+    assert cleaned == "varyantlari ozetle"
+    assert instruction is not None
+    assert allow_tools is True
+
+
 def test_build_product_context_with_product():
     product = _make_product(name="Akilli Saat", price=599.99)
     ctx = _build_product_context(product, None)
@@ -123,6 +158,18 @@ def test_remove_thinking():
     assert result == "Final answer"
 
 
+def test_extract_thinking_with_unclosed_block():
+    text = "<think>unfinished reasoning"
+    result = ChatService._extract_thinking(text)
+    assert result == "unfinished reasoning"
+
+
+def test_remove_thinking_with_unclosed_block():
+    text = "<think>unfinished reasoning"
+    result = ChatService._remove_thinking(text)
+    assert result == ""
+
+
 def test_get_base_url_with_config():
     config = _make_config(ai_base_url="http://localhost:11434/v1")
     service = ChatService(config)
@@ -147,3 +194,49 @@ def test_get_default_model():
     config2 = _make_config(ai_provider="openai")
     service2 = ChatService(config2)
     assert service2._get_default_model() == "gpt-4o-mini"
+
+
+@pytest.mark.anyio
+async def test_send_message_local_does_not_pass_tools_even_if_mcp_ready():
+    config = _make_config(ai_provider="lm-studio", ai_thinking_mode=False)
+    service = ChatService(config)
+    service.set_product_context(_make_product(), _make_score())
+    service._mcp_initialized = True
+    service._mcp = object()
+    captured: dict[str, object] = {}
+
+    async def fake_chat_completion(messages, tools):
+        captured["messages"] = messages
+        captured["tools"] = tools
+        return "Kisa yanit", "", [], {"model": "lm-studio-test"}
+
+    service._chat_completion = fake_chat_completion  # type: ignore[method-assign]
+
+    response = await service.send_message("@local seo skorunu yorumla")
+
+    assert response.error is False
+    assert captured["tools"] is None
+    system_messages = [
+        msg["content"]
+        for msg in captured["messages"]  # type: ignore[index]
+        if msg["role"] == "system"
+    ]
+    assert any("/no_think" in content for content in system_messages)
+
+
+@pytest.mark.anyio
+async def test_send_message_timeout_returns_clear_error_and_drops_failed_user():
+    config = _make_config(ai_provider="lm-studio")
+    service = ChatService(config)
+    service.set_product_context(_make_product(), _make_score())
+
+    async def fake_chat_completion(messages, tools):
+        raise httpx.ReadTimeout("timed out")
+
+    service._chat_completion = fake_chat_completion  # type: ignore[method-assign]
+
+    response = await service.send_message("@local Bu urunun SEO skorunu hizlica acikla")
+
+    assert response.error is True
+    assert "zaman asimina" in response.content.lower()
+    assert service.history == []

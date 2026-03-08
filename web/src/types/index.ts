@@ -1,6 +1,7 @@
 export interface Product {
   id: string;
   name: string;
+  slug: string | null;
   description: string;
   description_translations: Record<string, string>;
   meta_title: string | null;
@@ -111,6 +112,12 @@ export interface MCPStatus {
   initialized: boolean;
   tool_count: number;
   message: string;
+  tools: MCPToolInfo[];
+}
+
+export interface MCPToolInfo {
+  name: string;
+  description: string;
 }
 
 export interface ToolResult {
@@ -126,7 +133,11 @@ export interface ChatWsMessage {
   tool_results?: ToolResult[];
   error?: boolean;
   meta?: Record<string, unknown>;
+  has_token?: boolean;
   initialized?: boolean;
+  tool_count?: number;
+  tools?: MCPToolInfo[];
   message?: string;
   product_id?: string;
+  product_name?: string;
 }

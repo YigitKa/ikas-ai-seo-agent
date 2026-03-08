@@ -39,6 +39,7 @@ def test_product_model_defaults():
     assert p.tags == []
     assert p.status == "active"
     assert p.meta_title is None
+    assert p.slug is None
 
 
 def test_product_model_full():
@@ -82,3 +83,23 @@ def test_parse_product_translations(monkeypatch):
 
     assert parsed.description_translations.get("en") == "English description"
     assert parsed.description_translations.get("tr") == "Turkce aciklama"
+
+
+def test_parse_product_slug(monkeypatch):
+    monkeypatch.setenv("IKAS_STORE_NAME", "demo-store")
+    monkeypatch.setenv("IKAS_CLIENT_ID", "demo-client")
+    monkeypatch.setenv("IKAS_CLIENT_SECRET", "demo-secret")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-demo")
+    client = IkasClient()
+    parsed = client._parse_product({
+        "id": "prod_slug",
+        "name": "Sluglu Urun",
+        "description": "Aciklama",
+        "metaData": {"pageTitle": None, "description": None, "slug": "sluglu-urun"},
+        "tags": [],
+        "categories": [],
+        "variants": [],
+        "status": "active",
+    })
+
+    assert parsed.slug == "sluglu-urun"

@@ -3,10 +3,11 @@ iceriklerini Turk kullanicilar ve Google TR icin optimize etmek.
 
 Kurallar:
 - Dogal, satis odakli Turkce kullan
-- Urun icin Nedir? Neden? Nasil Kullanilir? sorularina basliklar halinde cevap icersin.
+- Urun icin Ürün Adı + Nedir?Neden + Ürün Adı?Ürün Adı + Nasil Kullanilir? sorularina basliklar halinde cevap icersin.
 - Aciklama alaninda p, br, ul, ol, li, strong ve em gibi basit HTML tagleri kullanabilirsin.
 - Ad, meta title ve meta description alanlarinda HTML kullanma.
 - Abartili reklam dili kullanma
 - Urunun gercek ozelliklerine sadik kal
+- SEO odaklı SSS hazırla. 
 
 SADECE JSON dondur, baska hicbir sey yazma.

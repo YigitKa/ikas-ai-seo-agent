@@ -171,6 +171,7 @@ def test_technical_seo_full():
     product = Product(
         id="full-tech",
         name="Tam Donanimli Urun",
+        slug="tam-donanimli-urun",
         description="Detayli aciklama.",
         tags=["etiket1", "etiket2", "etiket3"],
         category="Elektronik",
@@ -179,6 +180,56 @@ def test_technical_seo_full():
     )
     tech_score, issues, _ = analyze_technical_seo(product)
     assert tech_score >= 8
+
+
+def test_technical_seo_uses_slug_when_available():
+    product = Product(
+        id="slug-ok",
+        name="Test Urun !!!",
+        slug="test-urun",
+        description="Detayli aciklama.",
+        tags=["etiket1", "etiket2", "etiket3"],
+        category="Elektronik",
+        price=99.90,
+        image_urls=["img1.jpg", "img2.jpg", "img3.jpg"],
+    )
+
+    tech_score, issues, _ = analyze_technical_seo(product)
+    assert tech_score >= 8
+    assert not any("URL-dostu degil" in issue for issue in issues)
+
+
+def test_technical_seo_invalid_slug_detected():
+    product = Product(
+        id="slug-bad",
+        name="Temiz Isim",
+        slug="Temiz Isim!!!",
+        description="Detayli aciklama.",
+        tags=["etiket1", "etiket2", "etiket3"],
+        category="Elektronik",
+        price=99.90,
+        image_urls=["img1.jpg", "img2.jpg", "img3.jpg"],
+    )
+
+    tech_score, issues, _ = analyze_technical_seo(product)
+    assert tech_score < 10
+    assert any("slug'i URL-dostu degil" in issue for issue in issues)
+
+
+def test_technical_seo_missing_slug_does_not_guess_from_name():
+    product = Product(
+        id="slug-missing",
+        name="Test Urun !!!",
+        description="Detayli aciklama.",
+        tags=["etiket1", "etiket2", "etiket3"],
+        category="Elektronik",
+        price=99.90,
+        image_urls=["img1.jpg", "img2.jpg", "img3.jpg"],
+    )
+
+    tech_score, issues, _ = analyze_technical_seo(product)
+    assert tech_score >= 8
+    assert not any("URL-dostu degil" in issue for issue in issues)
 
 
 def test_readability_long_sentences():

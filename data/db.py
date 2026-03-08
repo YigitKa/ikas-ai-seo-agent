@@ -150,6 +150,22 @@ def get_all_products() -> List[Product]:
     return [Product.model_validate_json(row["data"]) for row in rows]
 
 
+def clear_all_data() -> dict[str, int]:
+    with connection() as conn:
+        counts = {
+            "products": int(conn.execute("SELECT COUNT(*) AS count FROM products").fetchone()["count"]),
+            "seo_scores": int(conn.execute("SELECT COUNT(*) AS count FROM seo_scores").fetchone()["count"]),
+            "suggestions": int(conn.execute("SELECT COUNT(*) AS count FROM suggestions").fetchone()["count"]),
+            "operation_log": int(conn.execute("SELECT COUNT(*) AS count FROM operation_log").fetchone()["count"]),
+        }
+        conn.execute("DELETE FROM products")
+        conn.execute("DELETE FROM seo_scores")
+        conn.execute("DELETE FROM suggestions")
+        conn.execute("DELETE FROM operation_log")
+        conn.commit()
+    return counts
+
+
 def save_score(score: SeoScore) -> None:
     save_scores([score])
 

@@ -108,6 +108,24 @@ export async function updateSettings(values: Record<string, unknown>): Promise<{
   });
 }
 
+export async function syncProductsFromIkas(): Promise<{ fetched_count: number; total_count: number }> {
+  return request('/api/products/sync', {
+    method: 'POST',
+  });
+}
+
+export async function resetLocalProductData(): Promise<{
+  message: string;
+  products_deleted: number;
+  scores_deleted: number;
+  suggestions_deleted: number;
+  logs_deleted: number;
+}> {
+  return request('/api/products/reset', {
+    method: 'POST',
+  });
+}
+
 export async function getPromptTemplates(): Promise<{ groups: PromptGroup[] }> {
   return request('/api/settings/prompts');
 }

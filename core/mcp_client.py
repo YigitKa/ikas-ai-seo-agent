@@ -48,6 +48,7 @@ class IkasMCPClient:
         self._initialized = False
         self._server_capabilities: dict[str, Any] = {}
         self._tools: list[dict[str, Any]] = []
+        self._operations: list[dict[str, Any]] = []
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(30.0, connect=10.0),
             headers={
@@ -181,6 +182,8 @@ class IkasMCPClient:
 
         result = await self._send_request("tools/list")
         self._tools = result.get("tools", []) if result else []
+        if any(tool.get("name") == "execute" for tool in self._tools):
+            await self._load_operation_catalog(force_refresh=force_refresh)
         logger.info("MCP discovered %d tools", len(self._tools))
         return self._tools
 
@@ -190,6 +193,14 @@ class IkasMCPClient:
             await self.initialize()
 
         logger.info("MCP tool call: %s(%s)", name, json.dumps(arguments or {}, ensure_ascii=False)[:200])
+
+        operation_names = {op["name"] for op in self._operations if op.get("name")}
+        if name in operation_names:
+            result = await self._send_request("tools/call", {
+                "name": "execute",
+                "arguments": self._build_execute_args(name, arguments or {}),
+            })
+            return result or {}
 
         result = await self._send_request("tools/call", {
             "name": name,
@@ -210,6 +221,66 @@ class IkasMCPClient:
         This allows local models (Ollama, LM Studio) that support OpenAI-compatible
         function calling to use MCP tools.
         """
+        if self._operations:
+            functions: list[dict[str, Any]] = []
+            for operation in self._operations:
+                name = str(operation.get("name", "")).strip()
+                if not name:
+                    continue
+
+                category = str(operation.get("category", "")).strip()
+                op_type = str(operation.get("type", "")).strip()
+                description = str(operation.get("description", "")).strip()
+                detail_bits = [bit for bit in [category, op_type] if bit]
+                detail = f" [{' / '.join(detail_bits)}]" if detail_bits else ""
+
+                functions.append({
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "description": f"{description}{detail}".strip(),
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {
+                                    "type": "string",
+                                    "description": (
+                                        "This must be the full GraphQL query or mutation string "
+                                        "including the exact operation name."
+                                    ),
+                                },
+                                "variables": {
+                                    "type": "object",
+                                    "description": "GraphQL variables as a JSON object.",
+                                },
+                            },
+                            "required": ["query"],
+                            "additionalProperties": False,
+                        },
+                    },
+                })
+
+            if any(tool.get("name") == "introspect" for tool in self._tools):
+                functions.append({
+                    "type": "function",
+                    "function": {
+                        "name": "introspect",
+                        "description": "Inspect a GraphQL operation schema before calling it.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "operationName": {
+                                    "type": "string",
+                                    "description": "Exact GraphQL operation name to inspect.",
+                                },
+                            },
+                            "required": ["operationName"],
+                            "additionalProperties": False,
+                        },
+                    },
+                })
+            return functions
+
         functions: list[dict[str, Any]] = []
         for tool in self._tools:
             func: dict[str, Any] = {
@@ -229,7 +300,108 @@ class IkasMCPClient:
 
     def get_tool_names(self) -> list[str]:
         """Return names of all available tools."""
+        if self._operations:
+            return [str(op.get("name", "")) for op in self._operations if op.get("name")]
         return [t["name"] for t in self._tools]
+
+    def get_tool_summaries(self) -> list[dict[str, str]]:
+        """Return lightweight tool info for UI display."""
+        if self._operations:
+            return [
+                {
+                    "name": str(operation.get("name", "")),
+                    "description": " | ".join(
+                        bit
+                        for bit in [
+                            str(operation.get("category", "")).strip(),
+                            str(operation.get("type", "")).strip(),
+                            str(operation.get("description", "")).strip(),
+                        ]
+                        if bit
+                    ),
+                }
+                for operation in self._operations
+                if operation.get("name")
+            ]
+
+        return [
+            {
+                "name": str(tool.get("name", "")),
+                "description": str(tool.get("description", "")).strip(),
+            }
+            for tool in self._tools
+            if tool.get("name")
+        ]
+
+    async def _load_operation_catalog(self, *, force_refresh: bool = False) -> None:
+        """Load GraphQL operations exposed behind the generic MCP execute tool."""
+        if self._operations and not force_refresh:
+            return
+
+        try:
+            result = await self._send_request("tools/call", {
+                "name": "list",
+                "arguments": {},
+            })
+        except Exception as exc:
+            logger.warning("MCP operation catalog could not be loaded: %s", exc)
+            self._operations = []
+            return
+
+        payload = self._extract_json_text_payload(result)
+        operations = payload.get("operations") if isinstance(payload, dict) else None
+        if isinstance(operations, list):
+            self._operations = [op for op in operations if isinstance(op, dict) and op.get("name")]
+            logger.info("MCP discovered %d GraphQL operations", len(self._operations))
+            return
+
+        self._operations = []
+
+    @staticmethod
+    def _extract_json_text_payload(result: dict[str, Any]) -> dict[str, Any]:
+        content = result.get("content")
+        if not isinstance(content, list):
+            return {}
+
+        text_parts = [
+            str(item.get("text", ""))
+            for item in content
+            if isinstance(item, dict) and item.get("type") == "text"
+        ]
+        text = "\n".join(part for part in text_parts if part).strip()
+        if not text:
+            return {}
+
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            return {}
+
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _build_execute_args(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        query = str(arguments.get("query", "")).strip()
+        if not query:
+            raise MCPError(
+                -32602,
+                f"Operation {name} requires a GraphQL query string.",
+                data={"operationName": name},
+            )
+
+        execute_args: dict[str, Any] = {
+            "query": query,
+            "operationName": name,
+        }
+
+        if "variables" in arguments:
+            variables = arguments["variables"]
+            if isinstance(variables, str):
+                execute_args["variables"] = variables
+            else:
+                execute_args["variables"] = json.dumps(variables, ensure_ascii=False)
+
+        return execute_args
 
     @property
     def is_initialized(self) -> bool:
@@ -237,4 +409,4 @@ class IkasMCPClient:
 
     @property
     def tool_count(self) -> int:
-        return len(self._tools)
+        return len(self._operations) if self._operations else len(self._tools)

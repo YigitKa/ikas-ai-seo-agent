@@ -52,6 +52,13 @@ class ProductManager:
         products = await self.fetch_products(limit=limit, page=page)
         return self.score_products(products), self._ikas.total_count
 
+    async def sync_all_products(self, batch_size: int = 50) -> tuple[int, int]:
+        products = await self._ikas.get_all_products(batch_size=batch_size)
+        db.save_products(products)
+        self.score_products(products)
+        logger.info("Fetched and cached %s/%s products (full sync)", len(products), self._ikas.total_count)
+        return len(products), self._ikas.total_count
+
     async def fetch_product(self, product_id: str) -> Optional[Product]:
         product = await self._ikas.get_product_by_id(product_id)
         if product:
@@ -60,6 +67,11 @@ class ProductManager:
 
     def get_cached_products(self) -> List[Product]:
         return db.get_all_products()
+
+    def clear_local_data(self) -> dict[str, int]:
+        counts = db.clear_all_data()
+        logger.info("Cleared local cache: %s", counts)
+        return counts
 
     def score_products(self, products: List[Product]) -> List[tuple[Product, SeoScore]]:
         scored_products: List[tuple[Product, SeoScore]] = []
@@ -270,6 +282,14 @@ class ProductManager:
     @property
     def chat_mcp_initialized(self) -> bool:
         return self._chat.mcp_initialized
+
+    @property
+    def chat_mcp_tool_count(self) -> int:
+        return self._chat.mcp_tool_count
+
+    @property
+    def chat_mcp_tools(self) -> list[dict[str, str]]:
+        return self._chat.mcp_tools
 
     def get_chat_token_usage(self) -> dict[str, int]:
         return self._chat.total_tokens

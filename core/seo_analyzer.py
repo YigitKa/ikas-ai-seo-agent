@@ -12,6 +12,7 @@ LIST_RE = re.compile(r"<[uo]l[^>]*>", re.IGNORECASE)
 BOLD_RE = re.compile(r"<(strong|b)[^>]*>", re.IGNORECASE)
 SENTENCE_RE = re.compile(r"[^.!?]+[.!?]+")
 LINK_RE = re.compile(r"<a\s", re.IGNORECASE)
+SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 TURKISH_STOP_WORDS = {
     "ve", "bir", "bu", "ile", "da", "de", "icin", "olan", "gibi",
@@ -68,6 +69,13 @@ def _is_url_friendly(text: str) -> bool:
     """Check if the product name would produce a clean URL slug."""
     problematic = re.findall(r"[^\w\s\-]", text, re.UNICODE)
     return len(problematic) <= 1
+
+
+def _is_slug_friendly(slug: str) -> bool:
+    normalized = slug.strip().strip("/")
+    if not normalized:
+        return False
+    return bool(SLUG_RE.fullmatch(normalized))
 
 
 def _has_number(text: str) -> bool:
@@ -489,11 +497,13 @@ def analyze_technical_seo(product: Product) -> tuple[int, List[str], List[str]]:
         issues.append("Urun kategorisi tanimlanmamis")
         suggestions.append("Urune uygun bir kategori atayin")
 
-    # URL-friendly name check
-    if not _is_url_friendly(product.name):
-        score -= 1
-        issues.append("Urun adi URL-dostu degil")
-        suggestions.append("Urun adindan ozel karakterleri kaldirin")
+    # Prefer the real product slug when available. If slug data is absent, avoid
+    # guessing from the title because the storefront URL may already be clean.
+    if product.slug:
+        if not _is_slug_friendly(product.slug):
+            score -= 1
+            issues.append("Urun slug'i URL-dostu degil")
+            suggestions.append("Slug alaninda kucuk harf, rakam ve tire kullanin")
 
     # Price check (missing price = incomplete product data)
     if product.price is None or product.price <= 0:
