@@ -33,11 +33,15 @@ def _prompt_for_missing_env_vars() -> None:
     if not sys.stdin.isatty():
         if not missing_required:
             return
-        missing_text = ", ".join(missing_required)
-        raise ValueError(
-            f"Eksik zorunlu ortam degiskenleri: {missing_text}. "
-            "Lutfen .env dosyasini doldurun veya interaktif terminalde uygulamayi calistirin.",
+        # In web mode, allow startup with missing credentials so the user
+        # can configure them via the Settings page.
+        import logging
+        logging.getLogger(__name__).warning(
+            "Eksik zorunlu ortam degiskenleri: %s. "
+            "Settings sayfasindan yapilandirabilirsiniz.",
+            ", ".join(missing_required),
         )
+        return
 
     print("\n[Config] Bazi zorunlu ayarlar eksik. Devam etmek icin degerleri girin:")
     for key in missing:

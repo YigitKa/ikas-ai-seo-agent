@@ -173,8 +173,8 @@ export default function Dashboard() {
             </span>
           )}
 
-          <a
-            href="/settings"
+          <Link
+            to="/settings"
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all"
             style={{
               color: 'var(--color-text-secondary)',
@@ -196,7 +196,7 @@ export default function Dashboard() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
             Ayarlar
-          </a>
+          </Link>
         </div>
       </header>
 
