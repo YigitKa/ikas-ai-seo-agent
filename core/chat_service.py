@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 MAX_TOOL_ROUNDS = 5  # Max sequential tool-call rounds per message
 MAX_HISTORY_MESSAGES = 40  # Keep conversation manageable for context window
 
-CHAT_FLOW_SYSTEM_PROMPT_TR = """Sen bir ikas e-ticaret magazasi asistansin.
+CHAT_FLOW_SYSTEM_PROMPT_TR = """Sen bir ikas e-ticaret magazasi SEO asistansin.
 Bu sohbette 3 rol vardir:
 - Kullanici: hedefi ve karari belirler
 - ikas MCP: canli magaza verisini ve arac sonucunu saglar
@@ -42,6 +42,15 @@ Ana gorevin:
 - Kullanici urun aciklamasi, meta title, meta description, kategori, etiket, SKU gibi eldeki alanlari yorumlamani isterse bunu local baglamla yap
 - Canli veri gerektiginde ve kullanici ozellikle isterse araclardan yararlan
 - Somut, uygulanabilir ve kisa yanit ver
+- Kullaniciyi urun bilgilerini duzeltmeye ve iyilestirmeye yonlendir
+
+KRITIK DÜRÜSTLÜK KURALLARI (ASLA IHLAL ETME):
+- ASLA yapmedigin bir islemi yaptigini iddia etme
+- ASLA "guncelledim", "uyguladim", "degistirdim", "kaydettim" gibi ifadeler kullanma
+- Sen urunleri DOGRUDAN degistiremezsin. Sen yalnizca oneri ve analiz sunabilirsin
+- Kullanici "uygula", "kaydet", "secenek X uygula" gibi bir istek yaptiginda sistem bunu otomatik algilar ve sohbetteki onerileri DB'ye kaydeder. Sen sadece oneri sun, uygulama islemini kendin yaptigini iddia etme
+- Bir MCP araci GERCEKTEN cagirip basarili sonuc aldiysan, yalnizca o zaman sonucu raporla
+- Emin olmadigin bilgiyi uydurma; bilmiyorsan "bilmiyorum" de
 
 Kurallar:
 - Turkce yanit ver; kullanici Ingilizce yazarsa Ingilizce yanit ver
@@ -55,13 +64,14 @@ Kurallar:
 - Genis markdown tablolar yerine kisa listeler kullan; tabloyu yalnizca kullanici isterse kullan
 
 Yaniti mumkunse su duzende kur:
-1. Durum
-2. Oneri
-3. Sonraki adim
+1. Durum (mevcut durumu ozetle)
+2. Oneri (somut iyilestirme onerileri sun)
+3. Sonraki adim (kullanicinin ne yapmasi gerektigini acikla — ornegin "Bu onerileri uygulamak icin Oneriler panelini kullanabilirsiniz" veya "@ikas ile MCP uzerinden guncelleyebiliriz")
 
 Yeniden yazim istenirse:
 - 2 veya 3 alternatif sun
 - Alternatiflerin farkini 1 kisa cumleyle belirt
+- Bunlarin ONERI oldugunu, otomatik uygulanmadigini belirt
 
 {product_context}
 {score_context}"""
@@ -112,6 +122,14 @@ Mutation yetenekleri:
 - Storefront Management: createStorefrontJSScript, updateStorefrontJSScript, deleteStorefrontJSScript
 - Timeline Management: addCustomTimelineEntry, addOrderTimelineEntry
 
+ONEMLI — Yetenek sinirlarin:
+- @local modunda (arac kullanmadan): Sen SADECE oneri ve analiz sunabilirsin. Hicbir degisikligi uygulayamazsin.
+- @ikas modunda (MCP araclariyla): Yalnizca MCP araci GERCEKTEN cagirilip basarili sonuc dondugunde islem yapilmis sayilir.
+- Bir MCP araci cagirmadan "guncelledim" veya "uyguladim" DEME. Bu kullaniciyi yaniltir.
+- Kullanici degisiklik uygulamak istediginde:
+  * @local modundaysan: "Bu onerileri uygulamak icin soldaki panelden ilgili urunu secip 'Oneriler' sekmesinden onaylayabilirsiniz, veya @ikas ile tekrar yazarsaniz MCP uzerinden guncelleyebiliriz" de.
+  * @ikas modundaysan: updateProduct mutasyonunu kullanicinin onayiyla cagir ve SONUCUNU raporla.
+
 Davranis kurallari:
 - Bu chat ekraninda varsayilan tavsiyeleri yalnizca mevcut SEO metrikleri ve secili urunun eldeki alanlariyla sinirla.
 - Operasyon onerisi verirken once secili urunun mevcut kaydini dogrulayan `listProduct` veya SEO alanlarini guncelleyen `updateProduct` etrafinda kal.
@@ -119,6 +137,7 @@ Davranis kurallari:
 - Arac kullanmiyor olsan bile, nasil ilerlenebilecegini desteklenen operasyon adlariyla kisaca anlat.
 - Yanitin sonunda konusmayi ilerletecek tek bir sonraki adim veya soru oner.
 - Desteklenmeyen operasyon adi uydurma.
+- ASLA gerceklestirmedigin bir islemi basariliymiş gibi raporlama.
 """
 
 CHAT_SYSTEM_PROMPT_TR = """Sen bir ikas e-ticaret mağazası asistanısın. Mağaza sahibine ürünleri,
@@ -131,6 +150,9 @@ Kurallar:
 - SEO önerilerinde somut ve uygulanabilir tavsiyeler ver
 - Fiyat, stok ve sipariş bilgilerini doğru aktar
 - Markdown formatında yanıt ver (başlıklar, listeler, kalın metin)
+- ASLA yapmadığın bir işlemi yaptığını iddia etme
+- Sen ürünleri doğrudan değiştiremezsin; yalnızca öneri sunabilirsin
+- Değişiklik uygulamak için kullanıcıyı uygulamadaki Öneriler paneline veya @ikas MCP moduna yönlendir
 
 {product_context}
 {score_context}"""
@@ -189,6 +211,60 @@ LIVE_PRODUCT_HINT_PATTERNS = (
     PRICE_HINT_PATTERN,
     VARIANT_HINT_PATTERN,
 )
+
+# Patterns that detect when the LLM falsely claims to have performed actions
+# These are checked post-response when no MCP mutation was actually executed
+FALSE_ACTION_CLAIM_PATTERN = re.compile(
+    r"\b(?:"
+    r"uygula(?:n)?d[iı]m?|g[uü]ncelle(?:n)?d[iı]m?|de[gğ]i[sş]tird[iı]m?|kaydett[iı]m?|"
+    r"ekled[iı]m?|yazd[iı]m|d[uü]zenled[iı]m?|"
+    r"applied|updated|saved|changed|modified"
+    r")\b",
+    re.IGNORECASE,
+)
+# Patterns for common action confirmation phrases LLMs use
+FALSE_ACTION_CONFIRMATION_PATTERN = re.compile(
+    r"(?:"
+    r"uygulama sonras[iı]|ba[sş]ar[iı]yla (?:uygula|g[uü]ncelle|kayded)|"
+    r"i[yı]ile[sş]tirilmi[sş] skor|yeni seo (?:skoru|durumu)|"
+    r"yap[iı]lan de[gğ]i[sş]iklikler|g[uü]ncellemeler uyguland[iı]|"
+    r"successfully (?:applied|updated|saved)"
+    r")",
+    re.IGNORECASE,
+)
+
+FALSE_ACTION_DISCLAIMER_TR = (
+    "\n\n---\n"
+    "⚠️ **Not:** Yukarıdaki öneriler henüz uygulanmadı. "
+    "Değişiklikleri ikas'a kaydetmek için:\n"
+    "- Soldaki panelden ürünü seçip **Öneriler** sekmesinden onaylayın, veya\n"
+    "- Mesajınızı **@ikas** ile yazarak MCP üzerinden güncelleyin."
+)
+
+# Detect user intent to apply/save suggestions from chat
+APPLY_INTENT_PATTERN = re.compile(
+    r"(?:^|\b)(?:"
+    r"(?:bunu?\s+)?(?:uygula|kaydet|onayla|se[cç]enek\s*[a-cA-C]\s*(?:uygula|kaydet|se[cç]))|"
+    r"(?:se[cç]enek\s*[a-cA-C]'?[yıiu]?\s+(?:uygula|kaydet|se[cç]))|"
+    r"(?:bu\s+(?:[oö]neri(?:yi|leri)?|de[gğ]i[sş]ikli[gğ]i)\s*(?:uygula|kaydet|onayla))|"
+    r"(?:(?:hepsini|t[uü]m[uü]n[uü])\s*(?:uygula|kaydet))|"
+    r"apply|save\s+(?:this|these|suggestion)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# System prompt for extracting structured suggestion data from conversation
+SUGGESTION_EXTRACTION_PROMPT = """Asagidaki sohbet gecmisinden secili urune onerilen degisiklikleri JSON olarak cikar.
+Yalnizca ACIKCA onerilmis alanlari dahil et. Onerilmemis alanlari bos birak.
+Birden fazla alternatif varsa, kullanicinin son sectigi veya en son onerileni kullan.
+
+SADECE su JSON formatini dondur, baska hicbir sey yazma:
+{"suggested_meta_title": "", "suggested_meta_description": "", "suggested_name": "", "suggested_description": "", "suggested_description_en": ""}
+
+Kurallar:
+- Deger onerilmemisse bos string birak
+- HTML etiketi ekleme
+- Sadece JSON dondur, aciklama ekleme"""
 
 SELECTED_PRODUCT_LIVE_QUERY = """query listProduct($id: StringFilterInput, $pagination: PaginationInput) {
   listProduct(id: $id, pagination: $pagination) {
@@ -295,7 +371,8 @@ def _extract_message_directives(user_message: str) -> tuple[str, str | None, boo
                 "Bu mesaj hem @ikas hem @local ile etiketlendi. "
                 "Yanitini once mevcut SEO metrikleri ve eldeki urun alanlariyla sinirla. "
                 "Canli veri ancak kullanicinin acik talebiyle gerekiyorsa uygun bir ikas MCP araci kullan, sonra sonucu kisa ve net bicimde yorumla. "
-                "Gerekirse `listProduct` veya `updateProduct` etrafinda sonraki adimi oner; mutation icin onay iste."
+                "Gerekirse `listProduct` veya `updateProduct` etrafinda sonraki adimi oner; mutation icin onay iste. "
+                "ONEMLI: Bir MCP araci gercekten cagirmadan 'guncelledim' veya 'uyguladim' deme."
             ),
             True,
         )
@@ -308,7 +385,8 @@ def _extract_message_directives(user_message: str) -> tuple[str, str | None, boo
                 "Mumkunse uygun bir ikas MCP araci kullanmadan yanit verme. "
                 "Canli veri cekemiyorsan bunu acikca belirt. "
                 "Yanitta tavsiyeyi yine mevcut SEO problemi ve secili urun baglami etrafinda tut. "
-                "Operasyon onerisi gerekiyorsa once `listProduct`, gerekiyorsa `updateProduct` oner; mutation gerekiyorsa onay iste."
+                "Operasyon onerisi gerekiyorsa once `listProduct`, gerekiyorsa `updateProduct` oner; mutation gerekiyorsa onay iste. "
+                "ONEMLI: Yalnizca MCP araci gercekten cagirilip basarili sonuc dondugunde islemi raporla. Arac cagirmadan 'guncelledim' deme."
             ),
             True,
         )
@@ -321,7 +399,9 @@ def _extract_message_directives(user_message: str) -> tuple[str, str | None, boo
                 "Arac kullanma; yalnizca mevcut SEO metrikleri, secili urunun promptta bulunan alanlari ve sohbet baglamina gore yanit ver. "
                 "Stok, fiyat, siparis, kampanya veya musteri verisi uydurma. "
                 "Kullanici urun aciklamasi, meta title veya meta description gibi mevcut alanlari yorumlamani isterse bunu local baglamla yap. "
-                "Ama uygun oldugunda `listProduct` veya `updateProduct` ile nasil ilerlenebilecegini oner."
+                "KRITIK: Bu modda hicbir degisiklik uygulayamazsin. Kullanici 'uygula', 'degistir', 'guncelle' derse "
+                "onerilerin hazir oldugunu ama uygulamanin kullanicinin kendisi tarafindan yapilmasi gerektigini acikla. "
+                "Uygun oldugunda @ikas ile MCP uzerinden veya uygulamadaki Oneriler paneliyle nasil ilerlenebilecegini oner."
             ),
             False,
         )
@@ -438,6 +518,52 @@ def _append_operation_suggestion(
         lines.append("- Not: Bu bir mutation adimidir; uygulamadan once onayini alirim.")
     lines.append("- Istersen bir sonraki adimda bunu secili urun icin netlestireyim.")
     return "\n".join(lines)
+
+
+def _has_mutation_tool_result(tool_results: list[dict[str, Any]]) -> bool:
+    """Check if any tool result is from a mutation (write) operation."""
+    mutation_prefixes = ("update", "create", "delete", "save", "add", "remove", "fulfill", "cancel", "refund", "approve")
+    for result in tool_results:
+        tool_name = str(result.get("tool", "")).strip()
+        if any(tool_name.startswith(prefix) for prefix in mutation_prefixes):
+            # Check that the result doesn't contain an error
+            result_text = str(result.get("result", ""))
+            if '"error"' not in result_text:
+                return True
+    return False
+
+
+def _append_false_action_disclaimer(
+    response_text: str,
+    tool_results: list[dict[str, Any]],
+) -> str:
+    """Append a disclaimer if the LLM claims to have applied changes but no mutation was executed.
+
+    Small local models often hallucinate action confirmations like "Güncellemeler uygulandı!"
+    when they haven't actually called any MCP tool. This function detects such false claims
+    and appends a visible disclaimer to prevent user confusion.
+    """
+    if not response_text:
+        return response_text
+
+    # If a mutation was actually executed successfully, the claim is legitimate
+    if _has_mutation_tool_result(tool_results):
+        return response_text
+
+    # Check for false action claims in the response
+    has_false_claim = (
+        FALSE_ACTION_CLAIM_PATTERN.search(response_text)
+        or FALSE_ACTION_CONFIRMATION_PATTERN.search(response_text)
+    )
+
+    if not has_false_claim:
+        return response_text
+
+    # Already has a disclaimer
+    if "henüz uygulanmadı" in response_text or "henuz uygulanmadi" in response_text:
+        return response_text
+
+    return response_text + FALSE_ACTION_DISCLAIMER_TR
 
 
 def _format_chat_error(exc: Exception) -> str:
@@ -783,6 +909,10 @@ class ChatService:
         If MCP is initialized, the AI model can call ikas tools during
         the conversation to fetch real-time store data.
         """
+        # Check for apply/save intent before normal processing
+        if self._product and self._history and APPLY_INTENT_PATTERN.search(user_message):
+            return await self._handle_apply_intent(user_message)
+
         routing_mode = _get_routing_mode(user_message)
         cleaned_message, routing_instruction, allow_tools = _extract_message_directives(user_message)
 
@@ -936,6 +1066,9 @@ class ChatService:
             product=self._product,
         )
 
+        # Guard against LLM hallucinating action confirmations
+        response_text = _append_false_action_disclaimer(response_text, tool_results)
+
         # Add assistant response to history
         assistant_msg = ChatMessage(role="assistant", content=response_text)
         self._history.append(assistant_msg)
@@ -946,6 +1079,100 @@ class ChatService:
             tool_results=tool_results,
             error=False,
             meta=meta,
+        )
+
+    async def _handle_apply_intent(self, user_message: str) -> ChatResponse:
+        """Handle user intent to save chat suggestions as a pending SeoSuggestion."""
+        from data import db
+
+        user_msg = ChatMessage(role="user", content=user_message)
+        self._history.append(user_msg)
+
+        if not self._product:
+            content = "Öneri kaydetmek için önce bir ürün seçmelisiniz."
+            assistant_msg = ChatMessage(role="assistant", content=content)
+            self._history.append(assistant_msg)
+            return ChatResponse(content=content, error=True)
+
+        # Check there's at least one assistant message with suggestions
+        has_assistant = any(m.role == "assistant" for m in self._history[:-1])
+        if not has_assistant:
+            content = "Henüz kaydedilecek bir öneri yok. Önce bir SEO önerisi isteyin."
+            assistant_msg = ChatMessage(role="assistant", content=content)
+            self._history.append(assistant_msg)
+            return ChatResponse(content=content, error=True)
+
+        try:
+            extracted = await self._extract_suggestions_from_chat()
+        except Exception as exc:
+            logger.warning("Suggestion extraction failed: %s", exc)
+            content = (
+                "Önerileri çıkarırken bir hata oluştu. "
+                "Lütfen hangi alanı güncellemek istediğinizi tekrar belirtin."
+            )
+            assistant_msg = ChatMessage(role="assistant", content=content)
+            self._history.append(assistant_msg)
+            return ChatResponse(content=content, error=True)
+
+        if not extracted:
+            content = (
+                "Sohbet geçmişinden somut bir öneri çıkaramadım. "
+                "Lütfen güncellemek istediğiniz alanı (meta title, açıklama vb.) ve yeni değeri açıkça belirtin."
+            )
+            assistant_msg = ChatMessage(role="assistant", content=content)
+            self._history.append(assistant_msg)
+            return ChatResponse(content=content, error=True)
+
+        suggestion = self._create_suggestion_from_extracted(extracted)
+        if not suggestion:
+            content = "Geçerli bir öneri oluşturulamadı. Lütfen tekrar deneyin."
+            assistant_msg = ChatMessage(role="assistant", content=content)
+            self._history.append(assistant_msg)
+            return ChatResponse(content=content, error=True)
+
+        # Save suggestion to database
+        db.save_or_update_pending_suggestion(suggestion)
+
+        # Build confirmation message
+        field_labels = {
+            "suggested_name": "Ürün Adı",
+            "suggested_meta_title": "Meta Title",
+            "suggested_meta_description": "Meta Description",
+            "suggested_description": "Açıklama (TR)",
+            "suggested_description_en": "Açıklama (EN)",
+        }
+        saved_fields: list[str] = []
+        saved_values: dict[str, str] = {}
+        for key, label in field_labels.items():
+            value = extracted.get(key, "").strip()
+            if value:
+                saved_fields.append(f"- **{label}**: {value[:100]}{'...' if len(value) > 100 else ''}")
+                saved_values[key] = value
+
+        content_lines = [
+            "✅ **Öneri kaydedildi!**",
+            "",
+            "Aşağıdaki alanlar öneri olarak kaydedildi:",
+            *saved_fields,
+            "",
+            "**Sonraki adım:** Ürün detayındaki **Öneriler** sekmesinden bu öneriyi onaylayıp ikas'a uygulayabilirsiniz.",
+        ]
+        content = "\n".join(content_lines)
+
+        assistant_msg = ChatMessage(role="assistant", content=content)
+        self._history.append(assistant_msg)
+
+        return ChatResponse(
+            content=content,
+            thinking="",
+            tool_results=[],
+            error=False,
+            meta={"source": "suggestion_saved"},
+            suggestion_saved={
+                "product_id": self._product.id,
+                "product_name": self._product.name,
+                "fields": saved_values,
+            },
         )
 
     async def _chat_completion(
@@ -1118,6 +1345,127 @@ class ChatService:
         if "<think>" in cleaned:
             cleaned = cleaned.split("<think>", 1)[0]
         return cleaned.strip()
+
+    async def _extract_suggestions_from_chat(self) -> dict[str, str]:
+        """Extract suggested field values from conversation history using a structured LLM call.
+
+        Makes a focused extraction call asking the LLM to output only JSON with
+        the suggested values from the conversation. Returns a dict of field→value.
+        """
+        # Build a condensed conversation for extraction
+        recent_messages = self._history[-10:]  # Last 10 messages
+        conversation_text = "\n".join(
+            f"{'Kullanici' if m.role == 'user' else 'Asistan'}: {m.content[:500]}"
+            for m in recent_messages
+        )
+
+        product_info = ""
+        if self._product:
+            product_info = (
+                f"\nSecili urun: {self._product.name}"
+                f"\nMevcut meta title: {self._product.meta_title or '-'}"
+                f"\nMevcut meta description: {self._product.meta_description or '-'}"
+            )
+
+        messages = [
+            {"role": "system", "content": SUGGESTION_EXTRACTION_PROMPT + product_info},
+            {"role": "user", "content": conversation_text},
+        ]
+
+        base_url = self._get_base_url()
+        model = self._config.ai_model_name or self._get_default_model()
+
+        request_body = {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.1,  # Low temperature for structured extraction
+            "max_tokens": 500,
+        }
+
+        timeout = (
+            httpx.Timeout(120.0, connect=10.0)
+            if self._config.ai_provider in ("ollama", "lm-studio")
+            else httpx.Timeout(30.0, connect=10.0)
+        )
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            headers: dict[str, str] = {"Content-Type": "application/json"}
+            if self._config.ai_api_key:
+                headers["Authorization"] = f"Bearer {self._config.ai_api_key}"
+
+            resp = await client.post(
+                f"{base_url}/chat/completions",
+                json=request_body,
+                headers=headers,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        raw_content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        raw_content = self._remove_thinking(raw_content)
+
+        # Try to parse JSON from the response (handle markdown code blocks)
+        json_text = raw_content.strip()
+        if "```" in json_text:
+            # Extract JSON from code block
+            match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", json_text, re.DOTALL)
+            if match:
+                json_text = match.group(1)
+        # Also try to find raw JSON object
+        if not json_text.startswith("{"):
+            match = re.search(r"\{[^}]+\}", json_text, re.DOTALL)
+            if match:
+                json_text = match.group(0)
+
+        try:
+            extracted = json.loads(json_text)
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse suggestion extraction JSON: %s", json_text[:200])
+            return {}
+
+        if not isinstance(extracted, dict):
+            return {}
+
+        # Filter to only non-empty values
+        valid_fields = {
+            "suggested_meta_title", "suggested_meta_description",
+            "suggested_name", "suggested_description", "suggested_description_en",
+        }
+        return {
+            k: str(v).strip()
+            for k, v in extracted.items()
+            if k in valid_fields and isinstance(v, str) and v.strip()
+        }
+
+    def _create_suggestion_from_extracted(
+        self,
+        extracted: dict[str, str],
+    ) -> "SeoSuggestion | None":
+        """Create a SeoSuggestion from extracted chat values."""
+        if not self._product or not extracted:
+            return None
+
+        from core.suggestion_service import create_pending_suggestion
+
+        suggestion = create_pending_suggestion(self._product)
+
+        field_map = {
+            "suggested_name": "name",
+            "suggested_meta_title": "meta_title",
+            "suggested_meta_description": "meta_desc",
+            "suggested_description": "desc_tr",
+            "suggested_description_en": "desc_en",
+        }
+
+        from core.suggestion_service import apply_suggestion_field
+
+        applied_count = 0
+        for extracted_key, field_name in field_map.items():
+            value = extracted.get(extracted_key, "").strip()
+            if value:
+                apply_suggestion_field(suggestion, field_name, value)
+                applied_count += 1
+
+        return suggestion if applied_count > 0 else None
 
     async def close(self) -> None:
         """Close MCP connection."""

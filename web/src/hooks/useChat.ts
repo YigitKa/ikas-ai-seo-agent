@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChatResponseMeta, ChatWsMessage, MCPToolInfo, ToolResult } from '../types';
+import type { ChatResponseMeta, ChatWsMessage, MCPToolInfo, SuggestionSavedInfo, ToolResult } from '../types';
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -7,6 +7,7 @@ export interface ChatMessage {
   thinking?: string;
   toolResults?: ToolResult[];
   meta?: ChatResponseMeta;
+  suggestionSaved?: SuggestionSavedInfo;
 }
 
 export interface MCPState {
@@ -105,6 +106,7 @@ export function useChat(productContext?: ChatProductContext) {
               thinking: data.thinking,
               toolResults: data.tool_results,
               meta,
+              suggestionSaved: data.suggestion_saved,
             },
           ]);
           break;

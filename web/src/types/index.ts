@@ -169,6 +169,12 @@ export interface LMStudioLiveStatus {
   download_status: LMStudioDownloadStatus | null;
 }
 
+export interface SuggestionSavedInfo {
+  product_id: string;
+  product_name: string;
+  fields: Record<string, string>;
+}
+
 export interface ChatWsMessage {
   type: 'response' | 'error' | 'thinking' | 'mcp_status' | 'context_set' | 'cleared' | 'cancelled';
   content?: string;
@@ -183,4 +189,5 @@ export interface ChatWsMessage {
   message?: string;
   product_id?: string;
   product_name?: string;
+  suggestion_saved?: SuggestionSavedInfo;
 }

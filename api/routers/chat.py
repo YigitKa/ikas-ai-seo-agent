@@ -130,14 +130,17 @@ async def ws_chat(ws: WebSocket) -> None:
             if active_chat_task is not None and active_chat_task in done:
                 try:
                     response = active_chat_task.result()
-                    await send_json({
+                    payload: dict[str, object] = {
                         "type": "response",
                         "content": response.content,
                         "thinking": response.thinking,
                         "tool_results": response.tool_results,
                         "error": response.error,
                         "meta": response.meta,
-                    })
+                    }
+                    if response.suggestion_saved:
+                        payload["suggestion_saved"] = response.suggestion_saved
+                    await send_json(payload)
                 except asyncio.CancelledError:
                     if notify_on_cancel:
                         await send_json({

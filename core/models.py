@@ -75,6 +75,7 @@ class ChatResponse(BaseModel):
     tool_results: List[dict[str, Any]] = Field(default_factory=list)
     error: bool = False
     meta: dict[str, Any] = Field(default_factory=dict)
+    suggestion_saved: dict[str, Any] | None = None
 
 
 class AppConfig(BaseModel):

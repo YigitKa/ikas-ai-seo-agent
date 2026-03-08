@@ -4,10 +4,13 @@ import httpx
 import pytest
 
 from core.chat_service import (
+    APPLY_INTENT_PATTERN,
     ChatService,
+    _append_false_action_disclaimer,
     _build_completion_meta,
     _build_product_context,
     _extract_message_directives,
+    _has_mutation_tool_result,
 )
 from core.models import AppConfig, ChatMessage, Product, SeoScore
 
@@ -128,7 +131,7 @@ def test_extract_message_directives_local_disables_tools():
     assert cleaned == "seo skorunu yorumla"
     assert instruction is not None and "@local" in instruction
     assert "mevcut seo metrikleri" in instruction.lower()
-    assert "operasyon" in instruction.lower()
+    assert "degisiklik uygulayamazsin" in instruction.lower() or "oneriler panel" in instruction.lower()
     assert allow_tools is False
 
 
@@ -310,3 +313,184 @@ async def test_send_message_timeout_returns_clear_error_and_drops_failed_user():
     assert "zaman asimina" in response.content.lower()
     assert "ikas mcp operasyon onerisi" in response.content.lower()
     assert service.history == []
+
+
+# ── False action disclaimer tests ────────────────────────────────────────
+
+
+def test_false_action_disclaimer_appended_when_llm_claims_update():
+    """LLM says 'güncelledim' but no MCP mutation was called."""
+    response = "Meta title güncellendi. Yeni skor: 80/100."
+    result = _append_false_action_disclaimer(response, [])
+    assert "henüz uygulanmadı" in result
+    assert "Öneriler" in result
+
+
+def test_false_action_disclaimer_appended_for_uyguladim():
+    response = "Değişiklikler uyguladım, artık skor daha yüksek olacak."
+    result = _append_false_action_disclaimer(response, [])
+    assert "henüz uygulanmadı" in result
+
+
+def test_false_action_disclaimer_appended_for_confirmation_phrases():
+    response = "Uygulama Sonrası Meta Title: Airontek 60X Taşınabilir Mikroskop"
+    result = _append_false_action_disclaimer(response, [])
+    assert "henüz uygulanmadı" in result
+
+
+def test_false_action_disclaimer_not_appended_for_normal_suggestion():
+    """Normal suggestions without action claims should not get disclaimer."""
+    response = "Meta title'ı şu şekilde değiştirmenizi öneriyorum: 'Airontek 60X Mikroskop'"
+    result = _append_false_action_disclaimer(response, [])
+    assert "henüz uygulanmadı" not in result
+
+
+def test_false_action_disclaimer_not_appended_when_mutation_succeeded():
+    """If a mutation was actually called, the claim is legitimate."""
+    response = "updateProduct ile meta title güncellendi."
+    tool_results = [{"tool": "updateProduct", "arguments": {}, "result": '{"data": {"ok": true}}'}]
+    result = _append_false_action_disclaimer(response, tool_results)
+    assert "henüz uygulanmadı" not in result
+
+
+def test_false_action_disclaimer_appended_when_mutation_had_error():
+    """If mutation was called but returned error, disclaimer should appear."""
+    response = "Meta title güncellendi."
+    tool_results = [{"tool": "updateProduct", "arguments": {}, "result": '{"error": "unauthorized"}'}]
+    result = _append_false_action_disclaimer(response, tool_results)
+    assert "henüz uygulanmadı" in result
+
+
+def test_false_action_disclaimer_not_duplicated():
+    """Don't add disclaimer if already present."""
+    response = "Güncellendi.\n\n---\n⚠️ **Not:** Yukarıdaki öneriler henüz uygulanmadı."
+    result = _append_false_action_disclaimer(response, [])
+    assert result.count("henüz uygulanmadı") == 1
+
+
+def test_has_mutation_tool_result_detects_mutations():
+    assert _has_mutation_tool_result([
+        {"tool": "updateProduct", "arguments": {}, "result": '{"ok": true}'}
+    ])
+    assert _has_mutation_tool_result([
+        {"tool": "createProduct", "arguments": {}, "result": '{"id": "123"}'}
+    ])
+    assert not _has_mutation_tool_result([
+        {"tool": "listProduct", "arguments": {}, "result": '{"data": []}'}
+    ])
+    assert not _has_mutation_tool_result([])
+
+
+@pytest.mark.anyio
+async def test_send_message_adds_disclaimer_when_llm_hallucinates_action():
+    """End-to-end: LLM claims it updated something in @local mode → disclaimer appended."""
+    config = _make_config(ai_provider="lm-studio", ai_thinking_mode=False)
+    service = ChatService(config)
+    service.set_product_context(_make_product(), _make_score())
+
+    async def fake_chat_completion(messages, tools):
+        return "Meta title güncellendi! Yeni skor: 80/100.", "", [], {"model": "test"}
+
+    service._chat_completion = fake_chat_completion  # type: ignore[method-assign]
+
+    response = await service.send_message("@local meta title guncelle")
+
+    assert response.error is False
+    assert "henüz uygulanmadı" in response.content
+    assert "Öneriler" in response.content
+
+
+# ── Apply intent detection tests ─────────────────────────────────────────
+
+
+def test_apply_intent_pattern_matches_turkish():
+    assert APPLY_INTENT_PATTERN.search("bunu uygula")
+    assert APPLY_INTENT_PATTERN.search("Seçenek B uygula")
+    assert APPLY_INTENT_PATTERN.search("secenek A kaydet")
+    assert APPLY_INTENT_PATTERN.search("bu öneriyi uygula")
+    assert APPLY_INTENT_PATTERN.search("bu değişikliği kaydet")
+    assert APPLY_INTENT_PATTERN.search("hepsini uygula")
+    assert APPLY_INTENT_PATTERN.search("tümünü kaydet")
+
+
+def test_apply_intent_pattern_matches_english():
+    assert APPLY_INTENT_PATTERN.search("apply")
+    assert APPLY_INTENT_PATTERN.search("save this suggestion")
+    assert APPLY_INTENT_PATTERN.search("save these")
+
+
+def test_apply_intent_pattern_does_not_match_questions():
+    assert not APPLY_INTENT_PATTERN.search("meta title nasıl olmalı")
+    assert not APPLY_INTENT_PATTERN.search("SEO skorunu yorumla")
+    assert not APPLY_INTENT_PATTERN.search("açıklamayı analiz et")
+
+
+@pytest.mark.anyio
+async def test_handle_apply_intent_no_history():
+    """Apply intent with no conversation history returns error."""
+    config = _make_config(ai_provider="lm-studio")
+    service = ChatService(config)
+    service.set_product_context(_make_product(), _make_score())
+    # No history → no assistant messages → should error
+
+    response = await service.send_message("bunu uygula")
+
+    assert "kaydedilecek bir öneri yok" in response.content.lower() or response.error
+
+
+@pytest.mark.anyio
+async def test_handle_apply_intent_creates_suggestion(monkeypatch):
+    """Apply intent with conversation history extracts and saves suggestion."""
+    import json as _json
+    config = _make_config(ai_provider="lm-studio", ai_thinking_mode=False)
+    service = ChatService(config)
+    product = _make_product(name="60X Mikroskop")
+    service.set_product_context(product, _make_score())
+
+    # Simulate prior conversation
+    service._history.append(ChatMessage(role="user", content="meta title oner"))
+    service._history.append(ChatMessage(
+        role="assistant",
+        content="Meta title onerim: 'Airontek 60X Tasinabilir Mikroskop | Mavi Isik'",
+    ))
+
+    # Mock the extraction LLM call
+    extraction_response = _json.dumps({
+        "suggested_meta_title": "Airontek 60X Tasinabilir Mikroskop | Mavi Isik",
+        "suggested_meta_description": "",
+        "suggested_name": "",
+        "suggested_description": "",
+        "suggested_description_en": "",
+    })
+
+    async def fake_post(self_client, url, **kwargs):
+        class FakeResponse:
+            status_code = 200
+            def raise_for_status(self): pass
+            def json(self):
+                return {
+                    "choices": [{"message": {"content": extraction_response}}],
+                }
+        return FakeResponse()
+
+    import httpx as _httpx
+    monkeypatch.setattr(_httpx.AsyncClient, "post", fake_post)
+
+    # Mock DB save to track what was saved
+    saved_suggestions = []
+
+    def fake_save(suggestion):
+        saved_suggestions.append(suggestion)
+
+    import data.db as _db
+    monkeypatch.setattr(_db, "save_or_update_pending_suggestion", fake_save)
+
+    response = await service.send_message("bunu uygula")
+
+    assert response.error is False
+    assert response.suggestion_saved is not None
+    assert response.suggestion_saved["product_id"] == product.id
+    assert "suggested_meta_title" in response.suggestion_saved["fields"]
+    assert "kaydedildi" in response.content.lower()
+    assert len(saved_suggestions) == 1
+    assert saved_suggestions[0].suggested_meta_title == "Airontek 60X Tasinabilir Mikroskop | Mavi Isik"
