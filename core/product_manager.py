@@ -9,8 +9,9 @@ from core.ai_client import (
     build_product_rewrite_request,
     create_ai_client,
 )
+from core.chat_service import ChatService
 from core.ikas_client import IkasClient
-from core.models import AppConfig, Product, SeoScore, SeoSuggestion
+from core.models import AppConfig, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.presentation import format_prompt_display, get_tr_description_value
 from core.provider_service import discover_provider_models, get_provider_health, test_settings_connection
 from core.seo_analyzer import analyze_product
@@ -26,12 +27,14 @@ class ProductManager:
         self._ikas = IkasClient()
         self._config = get_config()
         self._ai: BaseAIClient = create_ai_client(self._config)
+        self._chat: ChatService = ChatService(self._config)
 
     def reload_ai_client(self) -> None:
         """Recreate AI client after config change."""
         from config.settings import get_config as _get
         self._config = _get()
         self._ai = create_ai_client(self._config)
+        self._chat = ChatService(self._config)
 
     def get_config(self) -> AppConfig:
         return self._config
@@ -242,5 +245,35 @@ class ProductManager:
     async def test_connection(self) -> bool:
         return await self._ikas.test_connection()
 
+    # ── Chat / MCP ───────────────────────────────────────────────────────
+
+    def set_chat_product_context(self, product: Product | None, score: SeoScore | None = None) -> None:
+        """Set the current product context for the chat service."""
+        self._chat.set_product_context(product, score)
+
+    async def initialize_mcp(self) -> tuple[bool, str]:
+        """Initialize the ikas MCP connection."""
+        return await self._chat.initialize_mcp()
+
+    async def send_chat_message(self, message: str) -> ChatResponse:
+        """Send a chat message and get AI response with optional MCP tool calls."""
+        return await self._chat.send_message(message)
+
+    def clear_chat_history(self) -> None:
+        """Clear the chat conversation history."""
+        self._chat.clear_history()
+
+    @property
+    def chat_has_mcp(self) -> bool:
+        return self._chat.has_mcp
+
+    @property
+    def chat_mcp_initialized(self) -> bool:
+        return self._chat.mcp_initialized
+
+    def get_chat_token_usage(self) -> dict[str, int]:
+        return self._chat.total_tokens
+
     async def close(self) -> None:
         await self._ikas.close()
+        await self._chat.close()

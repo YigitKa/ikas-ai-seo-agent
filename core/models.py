@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -57,11 +57,32 @@ class SeoSuggestion(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
 
+class ChatMessage(BaseModel):
+    """A single message in a multi-turn chat conversation."""
+    role: str = "user"  # user | assistant | system | tool
+    content: str = ""
+    tool_calls: List[dict[str, Any]] = Field(default_factory=list)
+    tool_call_id: str = ""
+    name: str = ""
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+
+class ChatResponse(BaseModel):
+    """Response from the chat service."""
+    content: str = ""
+    thinking: str = ""
+    tool_results: List[dict[str, Any]] = Field(default_factory=list)
+    error: bool = False
+    meta: dict[str, Any] = Field(default_factory=dict)
+
+
 class AppConfig(BaseModel):
     ikas_store_name: str = ""
     ikas_client_id: str = ""
     ikas_client_secret: str = ""
     ikas_api_url: str = ""
+    # ikas MCP integration
+    ikas_mcp_token: str = ""
     # Legacy Anthropic key (backward compat)
     anthropic_api_key: str = ""
     store_language: str = "tr"
