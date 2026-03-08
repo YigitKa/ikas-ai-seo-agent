@@ -50,27 +50,6 @@ async def list_products(
     )
 
 
-@router.get("/{product_id}", response_model=ProductWithScore)
-async def get_product(
-    product_id: str,
-    manager: ProductManager = Depends(get_manager),
-) -> ProductWithScore:
-    """Get a single product with its score."""
-    product = db.get_product(product_id)
-    if not product or not product.slug:
-        fresh_product = await manager.fetch_product(product_id)
-        if fresh_product:
-            product = fresh_product
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-
-    score = db.get_latest_score(product_id)
-    if not score:
-        score = manager.analyze_product(product)
-
-    return ProductWithScore(product=product, score=score)
-
-
 @router.post("/fetch", response_model=ProductListResponse)
 async def fetch_products(
     body: FetchProductsRequest,
@@ -111,3 +90,24 @@ async def reset_local_product_data(
         suggestions_deleted=counts["suggestions"],
         logs_deleted=counts["operation_log"],
     )
+
+
+@router.get("/{product_id}", response_model=ProductWithScore)
+async def get_product(
+    product_id: str,
+    manager: ProductManager = Depends(get_manager),
+) -> ProductWithScore:
+    """Get a single product with its score."""
+    product = db.get_product(product_id)
+    if not product or not product.slug:
+        fresh_product = await manager.fetch_product(product_id)
+        if fresh_product:
+            product = fresh_product
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    score = db.get_latest_score(product_id)
+    if not score:
+        score = manager.analyze_product(product)
+
+    return ProductWithScore(product=product, score=score)
