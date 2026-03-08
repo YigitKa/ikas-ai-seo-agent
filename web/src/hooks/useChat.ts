@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatResponseMeta, ChatWsMessage, MCPToolInfo, SuggestionSavedInfo, ToolResult } from '../types';
 
 export interface ChatMessage {
@@ -78,23 +78,25 @@ export function useChat(productContext?: ChatProductContext) {
       return;
     }
 
-    setMessages((prev) => {
-      const next = [...prev];
-      const lastMessage = next[next.length - 1];
+    startTransition(() => {
+      setMessages((prev) => {
+        const next = [...prev];
+        const lastMessage = next[next.length - 1];
 
-      if (lastMessage?.role === 'assistant') {
-        next[next.length - 1] = {
-          ...lastMessage,
-          content: `${lastMessage.content}${chunk}`,
-        };
+        if (lastMessage?.role === 'assistant') {
+          next[next.length - 1] = {
+            ...lastMessage,
+            content: `${lastMessage.content}${chunk}`,
+          };
+          return next;
+        }
+
+        next.push({
+          role: 'assistant',
+          content: chunk,
+        });
         return next;
-      }
-
-      next.push({
-        role: 'assistant',
-        content: chunk,
       });
-      return next;
     });
   }, []);
 
@@ -105,29 +107,31 @@ export function useChat(productContext?: ChatProductContext) {
       ...(typeof elapsedSeconds === 'number' ? { elapsed_seconds: elapsedSeconds } : {}),
     };
 
-    setMessages((prev) => {
-      const next = [...prev];
-      const finalizedMessage: ChatMessage = {
-        role: 'assistant',
-        content: typeof data.content === 'string' ? data.content : '',
-        thinking: data.thinking,
-        toolResults: data.tool_results,
-        meta,
-        suggestionSaved: data.suggestion_saved,
-      };
-      const lastMessage = next[next.length - 1];
-
-      if (lastMessage?.role === 'assistant') {
-        next[next.length - 1] = {
-          ...lastMessage,
-          ...finalizedMessage,
-          content: typeof data.content === 'string' ? data.content : lastMessage.content,
+    startTransition(() => {
+      setMessages((prev) => {
+        const next = [...prev];
+        const finalizedMessage: ChatMessage = {
+          role: 'assistant',
+          content: typeof data.content === 'string' ? data.content : '',
+          thinking: data.thinking,
+          toolResults: data.tool_results,
+          meta,
+          suggestionSaved: data.suggestion_saved,
         };
-        return next;
-      }
+        const lastMessage = next[next.length - 1];
 
-      next.push(finalizedMessage);
-      return next;
+        if (lastMessage?.role === 'assistant') {
+          next[next.length - 1] = {
+            ...lastMessage,
+            ...finalizedMessage,
+            content: typeof data.content === 'string' ? data.content : lastMessage.content,
+          };
+          return next;
+        }
+
+        next.push(finalizedMessage);
+        return next;
+      });
     });
   }, [finishPendingRequest]);
 

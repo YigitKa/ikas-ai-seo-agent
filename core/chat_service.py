@@ -762,6 +762,65 @@ def _extract_stream_delta_content(delta: dict[str, Any]) -> str:
     return ""
 
 
+class _StreamingVisibleTextFilter:
+    """Hide <think> blocks while still streaming visible assistant text."""
+
+    _OPEN_TAG = "<think>"
+    _CLOSE_TAG = "</think>"
+
+    def __init__(self) -> None:
+        self._inside_think = False
+        self._pending_tag = ""
+
+    def consume(self, chunk: str) -> str:
+        if not chunk:
+            return ""
+
+        text = f"{self._pending_tag}{chunk}"
+        self._pending_tag = ""
+        visible_parts: list[str] = []
+        index = 0
+
+        while index < len(text):
+            remainder = text[index:]
+            if remainder.startswith(self._OPEN_TAG):
+                self._inside_think = True
+                index += len(self._OPEN_TAG)
+                continue
+            if remainder.startswith(self._CLOSE_TAG):
+                self._inside_think = False
+                index += len(self._CLOSE_TAG)
+                continue
+
+            if text[index] == "<":
+                partial_tag = self._match_partial_tag(remainder)
+                if partial_tag is not None:
+                    self._pending_tag = partial_tag
+                    break
+
+            if not self._inside_think:
+                visible_parts.append(text[index])
+            index += 1
+
+        return "".join(visible_parts)
+
+    def finalize(self) -> str:
+        if self._inside_think or not self._pending_tag:
+            self._pending_tag = ""
+            return ""
+
+        trailing_text = self._pending_tag
+        self._pending_tag = ""
+        return trailing_text
+
+    @classmethod
+    def _match_partial_tag(cls, text: str) -> str | None:
+        for tag in (cls._OPEN_TAG, cls._CLOSE_TAG):
+            if tag.startswith(text) and text != tag:
+                return text
+        return None
+
+
 def _merge_stream_tool_call(
     tool_calls_by_index: dict[int, dict[str, Any]],
     tool_call_delta: dict[str, Any],
@@ -1027,12 +1086,10 @@ class ChatService:
         guided_context: str,
         user_message: str,
     ) -> tuple[list[dict[str, Any]] | None, list[str]]:
-        tools: list[dict[str, Any]] = []
+        tools: list[dict[str, Any]] = [_build_save_seo_suggestion_tool()]
         instructions: list[str] = []
 
-        if self._product:
-            tools.append(_build_save_seo_suggestion_tool())
-            instructions.append(SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION)
+        instructions.append(SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION)
 
         if allow_mcp_tools and self._mcp_initialized and self._mcp and not guided_context:
             tools.extend(self._mcp.get_tools_as_openai_functions())
@@ -1457,8 +1514,9 @@ class ChatService:
             finish_reason = "stop"
             meta_payload: dict[str, Any] = {"model": model}
             tool_calls: list[dict[str, Any]] = []
-            streamed_chunks: list[str] = []
+            streamed_chunk_emitted = False
             tool_calls_by_index: dict[int, dict[str, Any]] = {}
+            visible_text_filter = _StreamingVisibleTextFilter()
 
             async with httpx.AsyncClient(timeout=timeout) as client:
                 with self._active_request_lock:
@@ -1519,7 +1577,13 @@ class ChatService:
                                     chunk = _extract_stream_delta_content(delta)
                                     if chunk:
                                         message_content += chunk
-                                        streamed_chunks.append(chunk)
+                                        visible_chunk = visible_text_filter.consume(chunk)
+                                        if visible_chunk and not tool_calls_by_index:
+                                            streamed_chunk_emitted = True
+                                            yield {
+                                                "type": "chunk",
+                                                "content": visible_chunk,
+                                            }
 
                                     delta_tool_calls = delta.get("tool_calls")
                                     if isinstance(delta_tool_calls, list):
@@ -1555,7 +1619,13 @@ class ChatService:
                                                 chunk = _extract_stream_delta_content(delta)
                                                 if chunk:
                                                     message_content += chunk
-                                                    streamed_chunks.append(chunk)
+                                                    visible_chunk = visible_text_filter.consume(chunk)
+                                                    if visible_chunk and not tool_calls_by_index:
+                                                        streamed_chunk_emitted = True
+                                                        yield {
+                                                            "type": "chunk",
+                                                            "content": visible_chunk,
+                                                        }
                                                 delta_tool_calls = delta.get("tool_calls")
                                                 if isinstance(delta_tool_calls, list):
                                                     for tool_call_delta in delta_tool_calls:
@@ -1568,6 +1638,14 @@ class ChatService:
 
             if not tool_calls and tool_calls_by_index:
                 tool_calls = [tool_calls_by_index[index] for index in sorted(tool_calls_by_index)]
+
+            trailing_visible_chunk = visible_text_filter.finalize()
+            if trailing_visible_chunk and not tool_calls and not tool_calls_by_index:
+                streamed_chunk_emitted = True
+                yield {
+                    "type": "chunk",
+                    "content": trailing_visible_chunk,
+                }
 
             meta = _build_completion_meta(meta_payload, model, finish_reason)
             self._total_tokens["input"] += int(meta.get("input_tokens", 0) or 0)
@@ -1635,18 +1713,7 @@ class ChatService:
             thinking_text = self._extract_thinking(message_content)
             response_text = self._remove_thinking(message_content) if thinking_text else message_content
 
-            if thinking_text and response_text:
-                yield {
-                    "type": "chunk",
-                    "content": response_text,
-                }
-            elif streamed_chunks:
-                for chunk in streamed_chunks:
-                    yield {
-                        "type": "chunk",
-                        "content": chunk,
-                    }
-            elif response_text:
+            if response_text and not streamed_chunk_emitted:
                 yield {
                     "type": "chunk",
                     "content": response_text,

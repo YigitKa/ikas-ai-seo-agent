@@ -1,11 +1,13 @@
 """Tests for core/chat_service.py — multi-turn chat with MCP."""
 
+import asyncio
 import httpx
 import pytest
 
 from core.chat_service import (
     ChatService,
     SAVE_SEO_SUGGESTION_TOOL_NAME,
+    _StreamingVisibleTextFilter,
     _append_false_action_disclaimer,
     _build_completion_meta,
     _build_product_context,
@@ -193,6 +195,16 @@ def test_remove_thinking_with_unclosed_block():
     assert result == ""
 
 
+def test_streaming_visible_text_filter_skips_think_blocks_across_chunks():
+    filter_state = _StreamingVisibleTextFilter()
+
+    assert filter_state.consume("Mer<th") == "Mer"
+    assert filter_state.consume("ink>gizli") == ""
+    assert filter_state.consume(" dusunce</th") == ""
+    assert filter_state.consume("ink>haba") == "haba"
+    assert filter_state.finalize() == ""
+
+
 def test_get_base_url_with_config():
     config = _make_config(ai_base_url="http://localhost:11434/v1")
     service = ChatService(config)
@@ -245,6 +257,21 @@ def test_build_completion_meta_uses_stats_and_context_length():
     assert meta["tokens_per_second"] == 14.49
     assert meta["time_to_first_token_seconds"] == 0.43
     assert meta["context_used_percent"] == 22.4
+
+
+def test_build_chat_tools_always_includes_save_suggestion_tool():
+    config = _make_config(ai_provider="lm-studio")
+    service = ChatService(config)
+
+    tools, instructions = service._build_chat_tools(  # type: ignore[attr-defined]
+        allow_mcp_tools=False,
+        guided_context="",
+        user_message="bunu uygula",
+    )
+
+    assert tools is not None
+    assert [tool["function"]["name"] for tool in tools] == [SAVE_SEO_SUGGESTION_TOOL_NAME]
+    assert any("save_seo_suggestion" in instruction for instruction in instructions)
 
 
 @pytest.mark.anyio
@@ -428,7 +455,7 @@ def test_default_routing_is_local_without_mentions():
 
 @pytest.mark.anyio
 async def test_handle_apply_intent_no_history():
-    """Apply intent with no conversation history returns error."""
+    """Tool call path saves suggestions without any secondary extraction request."""
     config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1")
     service = ChatService(config)
     product = _make_product()
@@ -514,55 +541,6 @@ async def test_handle_apply_intent_creates_suggestion(monkeypatch):
     assert len(saved_suggestions) == 1
     assert saved_suggestions[0].suggested_meta_title == "Airontek 60X Tasinabilir Mikroskop | Mavi Isik"
     assert saved_suggestions[0].suggested_description == "Yeni urun aciklamasi"
-    return
-
-    # Simulate prior conversation
-    service._history.append(ChatMessage(role="user", content="meta title oner"))
-    service._history.append(ChatMessage(
-        role="assistant",
-        content="Meta title onerim: 'Airontek 60X Tasinabilir Mikroskop | Mavi Isik'",
-    ))
-
-    # Mock the extraction LLM call
-    extraction_response = _json.dumps({
-        "suggested_meta_title": "Airontek 60X Tasinabilir Mikroskop | Mavi Isik",
-        "suggested_meta_description": "",
-        "suggested_name": "",
-        "suggested_description": "",
-        "suggested_description_en": "",
-    })
-
-    async def fake_post(self_client, url, **kwargs):
-        class FakeResponse:
-            status_code = 200
-            def raise_for_status(self): pass
-            def json(self):
-                return {
-                    "choices": [{"message": {"content": extraction_response}}],
-                }
-        return FakeResponse()
-
-    import httpx as _httpx
-    monkeypatch.setattr(_httpx.AsyncClient, "post", fake_post)
-
-    # Mock DB save to track what was saved
-    saved_suggestions = []
-
-    def fake_save(suggestion):
-        saved_suggestions.append(suggestion)
-
-    import data.db as _db
-    monkeypatch.setattr(_db, "save_or_update_pending_suggestion", fake_save)
-
-    response = await service.send_message("bunu uygula")
-
-    assert response.error is False
-    assert response.suggestion_saved is not None
-    assert response.suggestion_saved["product_id"] == product.id
-    assert "suggested_meta_title" in response.suggestion_saved["fields"]
-    assert "kaydedildi" in response.content.lower()
-    assert len(saved_suggestions) == 1
-    assert saved_suggestions[0].suggested_meta_title == "Airontek 60X Tasinabilir Mikroskop | Mavi Isik"
 
 
 class _FakeStreamResponse:
@@ -626,6 +604,45 @@ async def test_async_stream_chat_yields_content_chunks_from_sse(monkeypatch):
     assert events[-1]["content"] == "Merhaba"
     assert events[-1]["meta"]["model"] == "gpt-test"
     assert service.total_tokens == {"input": 3, "output": 2}
+
+
+@pytest.mark.anyio
+async def test_async_stream_chat_emits_first_chunk_before_stream_ends(monkeypatch):
+    config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1")
+    service = ChatService(config)
+    release_stream = asyncio.Event()
+
+    class SlowFakeStreamResponse(_FakeStreamResponse):
+        async def aiter_lines(self):
+            yield 'data: {"model":"gpt-test","choices":[{"index":0,"delta":{"content":"Mer"},"finish_reason":null}]}'
+            yield ""
+            await release_stream.wait()
+            yield 'data: {"model":"gpt-test","choices":[{"index":0,"delta":{"content":"haba"},"finish_reason":null}]}'
+            yield ""
+            yield 'data: {"model":"gpt-test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}'
+            yield ""
+            yield "data: [DONE]"
+            yield ""
+
+    def fake_stream(self_client, method, url, **kwargs):
+        return _FakeStreamContext(SlowFakeStreamResponse([]))
+
+    monkeypatch.setattr(httpx.AsyncClient, "stream", fake_stream)
+
+    stream = service.async_stream_chat(
+        [{"role": "user", "content": "Merhaba de"}],
+        None,
+    )
+
+    first_event = await asyncio.wait_for(anext(stream), timeout=0.2)
+    assert first_event == {"type": "chunk", "content": "Mer"}
+
+    release_stream.set()
+    remaining_events = [event async for event in stream]
+
+    assert [event["type"] for event in remaining_events] == ["chunk", "completion_result"]
+    assert remaining_events[0]["content"] == "haba"
+    assert remaining_events[-1]["content"] == "Merhaba"
 
 
 @pytest.mark.anyio
