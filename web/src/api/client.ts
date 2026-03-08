@@ -23,6 +23,7 @@ import type {
   RewriteResponse,
   SeoSuggestion,
   SeoScore,
+  MCPStatus,
 } from '../types';
 
 export async function fetchProducts(
@@ -131,4 +132,18 @@ export async function testConnection(values: Record<string, unknown>): Promise<{
     method: 'POST',
     body: JSON.stringify({ values }),
   });
+}
+
+// ── MCP ─────────────────────────────────────────────────────────────────────
+
+export async function getMcpStatus(): Promise<MCPStatus> {
+  return request('/api/mcp/status');
+}
+
+export async function initializeMcp(): Promise<MCPStatus> {
+  return request('/api/mcp/initialize', { method: 'POST' });
+}
+
+export async function clearChat(): Promise<{ message: string }> {
+  return request('/api/chat/clear', { method: 'POST' });
 }

@@ -6,6 +6,8 @@ import {
   getProviders,
   getProviderHealth,
   testConnection,
+  getMcpStatus,
+  initializeMcp,
 } from '../api/client';
 import type { SettingsData } from '../types';
 
@@ -16,6 +18,7 @@ export default function Settings() {
   const settingsQ = useQuery({ queryKey: ['settings'], queryFn: getSettings });
   const providersQ = useQuery({ queryKey: ['providers'], queryFn: getProviders });
   const healthQ = useQuery({ queryKey: ['provider-health'], queryFn: getProviderHealth });
+  const mcpQ = useQuery({ queryKey: ['mcp-status'], queryFn: getMcpStatus });
 
   useEffect(() => {
     if (settingsQ.data && !form) setForm(settingsQ.data);
@@ -26,12 +29,18 @@ export default function Settings() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['settings'] });
       qc.invalidateQueries({ queryKey: ['provider-health'] });
+      qc.invalidateQueries({ queryKey: ['mcp-status'] });
       alert('Ayarlar kaydedildi.');
     },
   });
 
   const testMut = useMutation({
     mutationFn: (values: Record<string, unknown>) => testConnection(values),
+  });
+
+  const mcpInitMut = useMutation({
+    mutationFn: () => initializeMcp(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['mcp-status'] }),
   });
 
   if (!form) {
@@ -68,6 +77,52 @@ export default function Settings() {
               onChange={(v) => set('client_secret', v)}
               type="password"
             />
+          </div>
+        </section>
+
+        {/* MCP */}
+        <section className="rounded-xl border border-gray-700 bg-gray-800/50 p-5">
+          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-400">
+            ikas MCP Entegrasyonu
+            {mcpQ.data && (
+              <span
+                className={`ml-3 text-xs font-normal ${
+                  mcpQ.data.initialized ? 'text-green-400' : 'text-gray-500'
+                }`}
+              >
+                {mcpQ.data.message}
+              </span>
+            )}
+          </h2>
+          <div className="space-y-3">
+            <Field
+              label="MCP Token"
+              value={form.mcp_token}
+              onChange={(v) => set('mcp_token', v)}
+              type="password"
+            />
+            <p className="text-xs text-gray-500">
+              ikas Admin MCP token'i ile AI chat'te magaza verilerine gercek zamanli erisim
+              saglanir. Token, ikas admin panelinden alinabilir.
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => mcpInitMut.mutate()}
+                disabled={mcpInitMut.isPending || !form.mcp_token}
+                className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-purple-500 disabled:opacity-50"
+              >
+                {mcpInitMut.isPending ? 'Baglaniyor...' : 'MCP Baglan'}
+              </button>
+              {mcpQ.data?.initialized && (
+                <span className="flex items-center gap-1.5 text-sm text-green-400">
+                  <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
+                  Bagli
+                </span>
+              )}
+              {mcpInitMut.data && !mcpInitMut.data.initialized && (
+                <span className="text-sm text-red-400">{mcpInitMut.data.message}</span>
+              )}
+            </div>
           </div>
         </section>
 

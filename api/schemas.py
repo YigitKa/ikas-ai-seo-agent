@@ -88,6 +88,7 @@ class SettingsResponse(BaseModel):
     store_name: str = ""
     client_id: str = ""
     client_secret: str = ""
+    mcp_token: str = ""
     ai_provider: str = "none"
     ai_api_key: str = ""
     ai_base_url: str = ""
@@ -117,3 +118,21 @@ class TestConnectionResponse(BaseModel):
 
 class ProviderModelsResponse(BaseModel):
     models: list[str]
+
+
+# ── MCP ──────────────────────────────────────────────────────────────────────
+
+class MCPStatusResponse(BaseModel):
+    has_token: bool = False
+    initialized: bool = False
+    tool_count: int = 0
+    message: str = ""
+
+
+class ChatMessageSchema(BaseModel):
+    role: str
+    content: str
+    tool_results: list[dict[str, Any]] = Field(default_factory=list)
+    thinking: str = ""
+    error: bool = False
+    meta: dict[str, Any] = Field(default_factory=dict)

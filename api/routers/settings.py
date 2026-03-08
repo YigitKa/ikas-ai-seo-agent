@@ -29,6 +29,7 @@ async def get_settings(
         store_name=cfg.ikas_store_name,
         client_id=cfg.ikas_client_id,
         client_secret=cfg.ikas_client_secret,
+        mcp_token=cfg.ikas_mcp_token,
         ai_provider=cfg.ai_provider,
         ai_api_key=cfg.ai_api_key,
         ai_base_url=cfg.ai_base_url,

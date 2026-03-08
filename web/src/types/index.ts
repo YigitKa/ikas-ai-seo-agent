@@ -63,6 +63,7 @@ export interface SettingsData {
   store_name: string;
   client_id: string;
   client_secret: string;
+  mcp_token: string;
   ai_provider: string;
   ai_api_key: string;
   ai_base_url: string;
@@ -89,4 +90,29 @@ export interface RewriteResponse {
   suggestion: SeoSuggestion | null;
   field_value: string;
   thinking_text: string;
+}
+
+export interface MCPStatus {
+  has_token: boolean;
+  initialized: boolean;
+  tool_count: number;
+  message: string;
+}
+
+export interface ToolResult {
+  tool: string;
+  arguments: Record<string, unknown>;
+  result: string;
+}
+
+export interface ChatWsMessage {
+  type: 'response' | 'error' | 'thinking' | 'mcp_status' | 'context_set' | 'cleared';
+  content?: string;
+  thinking?: string;
+  tool_results?: ToolResult[];
+  error?: boolean;
+  meta?: Record<string, unknown>;
+  initialized?: boolean;
+  message?: string;
+  product_id?: string;
 }
