@@ -1,505 +1,414 @@
 # ikas AI SEO Agent
 
-ikas e-ticaret magazalari icin AI destekli SEO optimizasyon araci. Urun iceriklerini analiz eder, SEO kalitesini puanlar ve AI ile optimize edilmis yeniden yazim onerileri uretir.
+`ikas AI SEO Agent`, ikas magazalari icin gelistirilmis web tabanli bir SEO analiz ve AI destekli icerik iyilestirme aracidir. Urunleri ikas API'sinden senkronize eder, yerel SQLite cache icinde saklar, 100 puanlik bir rubric ile skorlar ve secilen AI provider uzerinden rewrite veya TR -> EN ceviri onerileri uretir.
 
-## Giris: Sorun ve Cozum
+`2026-03-08` itibariyla proje yalnizca web uygulamasi olarak devam eder. Legacy masaustu UI repo'dan kaldirilmistir.
 
-**Sorun:** ikas magazalarinda urun aciklamalari genellikle zamanla tutarsizlasir; SEO acisindan zayif, eksik anahtar kelimeli veya farkli dillerde dengesiz icerikler organik gorunurlugu dusurur.
+## Guncel Durum
 
-**Cozum:** ikas AI SEO Agent, urun iceriklerini otomatik analiz edip puanlar; AI destekli yeniden yazim onerileri ile Turkce/Ingilizce aciklamalari SEO odakli, daha tutarli ve olceklenebilir bir sekilde iyilestirir.
-
-### Temel Yetenekler
-
-- ikas magazasindan urunleri OAuth2 + GraphQL ile ceker
-- Her urunu 100 puanlik kural tabanli SEO rubrigine gore puanlar
-- AI saglayicisina (Claude, GPT, Gemini, Ollama vb.) icerik gonderip yeniden yazim onerisi alir
-- Oncesi/sonrasi diff gosterir, onay sonrasi degisiklikleri ikas'a uygular
-- MCP (Model Context Protocol) entegrasyonu ile canli magaza verisi sorgulayan AI sohbet
-- Turkce ve Ingilizce urun icerigi destegi
-- Varsayilan olarak kuru calistirma modu (DRY_RUN=true) — acikca devre disi birakilmadikca ikas'a yazma yapilmaz
-
----
+- React 19 + TypeScript frontend (`web/`)
+- FastAPI backend + WebSocket chat (`api/`)
+- SQLite tabanli yerel cache, skor ve suggestion kaydi (`data/`)
+- ikas urun senkronizasyonu ve tekil urun fetch destegi
+- Urun filtreleri: `all`, `low_score`, `missing_english`, `pending`, `approved`
+- SEO score breakdown: title, description, EN description, meta, keyword, content quality, technical SEO, readability
+- Chat-first AI akisi: urun baglami, SEO metrikleri, prompt parametre ekleme, istek iptali, oturum token/context gostergeleri
+- Ayar merkezi: provider secimi, model kesfi, prompt editoru, MCP durumu, LM Studio canli durum ekrani
+- Suggestion durumlari: `pending`, `approved`, `rejected`, `applied`
+- Guvenli varsayilan: `DRY_RUN=true`
 
 ## Mimari
 
-```
-+---------------------------+     +---------------------------+
-|  Web UI (React/TypeScript)|     |  Desktop UI (CustomTkinter)|
-|  Vite + SPA               |     |  (legacy)                  |
-+-----------+---------------+     +-----------+----------------+
-            |                                 |
-            v                                 v
-+-----------+----------------------------------+
-|  FastAPI REST API + WebSocket                |
-|  api/main.py                                 |
-+-----------+----------------------------------+
-            |
-+-----------+----------------------------------+
-|  ProductManager (Orchestrator)               |
-|  core/product_manager.py                     |
-+--+--------+--------+--------+--------+------+
-   |        |        |        |        |
-   v        v        v        v        v
- ikas     SEO      AI       Chat    ikas MCP
- Client   Analyzer Client   Service  Client
- (httpx)  (rules)  (multi)  (multi-  (JSON-RPC)
-   |               |        turn)
-   v               v
- ikas           Anthropic / OpenAI /
- GraphQL        Gemini / OpenRouter /
- API            Ollama / LM Studio / Custom
-            |
-      +-----+------+
-      |  SQLite DB  |
-      |  + Cache    |
-      +-------------+
+```text
++------------------------------+
+| React SPA (Vite)             |
+| /            -> Dashboard    |
+| /settings    -> Settings     |
++---------------+--------------+
+                |
+                v
++---------------+--------------+
+| FastAPI                        |
+| REST + WebSocket               |
+| api/main.py                    |
++---------------+--------------+
+                |
+                v
++---------------+--------------+
+| ProductManager                 |
+| core/product_manager.py        |
++---+-----------+-----------+---+
+    |           |           |
+    v           v           v
+  ikas API    SEO        AI / Chat
+  GraphQL     Rules      Providers + MCP
+    |
+    v
+ SQLite cache, scores, suggestions, logs
 ```
 
----
+Production modunda FastAPI, build edilmis SPA'yi `web/dist` altindan servis eder.
 
-## Kurulum
+## Baslangic
+
+### Gereksinimler
+
+- Python 3.11+
+- Node.js 20+
+- npm
+
+### Kurulum
 
 ```bash
-# Repoyu klonla
 git clone https://github.com/YigitKa/ikas-ai-seo-agent.git
 cd ikas-ai-seo-agent
 
-# Sanal ortam olustur
 python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# .venv\Scripts\activate   # Windows
 
-# Python bagimliklarini yukle
+# Windows
+.venv\Scripts\activate
+
+# Linux / macOS
+source .venv/bin/activate
+
 pip install -r requirements.txt
 
-# Frontend bagimliklarini yukle
-cd web && npm install && cd ..
+cd web
+npm install
+cd ..
 
-# .env dosyasini olustur
-cp .env.example .env
-# .env dosyasini tercih ettiginiz editor ile duzenleyin
-
-# Testleri calistirarak kurulumu dogrula
-python -m pytest tests/ -v
+copy .env.example .env   # Windows
+# cp .env.example .env   # Linux / macOS
 ```
 
----
+`.env` dosyasini doldurmadan ikas baglantili akislar calismaz.
 
 ## Calistirma
 
-### Web UI — gelistirme modu (onerilen)
+### Onerilen gelistirme modu
 
 ```bash
-python main.py dev          # Backend :8000 + Vite :5173 paralel calisir
+python start.py dev
 ```
 
-### Web UI — production modu
+Bu komut:
+
+- FastAPI backend'i baslatir
+- Vite dev server'i `:5173` uzerinden calistirir
+- Backend portu mesgulse sonraki 20 portu dener
+
+### Production benzeri calisma
 
 ```bash
-python main.py              # Frontend build eder (gerekirse), FastAPI :8000'de baslar
+python start.py
 ```
 
-### Desktop UI (legacy CustomTkinter)
+Varsayilan mod `prod`'dur. `web/dist` yoksa frontend build edilir, sonra FastAPI tek proses olarak kalkar.
+
+### Diger launcher modlari
 
 ```bash
-python main.py desktop
+python start.py build
+python start.py backend
+python start.py prod
 ```
 
-### start.py ile dogrudan calistirma
+`main.py`, geriye donuk uyumluluk icin `start.py` alias'i olarak birakilmistir. Su komutlar da ayni sekilde calisir:
 
 ```bash
-python start.py dev         # Backend :8000 + Vite :5173 paralel
-python start.py build       # Sadece frontend build
-python start.py backend     # Sadece backend baslat
-python start.py prod        # Frontend build + backend baslat
+python main.py dev
+python main.py
 ```
 
-> **Not:** Port 8000 mesgulse, `start.py` otomatik olarak sonraki 20 portu dener.
+### Manuel calistirma
 
----
+Frontend ve backend'i ayri proseslerde acmak isterseniz:
 
-## ikas API Kurulumu
+```bash
+# terminal 1
+python -m uvicorn api.main:app --reload
 
-1. ikas yonetim paneline gidin
-2. **Ayarlar > API Erisimi** bolumine gidin
-3. Yeni bir OAuth2 uygulamasi olusturun
-4. **Client ID** ve **Client Secret** degerlerini `.env` dosyasina yapistin
+# terminal 2
+cd web
+npm run dev
+```
 
----
+## Uygulama Akisi
 
-## AI Provider Secimi
+### Dashboard
 
-Uygulama birden fazla AI saglayicisini desteklemektedir. Ayarlar ekranindan veya `.env` dosyasindan provider secebilirsiniz.
+Dashboard ekraninda:
 
-### Desteklenen Provider'lar
+- Tum katalog senkronize edilir
+- Yerel veritabani sifirlanabilir
+- Onayli suggestion'lar tek seferde uygulanabilir
+- Sol panelde urun listesi ve skor rozetleri gorulur
+- Secilen urun icin chat paneli ve SEO skor karti acilir
 
-| Provider | Aciklama | Gerekli |
-|---|---|---|
-| `none` | AI yok, yalnizca SEO analizi yapilir | — |
-| `anthropic` | Anthropic Claude (haiku / sonnet / opus) | API Key |
-| `openai` | OpenAI GPT modelleri | API Key |
-| `gemini` | Google Gemini (OpenAI uyumlu endpoint) | API Key |
-| `openrouter` | OpenRouter uzerinden herhangi bir model | API Key |
-| `ollama` | Yerel Ollama kurulumu, internet gerekmez | — |
-| `lm-studio` | Yerel LM Studio kurulumu, internet gerekmez | — |
-| `custom` | Herhangi bir OpenAI uyumlu endpoint | Opsiyonel |
+### Chat Panel
 
-### Provider'a Gore API Key ve URL
+Chat paneli mevcut urun baglamini ve skor metriklerini modele verir. Arayuzde:
 
-| Provider | API Key Nereden Alinir | Base URL |
-|---|---|---|
-| `anthropic` | [console.anthropic.com](https://console.anthropic.com) | (otomatik) |
-| `openai` | [platform.openai.com](https://platform.openai.com) | (otomatik) |
-| `gemini` | [aistudio.google.com](https://aistudio.google.com) | (otomatik) |
-| `openrouter` | [openrouter.ai/keys](https://openrouter.ai/keys) | (otomatik) |
-| `ollama` | gereksiz | `http://localhost:11434` |
-| `lm-studio` | gereksiz | `http://localhost:1234` |
-| `custom` | endpoint sahibinden | sizin URL'iniz |
+- `@local` ile yalnizca mevcut baglam uzerinden analiz isteme
+- `{productDescription}`, `{productMetaTitle}`, `{seoMetricsSummary}` gibi hazir alanlari mesaja ekleme
+- Aktif istegi `Stop` ile iptal etme
+- MCP arac cagri sonucunu mesaja gomulu gorme
+- LM Studio kullanirken context uzunlugu ve token kullanimini izleme
 
-### Varsayilan Modeller
+### Settings
 
-| Provider | Varsayilan Model |
-|---|---|
-| `anthropic` | `claude-haiku-4-5-20251001` |
-| `openai` | `gpt-4o-mini` |
-| `gemini` | `gemini-1.5-flash` |
-| `openrouter` | `openai/gpt-4o-mini` |
-| `ollama` | `llama3.2` |
-| `lm-studio` | ayarlar ekranindan taranir |
+Settings ekraninda:
 
----
+- ikas kimlik bilgileri
+- MCP token
+- AI provider / model / base URL
+- `AI_THINKING_MODE`
+- Prompt editoru
+- Provider health check
+- Ollama ve LM Studio icin model discovery
+- LM Studio secili model ve download job durumu
 
-## .env Parametreleri
+tek yerden yonetilir.
 
-Uygulama acilisinda `.env` dosyasi okunur. Zorunlu alanlar bos ise uygulama terminalde interaktif olarak ister (TTY yoksa hata verir).
+## Konfigurasyon
 
-### ikas API
+### Zorunlu `.env` alanlari
 
-| Parametre | Zorunlu | Aciklama | Ornek |
-|---|---|---|---|
-| `IKAS_STORE_NAME` | Evet | Magazanizin alt alani | `my-store` |
-| `IKAS_CLIENT_ID` | Evet | OAuth2 Client ID | ikas panelinden |
-| `IKAS_CLIENT_SECRET` | Evet | OAuth2 Client Secret | ikas panelinden |
-| `IKAS_MCP_TOKEN` | Hayir | ikas MCP token (AI sohbet icin canli magaza verisi) | ikas panelinden |
+| Key | Aciklama |
+| --- | --- |
+| `IKAS_STORE_NAME` | Magaza alt alani veya host bilgisi |
+| `IKAS_CLIENT_ID` | ikas OAuth client id |
+| `IKAS_CLIENT_SECRET` | ikas OAuth client secret |
 
-### AI Provider
+TTY ortaminda zorunlu alanlar eksikse uygulama bunlari terminalden isteyebilir. TTY yoksa hata verir.
 
-| Parametre | Zorunlu | Aciklama | Varsayilan |
-|---|---|---|---|
-| `AI_PROVIDER` | Hayir | `none` / `anthropic` / `openai` / `gemini` / `openrouter` / `ollama` / `lm-studio` / `custom` | `none` (ANTHROPIC_API_KEY varsa `anthropic`) |
-| `AI_API_KEY` | Provider'a gore | Secilen provider'in API anahtari | — |
-| `AI_BASE_URL` | Opsiyonel | Ozel endpoint URL'i (ollama veya custom icin) | Provider varsayilani |
-| `AI_MODEL_NAME` | Opsiyonel | Kullanilacak model adi | Provider varsayilani |
-| `AI_TEMPERATURE` | Hayir | Yaraticilik seviyesi (0.0 - 1.0) | `0.7` |
-| `AI_MAX_TOKENS` | Hayir | Maksimum cikti token sayisi | `2000` |
-| `ANTHROPIC_API_KEY` | Hayir | Eski Anthropic key (geriye donuk uyumlu) | — |
+### Opsiyonel `.env` alanlari
+
+| Key | Varsayilan | Not |
+| --- | --- | --- |
+| `IKAS_MCP_TOKEN` | bos | AI sohbeti icin ikas MCP baglantisi |
+| `AI_PROVIDER` | `none` | `none`, `anthropic`, `openai`, `gemini`, `openrouter`, `ollama`, `lm-studio`, `custom` |
+| `AI_API_KEY` | bos | Secilen provider API key'i |
+| `AI_BASE_URL` | provider default | OpenAI-compatible endpoint |
+| `AI_MODEL_NAME` | provider default | Model adi |
+| `AI_TEMPERATURE` | `0.7` | Rewrite yaraticiligi |
+| `AI_MAX_TOKENS` | `2000` | Max output token |
+| `AI_THINKING_MODE` | `false` | Destekleyen providerlarda reasoning isteyen mod |
+| `STORE_LANGUAGES` | `tr` | Virgulle ayrilmis dil listesi |
+| `STORE_LANGUAGE` | `tr` | Geriye donuk desteklenir |
+| `SEO_TARGET_KEYWORDS` | bos | Virgulle ayrilmis keyword listesi |
+| `SEO_LOW_SCORE_THRESHOLD` | `70` | `low_score` filtresi icin alt esik |
+| `DRY_RUN` | `true` | Aciksa ikas'a yazma yapilmaz |
+| `LOG_LEVEL` | `INFO` | Log seviyesi |
+| `ANTHROPIC_API_KEY` | bos | Legacy geriye donuk uyumluluk |
+
+### Provider varsayilanlari
+
+| Provider | Varsayilan model | Varsayilan base URL |
+| --- | --- | --- |
+| `anthropic` | `claude-haiku-4-5-20251001` | SDK icinden |
+| `openai` | `gpt-4o-mini` | `https://api.openai.com/v1` |
+| `gemini` | `gemini-1.5-flash` | `https://generativelanguage.googleapis.com/v1beta/openai/` |
+| `openrouter` | `openai/gpt-4o-mini` | `https://openrouter.ai/api/v1` |
+| `ollama` | `llama3.2` | `http://localhost:11434/v1` |
+| `lm-studio` | `local-model` | `http://localhost:1234/v1` |
+| `custom` | `gpt-3.5-turbo` | kullanici tanimlar |
+
+## API Yuzeyi
 
 ### Genel
 
-| Parametre | Zorunlu | Aciklama | Varsayilan |
-|---|---|---|---|
-| `STORE_LANGUAGES` | Hayir | Aktif diller, virgul ayrimli | `tr,en` |
-| `SEO_TARGET_KEYWORDS` | Hayir | Hedef anahtar kelimeler, virgul ayrimli | — |
-| `DRY_RUN` | Hayir | `true` ise ikas'a gercek yazma yapilmaz | `true` |
-| `LOG_LEVEL` | Hayir | `DEBUG` / `INFO` / `WARNING` / `ERROR` | `INFO` |
+| Method | Path | Aciklama |
+| --- | --- | --- |
+| `GET` | `/api/health` | Saglik kontrolu |
 
-### Ornek .env
+### Products
 
-```env
-# ikas
-IKAS_STORE_NAME=my-store
-IKAS_CLIENT_ID=xxx
-IKAS_CLIENT_SECRET=yyy
-IKAS_MCP_TOKEN=zzz
+| Method | Path | Aciklama |
+| --- | --- | --- |
+| `GET` | `/api/products?page=1&limit=50&filter=all` | Cache'deki urunleri listeler |
+| `POST` | `/api/products/fetch` | ikas'tan sayfali urun ceker |
+| `POST` | `/api/products/sync` | Tum katalogu ceker, cache ve skorlar guncellenir |
+| `POST` | `/api/products/reset` | Urun, skor, suggestion ve log verisini temizler |
+| `GET` | `/api/products/{product_id}` | Tekil urun ve son skoru |
 
-# AI Provider (birini aktif edin)
+`filter` parametresi su degerleri kabul eder: `all`, `low_score`, `missing_english`, `pending`, `approved`.
 
-## Anthropic
-AI_PROVIDER=anthropic
-AI_API_KEY=sk-ant-...
-AI_MODEL_NAME=claude-haiku-4-5-20251001
+### SEO
 
-## OpenAI
-# AI_PROVIDER=openai
-# AI_API_KEY=sk-...
-# AI_MODEL_NAME=gpt-4o-mini
+| Method | Path | Aciklama |
+| --- | --- | --- |
+| `POST` | `/api/seo/analyze` | Cache'deki tum urunleri skorlar |
+| `POST` | `/api/seo/analyze/{product_id}` | Tek urun skoru uretir |
+| `GET` | `/api/seo/scores/{product_id}` | Son kaydedilen skoru doner |
 
-## Google Gemini
-# AI_PROVIDER=gemini
-# AI_API_KEY=AIza...
-# AI_MODEL_NAME=gemini-1.5-flash
+### Suggestions
 
-## OpenRouter
-# AI_PROVIDER=openrouter
-# AI_API_KEY=sk-or-...
-# AI_MODEL_NAME=openai/gpt-4o-mini
+| Method | Path | Aciklama |
+| --- | --- | --- |
+| `POST` | `/api/suggestions/generate/{product_id}` | Tam rewrite suggestion uretir |
+| `POST` | `/api/suggestions/generate-field/{product_id}` | Tek alan rewrite veya EN ceviri uretir |
+| `GET` | `/api/suggestions/{product_id}` | Urunun suggestion gecmisi |
+| `PATCH` | `/api/suggestions/{product_id}/approve` | Son pending suggestion'i onaylar |
+| `PATCH` | `/api/suggestions/{product_id}/reject` | Son pending suggestion'i reddeder |
+| `PATCH` | `/api/suggestions/{product_id}/update` | Son pending suggestion alanlarini gunceller |
+| `POST` | `/api/suggestions/apply` | Tum approved suggestion'lari uygular |
 
-## Ollama (yerel, internet gerekmez)
-# AI_PROVIDER=ollama
-# AI_BASE_URL=http://localhost:11434
-# AI_MODEL_NAME=llama3.2
+### Settings ve MCP
 
-## LM Studio (yerel, internet gerekmez)
-# AI_PROVIDER=lm-studio
-# AI_BASE_URL=http://localhost:1234
-# AI_MODEL_NAME=qwen2.5-7b-instruct
+| Method | Path | Aciklama |
+| --- | --- | --- |
+| `GET` | `/api/settings` | Aktif ayarlar |
+| `PUT` | `/api/settings` | `.env` guncelle ve reload et |
+| `GET` | `/api/settings/prompts` | Prompt editor metadata + icerik |
+| `PUT` | `/api/settings/prompts` | Promptlari kaydet |
+| `POST` | `/api/settings/prompts/reset` | Promptlari varsayilana dondur |
+| `GET` | `/api/settings/providers` | Provider listesi |
+| `GET` | `/api/settings/health` | Provider baglanti durumu |
+| `GET` | `/api/settings/models/{provider}` | Model discovery |
+| `GET` | `/api/settings/lm-studio/status` | LM Studio canli durum |
+| `POST` | `/api/settings/test-connection` | ikas + provider baglanti testi |
+| `GET` | `/api/mcp/status` | MCP durum ozeti |
+| `POST` | `/api/mcp/initialize` | MCP baglantisini baslat |
+| `POST` | `/api/chat/clear` | Sohbet gecmisini temizle |
 
-## Custom OpenAI-uyumlu endpoint
-# AI_PROVIDER=custom
-# AI_API_KEY=...
-# AI_BASE_URL=https://my-api.example.com/v1
-# AI_MODEL_NAME=my-model
+### WebSocket
 
-AI_TEMPERATURE=0.7
-AI_MAX_TOKENS=2000
+| Path | Aciklama |
+| --- | --- |
+| `/ws/chat` | AI sohbet, MCP arac cagirilari ve streaming response |
+| `/ws/progress` | Uzun sureli operasyonlar icin keep-alive / progress kanali |
 
-# Genel
-STORE_LANGUAGES=tr,en
-SEO_TARGET_KEYWORDS=kadin ayakkabi,spor ayakkabi
-DRY_RUN=true
-```
+## SEO Skorlama
 
----
+Toplam skor `100` puandir:
 
-## API Endpoints
+| Alan | Maks puan |
+| --- | --- |
+| Title | 15 |
+| Description | 20 |
+| English description | 5 |
+| Meta title | 15 |
+| Meta description | 10 |
+| Keyword usage | 10 |
+| Content quality | 10 |
+| Technical SEO | 10 |
+| Readability | 5 |
 
-FastAPI backend asagidaki REST endpoint'lerini sunar:
+Varsayilan olarak `70` alti urunler dusuk skor kabul edilir.
 
-| Route | Method | Aciklama |
-|---|---|---|
-| `/api/health` | GET | Saglik kontrolu |
-| `/api/products/` | GET | Onbellekteki urunleri listele |
-| `/api/products/fetch` | POST | ikas'tan urunleri cek |
-| `/api/products/{id}` | GET | Tekil urun detayi |
-| `/api/products/sync` | POST | Tam urun senkronizasyonu |
-| `/api/seo/analyze` | POST | SEO analizi baslat |
-| `/api/seo/batch` | POST | Toplu SEO analizi |
-| `/api/suggestions/pending` | GET | Bekleyen onerileri listele |
-| `/api/suggestions/{id}` | GET | Urun onerilerini getir |
-| `/api/suggestions/{id}` | POST | Oneri olustur/guncelle |
-| `/api/suggestions/{id}` | PUT | Oneri durumunu guncelle |
-| `/api/settings/config` | GET | Mevcut konfigurasyonu getir |
-| `/api/settings/save` | POST | Ayarlari kaydet |
-| `/api/settings/providers` | GET | AI provider'lari listele |
-| `/api/settings/test` | POST | Provider baglantisini test et |
-| `/api/settings/prompts` | GET | Prompt sablonlarini getir |
-| `/api/settings/prompts` | POST | Prompt sablonlarini kaydet |
-| `/api/chat/stream` | WebSocket | AI sohbet (MCP arac entegrasyonu ile) |
+Kontroller arasinda su sinyaller bulunur:
 
----
+- title uzunlugu, buyuk harf ve ozel karakter yogunlugu
+- TR ve EN description uzunlugu ve yapisi
+- meta alan uzunluklari
+- hedef keyword kapsami
+- tekrar / stuffing sinyalleri
+- gorsel, etiket, kategori, fiyat, slug gibi teknik alanlar
+- cumle uzunlugu ve okunabilirlik
 
-## AI Sohbet ve MCP Entegrasyonu
+## Prompt Sistemi
 
-Uygulama, ikas MCP (Model Context Protocol) entegrasyonu sayesinde AI sohbet sirasinda canli magaza verilerine erisim saglar:
+Prompt dosyalari `prompts/` klasorunde tutulur ve her AI isteginde yeniden okunur.
 
-- **Cok turlu sohbet:** Maks 40 mesajlik konusma gecmisi
-- **MCP arac cagirilari:** Urunler, kategoriler, envanter gibi canli magaza verilerini sorgulama
-- **Her kullanici mesaji basina maks 5 ardisik arac cagrisi**
-- **Turkce/Ingilizce dil tespiti**
-- **WebSocket uzerinden gercek zamanli streaming**
+Aktif prompt dosyalari:
 
-MCP'yi etkinlestirmek icin `.env` dosyasina `IKAS_MCP_TOKEN` degerini ekleyin.
+- `description_rewrite.system.txt`
+- `description_rewrite.user.txt`
+- `translation_en.system.txt`
+- `translation_en.user.txt`
 
----
+Promptlar Settings ekranindan duzenlenebilir. Gecerli degiskenler:
 
-## Yerel Model Kullanimi
+- `{{name}}`
+- `{{description}}`
+- `{{category}}`
+- `{{keywords}}`
 
-### Ollama
+Translation prompt'larinda `{{keywords}}` yoktur; yalnizca ilgili ceviri degiskenleri kullanilir.
 
-Ollama ile internet baglantisi olmadan yerel bir model kullanabilirsiniz.
+## MCP ve AI Chat
 
-```bash
-# 1. Ollama'yi yukle
-#    Linux / Mac:
-curl -fsSL https://ollama.com/install.sh | sh
-#    Windows: https://ollama.com/download adresinden yukleyin
+`IKAS_MCP_TOKEN` tanimliysa backend acilista veya Settings ekranindan MCP baglantisini kurabilir. Chat akisi:
 
-# 2. Bir model indir
-ollama pull llama3.2        # 2B, hizli
-ollama pull llama3.1:8b     # 8B, daha kaliteli
-ollama pull mistral         # 7B, cok dilli
-
-# 3. Ollama'nin calistigini dogrula
-curl http://localhost:11434/api/tags
-
-# 4. .env dosyasini duzenle
-AI_PROVIDER=ollama
-AI_BASE_URL=http://localhost:11434
-AI_MODEL_NAME=llama3.2
-```
-
-### LM Studio
-
-LM Studio ile Qwen, Mistral, Llama gibi modelleri yerel olarak calistirup kullanabilirsiniz.
-
-```bash
-# 1. LM Studio'yu yukle
-#    https://lmstudio.ai adresinden isletim sisteminize gore indirin
-
-# 2. LM Studio icerisinden bir model indir (ornegin Qwen2.5)
-
-# 3. LM Studio'da Local Server'i baslat (varsayilan port: 1234)
-
-# 4. .env dosyasini duzenle
-AI_PROVIDER=lm-studio
-AI_BASE_URL=http://localhost:1234
-AI_MODEL_NAME=qwen2.5-7b-instruct   # yuklediginiz modelin adi
-```
-
----
-
-## SEO Skor Dagilimi
-
-Skorlama algoritmasi modern SEO araclarindan (Ahrefs, Semrush, Yoast, Moz, Screaming Frog) esinlenerek tasarlanmistir.
-
-| Kategori | Maks Puan | Kontrol Edilen Kriterler |
-|---|---|---|
-| Baslik Kalitesi | 15 | Uzunluk (30-60 karakter), buyuk harf orani, ozel karakter, power word kullanimi |
-| Turkce Aciklama | 20 | Kelime sayisi (150-500 ideal), paragraf yapisi, HTML yapisal ogeler (baslik, liste, bold) |
-| Ingilizce Aciklama | 5 | Kelime sayisi, Turkce karakter kontrolu |
-| Meta Title | 15 | Uzunluk (50-60 karakter), marka ayirici, urun adindan farklilik |
-| Meta Description | 10 | Uzunluk (120-160 karakter), call-to-action varligi |
-| Keyword Uyumu | 10 | Hedef keyword kapsami, kategori adi eslesmesi, urun adi-aciklama tutarliligi |
-| Icerik Kalitesi | 10 | Keyword stuffing tespiti, kelime cesitliligi (TTR), tekrarlanan n-gram, baslik-icerik uyumu |
-| Teknik SEO | 10 | Gorsel sayisi, etiket/tag varligi, kategori atamasi, URL-dostu isim, fiyat bilgisi |
-| Okunabilirlik | 5 | Ortalama cumle uzunlugu, cumle uzunluk varyasyonu, gecis kelimeleri |
-| **Toplam** | **100** | |
-
-Skor < 70 ise urun "optimizasyon gerekiyor" olarak isaretlenir.
-
----
-
-## Cift Dil (TR/EN) Destegi
-
-- ikas GraphQL sorgularinda `translations { locale name description }` alani okunur
-- SEO skoruna ek olarak Ingilizce aciklama kalitesi icin `english_description_score` hesaplanir
-- AI rewrite akisinda hem TR hem EN baglami modele verilir; EN onerisi de uretilir
-- Uygulama asamasinda `tr` ve `en` aciklamalari birlikte guncellenebilir
-
----
-
-## Prompt Sablonlari
-
-Prompt dosyalari `prompts/` klasorunde bulunur ve `core/prompt_store.py` tarafindan yuklenir. `{{degisken}}` sozdizimini kullanir. Kullanicilar prompt'lari Ayarlar ekranindan duzenleyebilir.
-
-Mevcut sablonlar:
-- `description_rewrite.system.txt` / `.user.txt` — urun aciklamasi yeniden yazimi
-- `translation_en.system.txt` / `.user.txt` — Turkce icerigin Ingilizce'ye cevirisi
-
----
+- secili urun baglamini modele aktarir
+- kullanici mesajina gore MCP arac cagrisi yapabilir
+- arac sonucunu assistant cevabina baglar
+- aktif istegi iptal edebilir
+- oturum bazli token ve context kullanim metriklerini saklar
 
 ## Testler
 
 ```bash
-# Tum testler
-python -m pytest tests/ -v
-
-# Tekil test dosyasi
-python -m pytest tests/test_seo_analyzer.py -v
-
-# Tekil test fonksiyonu
-python -m pytest tests/test_seo_analyzer.py::test_analyze_product_low_score -v
+python -m pytest tests -v
 ```
 
-Testler `pytest` ve mock nesneler kullanir — canli API cagrisi yapilmaz.
+Sik kullanilan testler:
 
----
+```bash
+python -m pytest tests/test_products_api.py -v
+python -m pytest tests/test_product_manager.py -v
+python -m pytest tests/test_settings_service.py -v
+python -m pytest tests/test_provider_service.py -v
+```
+
+## Gelistirme Notlari
+
+- `seo_optimizer.db` yerel veritabani dosyasidir.
+- Frontend build ciktilari `web/dist` altina uretilir.
+- FastAPI, build alinmis SPA varsa root path'te onu servis eder.
+- `web/package.json` icinde `dev`, `build`, `lint`, `preview` script'leri bulunur.
 
 ## Proje Yapisi
 
 ```text
 ikas-ai-seo-agent/
-|-- main.py                  # Entry point — web (varsayilan), desktop veya dev modu
-|-- start.py                 # Backend/frontend koordinatoru, Vite dev server
-|-- requirements.txt         # Python bagimliliklari
-|-- .env.example             # Tum konfigurasyonlar ve aciklamalari
-|
-|-- config/
-|   `-- settings.py          # .env yukleyici, dogrulama, AppConfig
-|
-|-- core/                    # Is mantigi (UI bagimliligi yok)
-|   |-- models.py            # Pydantic modeller: Product, SeoScore, SeoSuggestion, ChatMessage vb.
-|   |-- ikas_client.py       # Async GraphQL client (httpx)
-|   |-- ai_client.py         # Coklu AI provider soyutlamasi (factory + adapter)
-|   |-- claude_client.py     # Eski Anthropic client (geriye donuk uyumlu)
-|   |-- product_manager.py   # Orkestrator — tum core modulleri koordine eder
-|   |-- seo_analyzer.py      # Kural tabanli SEO skorlama motoru
-|   |-- csv_handler.py       # CSV import/export
-|   |-- prompt_store.py      # Prompt sablonlarini yukler ve render eder
-|   |-- chat_service.py      # Cok turlu AI sohbet + MCP arac entegrasyonu
-|   |-- mcp_client.py        # ikas MCP JSON-RPC client
-|   |-- provider_service.py  # Provider tespiti, saglik kontrolu, model kesfetme
-|   |-- settings_service.py  # Ayar yonetim servisi
-|   |-- suggestion_service.py # Oneri alan islemleri
-|   |-- html_utils.py        # HTML ayristirma ve temizleme
-|   `-- presentation.py      # Gorunum formatlama yardimcilari
-|
-|-- api/                     # FastAPI REST API + WebSocket
-|   |-- main.py              # FastAPI app, CORS, router'lar, SPA static dosya sunumu
-|   |-- dependencies.py      # Singleton ProductManager injection
-|   |-- schemas.py           # API istek/yanit Pydantic semalari
+|-- api/
+|   |-- dependencies.py
+|   |-- main.py
+|   |-- schemas.py
 |   `-- routers/
-|       |-- products.py      # Urun listele, cek, detay, senkronize
-|       |-- seo.py           # SEO analiz endpoint'leri
-|       |-- suggestions.py   # Oneri CRUD endpoint'leri
-|       |-- settings.py      # Ayar yonetimi endpoint'leri
-|       `-- chat.py          # WebSocket sohbet endpoint'i
-|
-|-- web/                     # React/TypeScript frontend (Vite)
-|   |-- package.json
-|   |-- tsconfig.json
-|   |-- vite.config.ts
-|   `-- src/
-|       |-- main.tsx         # React entry point
-|       |-- App.tsx          # Root component
-|       |-- api/             # API client fonksiyonlari
-|       |-- components/      # React bilesenler
-|       |-- hooks/           # Custom React hook'lar
-|       |-- pages/           # Sayfa bilesenler
-|       `-- types/           # TypeScript tip tanimlari
-|
-|-- ui/                      # Legacy CustomTkinter masaustu UI
-|   |-- app.py               # Ana pencere
-|   |-- image_service.py     # Async gorsel yukleme + TTL cache
-|   `-- components/
-|       |-- settings_panel.py
-|       |-- ai_chat_panel.py
-|       |-- diff_viewer.py
-|       |-- product_table.py
-|       |-- score_card.py
-|       `-- dockable_panel.py
-|
+|       |-- chat.py
+|       |-- products.py
+|       |-- seo.py
+|       |-- settings.py
+|       `-- suggestions.py
+|-- config/
+|   `-- settings.py
+|-- core/
+|   |-- ai_client.py
+|   |-- chat_service.py
+|   |-- html_utils.py
+|   |-- ikas_client.py
+|   |-- mcp_client.py
+|   |-- models.py
+|   |-- presentation.py
+|   |-- product_manager.py
+|   |-- prompt_store.py
+|   |-- provider_service.py
+|   |-- seo_analyzer.py
+|   |-- settings_service.py
+|   `-- suggestion_service.py
 |-- data/
-|   |-- db.py                # SQLite sema + yardimcilar
-|   `-- cache.py             # Dosya tabanli TTL cache
-|
-|-- prompts/                 # Duzenlenebilir AI prompt sablonlari
+|   |-- cache.py
+|   `-- db.py
+|-- prompts/
 |   |-- description_rewrite.system.txt
 |   |-- description_rewrite.user.txt
 |   |-- translation_en.system.txt
 |   |-- translation_en.user.txt
 |   `-- README.txt
-|
-`-- tests/
-    |-- fixtures/
-    |   `-- sample_products.json
-    |-- test_seo_analyzer.py
-    |-- test_ai_client.py
-    |-- test_claude_client.py
-    |-- test_ikas_client.py
-    |-- test_db.py
-    |-- test_settings.py
-    |-- test_html_utils.py
-    |-- test_presentation.py
-    |-- test_provider_service.py
-    |-- test_settings_service.py
-    |-- test_suggestion_service.py
-    |-- test_chat_service.py
-    `-- test_mcp_client.py
+|-- tests/
+|-- web/
+|   |-- package.json
+|   |-- vite.config.ts
+|   `-- src/
+|-- .env.example
+|-- main.py
+|-- requirements.txt
+`-- start.py
 ```
-
----
 
 ## Lisans
 
-MIT License — detaylar icin [LICENSE](LICENSE) dosyasina bakin.
+MIT. Detaylar icin `LICENSE` dosyasina bakin.

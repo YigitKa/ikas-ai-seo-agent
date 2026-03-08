@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import List, Optional, TypeVar
 
 from config.settings import get_config, save_config_to_env
 from core.ai_client import (
@@ -9,10 +9,11 @@ from core.ai_client import (
     build_product_rewrite_request,
     create_ai_client,
 )
+from core.html_utils import html_to_plain_text
 from core.chat_service import ChatService
 from core.ikas_client import IkasClient
 from core.models import AppConfig, ChatResponse, Product, SeoScore, SeoSuggestion
-from core.presentation import format_prompt_display, get_tr_description_value
+from core.presentation import format_prompt_display, get_en_description_value, get_tr_description_value
 from core.provider_service import (
     discover_provider_models,
     get_lm_studio_live_status,
@@ -24,6 +25,8 @@ from data import db
 from core.prompt_store import ensure_prompt_files
 
 logger = logging.getLogger(__name__)
+
+TScore = TypeVar("TScore")
 
 
 class ProductManager:
@@ -101,6 +104,19 @@ class ProductManager:
     ) -> List[tuple[Product, SeoScore]]:
         cutoff = threshold if threshold is not None else self._config.seo_low_score_threshold
         return [(p, s) for p, s in products_data if s.total_score < cutoff]
+
+    def filter_products_missing_english_translation(
+        self,
+        products_data: list[tuple[Product, TScore]],
+    ) -> list[tuple[Product, TScore]]:
+        return [
+            (product, score)
+            for product, score in products_data
+            if not html_to_plain_text(
+                get_en_description_value(product.description_translations),
+                preserve_breaks=False,
+            )
+        ]
 
     def analyze_products(
         self,

@@ -22,7 +22,7 @@ router = APIRouter()
 async def list_products(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
-    filter: str = Query("all", pattern="^(all|low_score|pending|approved)$"),
+    filter: str = Query("all", pattern="^(all|low_score|missing_english|pending|approved)$"),
     manager: ProductManager = Depends(get_manager),
 ) -> ProductListResponse:
     """Return cached products with their latest scores."""
@@ -31,6 +31,8 @@ async def list_products(
 
     if filter == "low_score":
         scored = manager.filter_products_by_score(scored)
+    elif filter == "missing_english":
+        scored = manager.filter_products_missing_english_translation(scored)
     elif filter == "pending":
         pending_ids = manager.get_suggestion_product_ids("pending")
         scored = [(p, s) for p, s in scored if p.id in pending_ids]
