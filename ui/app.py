@@ -82,6 +82,10 @@ class App(ctk.CTk):
         if self._manager.is_setup_incomplete():
             self.after(300, self._open_settings)
 
+        # Initialize MCP if token is configured
+        if self._manager.chat_has_mcp:
+            self.after(500, self._initialize_mcp)
+
     def _build_toolbar(self) -> None:
         toolbar = ctk.CTkFrame(self, fg_color=COLORS["bg_secondary"], height=50)
         toolbar.pack(fill="x", padx=5, pady=5)
@@ -116,7 +120,7 @@ class App(ctk.CTk):
         self._diff_viewer.pack(fill="both", expand=True)
 
         self._chat_panel = DockablePanel(self._hpaned, title="AI Chat")
-        self._ai_chat = AIChatPanel(self._chat_panel.content)
+        self._ai_chat = AIChatPanel(self._chat_panel.content, on_chat_send=self._on_chat_send)
         self._ai_chat.pack(fill="both", expand=True)
 
         self._hpaned.add(self._left_panel, minsize=180, stretch="always")
@@ -415,6 +419,7 @@ class App(ctk.CTk):
         product, score = data
         self._selected_product = product
         self._selected_score = score
+        self._manager.set_chat_product_context(product, score)
         self._diff_viewer.show_product_preview(product)
         self._load_product_gallery(product)
         self._update_ai_button_state()
@@ -817,6 +822,77 @@ class App(ctk.CTk):
         else:
             self._diff_viewer.set_ai_enabled(ai_configured and has_product)
 
+    # ── Chat / MCP ────────────────────────────────────────────────────────
+
+    def _initialize_mcp(self) -> None:
+        """Initialize ikas MCP connection in background."""
+        self._set_status("MCP baglantisi kuruluyor...")
+
+        def work():
+            return asyncio.run(self._manager.initialize_mcp())
+
+        def on_done(result: object) -> None:
+            success, message = result
+            if success:
+                self._ai_chat.set_mcp_status(True, tool_count=0)
+                self._set_status(message)
+                # Update tool count after initialization
+                self._run_in_background(
+                    lambda: asyncio.run(self._manager.initialize_mcp()),
+                    lambda r: self._ai_chat.set_mcp_status(r[0], tool_count=0),
+                )
+            else:
+                self._ai_chat.set_mcp_status(False)
+                self._set_status(message)
+
+        self._run_in_background(work, on_done, lambda exc: self._set_status(f"MCP hatasi: {exc}"))
+
+    def _on_chat_send(self, message: str) -> None:
+        """Handle chat message from the user."""
+        config = self._manager.get_config()
+        if config.ai_provider == "none":
+            self._set_status("Sohbet icin AI provider secin (Ayarlar)")
+            return
+
+        # Set current product context for the chat
+        self._manager.set_chat_product_context(self._selected_product, self._selected_score)
+
+        # Show user message in chat
+        self._ai_chat.add_chat_message(role="user", content=message)
+
+        # Show thinking indicator
+        model_name = self._manager.get_active_model_name()
+        self._ai_chat.start_chat_thinking(model_name=model_name)
+        self._ai_chat.set_chat_enabled(False)
+
+        def work():
+            return asyncio.run(self._manager.send_chat_message(message))
+
+        def on_done(result: object) -> None:
+            response = result
+            self._ai_chat.complete_chat_response(
+                content=response.content,
+                thinking=response.thinking,
+                model_name=model_name,
+                meta=response.meta,
+                tool_results=response.tool_results if response.tool_results else None,
+                error=response.error,
+            )
+            self._ai_chat.set_chat_enabled(True)
+            self._update_token_display()
+
+        def on_error(exc: Exception) -> None:
+            self._ai_chat.complete_chat_response(
+                content=str(exc),
+                model_name=model_name,
+                meta={},
+                error=True,
+            )
+            self._ai_chat.set_chat_enabled(True)
+            self._set_status(f"Sohbet hatasi: {exc}")
+
+        self._run_in_background(work, on_done, on_error)
+
     def _open_settings(self) -> None:
         SettingsPanel(
             self,
@@ -830,6 +906,12 @@ class App(ctk.CTk):
         self._update_ai_button_state()
         self._refresh_status_bar_info()
         self._set_status(f"Ayarlar kaydedildi | AI: {config.ai_provider}")
+
+        # Re-initialize MCP if token is configured
+        if config.ikas_mcp_token:
+            self.after(200, self._initialize_mcp)
+        else:
+            self._ai_chat.set_mcp_status(False)
 
 
 def launch() -> None:
