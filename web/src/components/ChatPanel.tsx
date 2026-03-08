@@ -1093,6 +1093,7 @@ export default function ChatPanel({
   const {
     messages,
     isLoading,
+    isAutoIntroActive,
     pendingSince,
     liveChunkCount,
     mcpState,
@@ -1202,7 +1203,8 @@ export default function ChatPanel({
     },
   ];
 
-  const showStarterState = messages.length === 0 || messages.every((msg) => msg.role === 'system');
+  const isInspectingProduct = isAutoIntroActive && messages.length === 0;
+  const showStarterState = !isAutoIntroActive && (messages.length === 0 || messages.every((msg) => msg.role === 'system'));
   const filteredParamOptions = paramTrigger
     ? promptParamOptions.filter((option) => (
       !paramTrigger.query
@@ -1210,7 +1212,7 @@ export default function ChatPanel({
       || option.key.toLowerCase().includes(paramTrigger.query.toLowerCase())
     ))
     : [];
-  const showParamMenu = filteredParamOptions.length > 0;
+  const showParamMenu = !isAutoIntroActive && filteredParamOptions.length > 0;
 
   const syncParamTrigger = (value: string, caretPosition: number | null) => {
     setParamTrigger(getParamTriggerState(value, caretPosition));
@@ -1417,7 +1419,7 @@ export default function ChatPanel({
           />
         ))}
 
-        {isLoading && (
+        {(isLoading || isInspectingProduct) && (
           <div
             className="mr-6 rounded-xl px-4 py-3"
             style={{
@@ -1433,16 +1435,18 @@ export default function ChatPanel({
                   <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-primary-light)' }} />
                 </div>
                 <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                  {assistantLabel} dusunuyor...
+                  {isAutoIntroActive ? 'Asistan urunu inceliyor...' : `${assistantLabel} dusunuyor...`}
                 </span>
               </div>
             </div>
-            <div
-              className="mt-2 text-[11px]"
-              style={{ color: 'var(--color-text-secondary)' }}
-            >
-              Sure: {formatDuration(liveElapsedSeconds)}
-            </div>
+            {isLoading && (
+              <div
+                className="mt-2 text-[11px]"
+                style={{ color: 'var(--color-text-secondary)' }}
+              >
+                Sure: {formatDuration(liveElapsedSeconds)}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1510,6 +1514,7 @@ export default function ChatPanel({
             <textarea
               ref={textareaRef}
               value={input}
+              disabled={isAutoIntroActive}
               rows={1}
               onChange={(e) => {
                 const nextValue = e.target.value;
@@ -1554,7 +1559,9 @@ export default function ChatPanel({
                 }
               }}
               placeholder={
-                displayProductName
+                isAutoIntroActive
+                  ? 'Asistan urunu inceliyor...'
+                  : displayProductName
                   ? `${displayProductName} icin soru sorun. { ile hazir alan ekleyin...`
                   : 'Mesaj yazin... { ile parametre ekleyin.'
               }
@@ -1563,6 +1570,8 @@ export default function ChatPanel({
                 background: 'var(--color-bg-base)',
                 border: '1px solid var(--color-border-light)',
                 color: 'var(--color-text-primary)',
+                opacity: isAutoIntroActive ? 0.7 : 1,
+                cursor: isAutoIntroActive ? 'not-allowed' : 'text',
               }}
               onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
               onBlur={(e) => {
@@ -1571,12 +1580,18 @@ export default function ChatPanel({
               }}
             />
             <div className="mt-1 px-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-              {'{'} ile `productDescription`, `productMetaTitle` veya `seoMetricsSummary` gibi alanlari hizlica ekle.
+              {isAutoIntroActive
+                ? 'Ilk proaktif SEO analizi hazirlaniyor.'
+                : (
+                  <>
+                    {'{'} ile `productDescription`, `productMetaTitle` veya `seoMetricsSummary` gibi alanlari hizlica ekle.
+                  </>
+                )}
             </div>
           </div>
           <button
             onClick={isLoading ? cancelMessage : handleSend}
-            disabled={!isLoading && !input.trim()}
+            disabled={(!isLoading && !input.trim()) || (isAutoIntroActive && !isLoading)}
             className={`flex min-h-[44px] flex-shrink-0 items-center justify-center rounded-lg px-3 text-white transition-all hover:opacity-90 disabled:opacity-30 ${isLoading ? 'min-w-[64px]' : 'w-11'}`}
             style={{
               background: isLoading

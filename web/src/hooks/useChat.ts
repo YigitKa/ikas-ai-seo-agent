@@ -30,11 +30,15 @@ interface SendMessageOptions {
   hidden?: boolean;
 }
 
+const AUTO_PRODUCT_OVERVIEW_PROMPT =
+  'Bu urunun SEO durumunu incele ve ilk tespitlerini bir asistan gibi proaktif bir dille bana sun.';
+
 export function useChat(productContext?: ChatProductContext) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [pendingSince, setPendingSince] = useState<number | null>(null);
   const [liveChunkCount, setLiveChunkCount] = useState(0);
+  const [autoIntroProductId, setAutoIntroProductId] = useState<string | null>(null);
   const [mcpState, setMcpState] = useState<MCPState>({
     hasToken: false,
     initialized: false,
@@ -44,10 +48,39 @@ export function useChat(productContext?: ChatProductContext) {
   });
   const wsRef = useRef<WebSocket | null>(null);
   const productContextRef = useRef(productContext);
-  const activeProductIdRef = useRef<string | undefined>(productContext?.id);
+  const activeProductIdRef = useRef<string | undefined>(undefined);
   const clearReasonRef = useRef<'switch' | 'clear'>('clear');
   const pendingSinceRef = useRef<number | null>(null);
+  const queuedAutoIntroProductIdRef = useRef<string | null>(null);
+  const activeAutoIntroProductIdRef = useRef<string | null>(null);
   productContextRef.current = productContext;
+
+  const syncAutoIntroState = useCallback(() => {
+    setAutoIntroProductId(
+      activeAutoIntroProductIdRef.current ?? queuedAutoIntroProductIdRef.current,
+    );
+  }, []);
+
+  const queueAutoIntro = useCallback((productId?: string) => {
+    queuedAutoIntroProductIdRef.current = productId ?? null;
+    activeAutoIntroProductIdRef.current = null;
+    syncAutoIntroState();
+  }, [syncAutoIntroState]);
+
+  const clearAutoIntro = useCallback(() => {
+    queuedAutoIntroProductIdRef.current = null;
+    activeAutoIntroProductIdRef.current = null;
+    syncAutoIntroState();
+  }, [syncAutoIntroState]);
+
+  const clearActiveAutoIntro = useCallback(() => {
+    if (activeAutoIntroProductIdRef.current === null) {
+      return;
+    }
+
+    activeAutoIntroProductIdRef.current = null;
+    syncAutoIntroState();
+  }, [syncAutoIntroState]);
 
   const startPendingRequest = useCallback(() => {
     const startedAt = performance.now();
@@ -74,6 +107,35 @@ export function useChat(productContext?: ChatProductContext) {
     },
     [],
   );
+
+  const sendHiddenAutoIntro = useCallback((productId: string) => {
+    if (queuedAutoIntroProductIdRef.current !== productId) {
+      return;
+    }
+
+    if (wsRef.current?.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const currentProductId = productContextRef.current?.id;
+    if (!currentProductId || currentProductId !== productId) {
+      queuedAutoIntroProductIdRef.current = null;
+      syncAutoIntroState();
+      return;
+    }
+
+    queuedAutoIntroProductIdRef.current = null;
+    activeAutoIntroProductIdRef.current = productId;
+    syncAutoIntroState();
+    startPendingRequest();
+    wsRef.current.send(
+      JSON.stringify({
+        action: 'message',
+        message: AUTO_PRODUCT_OVERVIEW_PROMPT,
+        product_id: productId,
+      }),
+    );
+  }, [startPendingRequest, syncAutoIntroState]);
 
   const appendAssistantChunk = useCallback((chunk: string) => {
     if (!chunk) {
@@ -201,12 +263,14 @@ export function useChat(productContext?: ChatProductContext) {
 
         case 'response':
         case 'response_done': {
+          clearActiveAutoIntro();
           finalizeAssistantMessage(data);
           break;
         }
 
         case 'error':
           finishPendingRequest();
+          clearActiveAutoIntro();
           setMessages((prev) => [
             ...prev,
             { role: 'system', content: data.content || data.message || 'Hata' },
@@ -215,6 +279,7 @@ export function useChat(productContext?: ChatProductContext) {
 
         case 'cancelled':
           finishPendingRequest();
+          clearActiveAutoIntro();
           setMessages((prev) => [
             ...prev,
             { role: 'system', content: data.message || 'Istek durduruldu.' },
@@ -235,10 +300,14 @@ export function useChat(productContext?: ChatProductContext) {
           break;
 
         case 'context_set':
+          if (data.product_id) {
+            sendHiddenAutoIntro(data.product_id);
+          }
           break;
 
         case 'cleared':
           finishPendingRequest();
+          clearActiveAutoIntro();
           resetToContextIntro();
           clearReasonRef.current = 'clear';
           break;
@@ -248,8 +317,18 @@ export function useChat(productContext?: ChatProductContext) {
     ws.onclose = () => {
       wsRef.current = null;
       finishPendingRequest();
+      clearAutoIntro();
     };
-  }, [appendAssistantChunk, appendThinkingChunk, finalizeAssistantMessage, finishPendingRequest, resetToContextIntro]);
+  }, [
+    appendAssistantChunk,
+    appendThinkingChunk,
+    clearActiveAutoIntro,
+    clearAutoIntro,
+    finalizeAssistantMessage,
+    finishPendingRequest,
+    resetToContextIntro,
+    sendHiddenAutoIntro,
+  ]);
 
   useEffect(() => {
     const nextProductId = productContext?.id;
@@ -257,6 +336,7 @@ export function useChat(productContext?: ChatProductContext) {
 
     if (!nextProductId) {
       activeProductIdRef.current = undefined;
+      clearAutoIntro();
       setMessages([]);
       return;
     }
@@ -266,6 +346,7 @@ export function useChat(productContext?: ChatProductContext) {
     }
 
     activeProductIdRef.current = nextProductId;
+    queueAutoIntro(nextProductId);
 
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       clearReasonRef.current = 'switch';
@@ -280,6 +361,8 @@ export function useChat(productContext?: ChatProductContext) {
     productContext?.category,
     productContext?.score,
     productContext?.assistantLabel,
+    clearAutoIntro,
+    queueAutoIntro,
     resetToContextIntro,
   ]);
 
@@ -306,13 +389,14 @@ export function useChat(productContext?: ChatProductContext) {
   );
 
   const clearHistory = useCallback(() => {
+    clearAutoIntro();
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       clearReasonRef.current = 'clear';
       wsRef.current.send(JSON.stringify({ action: 'clear' }));
       return;
     }
     resetToContextIntro();
-  }, [resetToContextIntro]);
+  }, [clearAutoIntro, resetToContextIntro]);
 
   const cancelMessage = useCallback(() => {
     if (wsRef.current?.readyState !== WebSocket.OPEN || pendingSinceRef.current === null) {
@@ -329,6 +413,7 @@ export function useChat(productContext?: ChatProductContext) {
   return {
     messages,
     isLoading,
+    isAutoIntroActive: autoIntroProductId === productContext?.id,
     pendingSince,
     liveChunkCount,
     mcpState,
