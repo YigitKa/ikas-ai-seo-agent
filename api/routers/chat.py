@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import json
 import logging
+from collections.abc import Awaitable, Callable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 
@@ -129,18 +130,7 @@ async def ws_chat(ws: WebSocket) -> None:
 
             if active_chat_task is not None and active_chat_task in done:
                 try:
-                    response = active_chat_task.result()
-                    payload: dict[str, object] = {
-                        "type": "response",
-                        "content": response.content,
-                        "thinking": response.thinking,
-                        "tool_results": response.tool_results,
-                        "error": response.error,
-                        "meta": response.meta,
-                    }
-                    if response.suggestion_saved:
-                        payload["suggestion_saved"] = response.suggestion_saved
-                    await send_json(payload)
+                    active_chat_task.result()
                 except asyncio.CancelledError:
                     if notify_on_cancel:
                         await send_json({
@@ -214,7 +204,7 @@ async def ws_chat(ws: WebSocket) -> None:
 
             await send_json({"type": "thinking"})
             notify_on_cancel = True
-            active_chat_task = asyncio.create_task(manager.send_chat_message(user_message))
+            active_chat_task = asyncio.create_task(_stream_chat_response(manager, user_message, send_json))
 
     except WebSocketDisconnect:
         logger.info("Chat WebSocket disconnected")
@@ -228,6 +218,15 @@ async def ws_chat(ws: WebSocket) -> None:
             active_chat_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await active_chat_task
+
+
+async def _stream_chat_response(
+    manager: ProductManager,
+    user_message: str,
+    send_json: Callable[[dict[str, object]], Awaitable[None]],
+) -> None:
+    async for event in manager.stream_chat_message(user_message):
+        await send_json(event)
 
 
 @router.websocket("/ws/progress")

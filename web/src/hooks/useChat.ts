@@ -26,6 +26,10 @@ export interface ChatProductContext {
   assistantLabel?: string;
 }
 
+interface SendMessageOptions {
+  hidden?: boolean;
+}
+
 export function useChat(productContext?: ChatProductContext) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -69,6 +73,64 @@ export function useChat(productContext?: ChatProductContext) {
     [],
   );
 
+  const appendAssistantChunk = useCallback((chunk: string) => {
+    if (!chunk) {
+      return;
+    }
+
+    setMessages((prev) => {
+      const next = [...prev];
+      const lastMessage = next[next.length - 1];
+
+      if (lastMessage?.role === 'assistant') {
+        next[next.length - 1] = {
+          ...lastMessage,
+          content: `${lastMessage.content}${chunk}`,
+        };
+        return next;
+      }
+
+      next.push({
+        role: 'assistant',
+        content: chunk,
+      });
+      return next;
+    });
+  }, []);
+
+  const finalizeAssistantMessage = useCallback((data: ChatWsMessage) => {
+    const elapsedSeconds = finishPendingRequest();
+    const meta: ChatResponseMeta = {
+      ...(data.meta ?? {}),
+      ...(typeof elapsedSeconds === 'number' ? { elapsed_seconds: elapsedSeconds } : {}),
+    };
+
+    setMessages((prev) => {
+      const next = [...prev];
+      const finalizedMessage: ChatMessage = {
+        role: 'assistant',
+        content: typeof data.content === 'string' ? data.content : '',
+        thinking: data.thinking,
+        toolResults: data.tool_results,
+        meta,
+        suggestionSaved: data.suggestion_saved,
+      };
+      const lastMessage = next[next.length - 1];
+
+      if (lastMessage?.role === 'assistant') {
+        next[next.length - 1] = {
+          ...lastMessage,
+          ...finalizedMessage,
+          content: typeof data.content === 'string' ? data.content : lastMessage.content,
+        };
+        return next;
+      }
+
+      next.push(finalizedMessage);
+      return next;
+    });
+  }, [finishPendingRequest]);
+
   const connect = useCallback(() => {
     if (
       wsRef.current?.readyState === WebSocket.OPEN ||
@@ -92,23 +154,13 @@ export function useChat(productContext?: ChatProductContext) {
       const data: ChatWsMessage = JSON.parse(event.data);
 
       switch (data.type) {
-        case 'response': {
-          const elapsedSeconds = finishPendingRequest();
-          const meta: ChatResponseMeta = {
-            ...(data.meta ?? {}),
-            ...(typeof elapsedSeconds === 'number' ? { elapsed_seconds: elapsedSeconds } : {}),
-          };
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: 'assistant',
-              content: data.content || '',
-              thinking: data.thinking,
-              toolResults: data.tool_results,
-              meta,
-              suggestionSaved: data.suggestion_saved,
-            },
-          ]);
+        case 'chunk':
+          appendAssistantChunk(data.content || '');
+          break;
+
+        case 'response':
+        case 'response_done': {
+          finalizeAssistantMessage(data);
           break;
         }
 
@@ -156,7 +208,7 @@ export function useChat(productContext?: ChatProductContext) {
       wsRef.current = null;
       finishPendingRequest();
     };
-  }, [finishPendingRequest, resetToContextIntro]);
+  }, [appendAssistantChunk, finalizeAssistantMessage, finishPendingRequest, resetToContextIntro]);
 
   useEffect(() => {
     const nextProductId = productContext?.id;
@@ -191,17 +243,19 @@ export function useChat(productContext?: ChatProductContext) {
   ]);
 
   const sendMessage = useCallback(
-    (message: string) => {
+    (message: string, options?: SendMessageOptions) => {
       const productId = productContextRef.current?.id;
       if (!productId) return;
 
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         connect();
-        window.setTimeout(() => sendMessage(message), 500);
+        window.setTimeout(() => sendMessage(message, options), 500);
         return;
       }
 
-      setMessages((prev) => [...prev, { role: 'user', content: message }]);
+      if (!options?.hidden) {
+        setMessages((prev) => [...prev, { role: 'user', content: message }]);
+      }
       startPendingRequest();
       wsRef.current.send(
         JSON.stringify({ action: 'message', message, product_id: productId }),

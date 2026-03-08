@@ -1,5 +1,6 @@
 import logging
-from typing import List, Optional, TypeVar
+from collections.abc import AsyncIterator
+from typing import Any, List, Optional, TypeVar
 
 from config.settings import get_config, save_config_to_env
 from core.ai_client import (
@@ -294,6 +295,11 @@ class ProductManager:
     async def send_chat_message(self, message: str) -> ChatResponse:
         """Send a chat message and get AI response with optional MCP tool calls."""
         return await self._chat.send_message(message)
+
+    async def stream_chat_message(self, message: str) -> AsyncIterator[dict[str, Any]]:
+        """Stream chat message chunks followed by the final response event."""
+        async for event in self._chat.stream_message(message):
+            yield event
 
     def cancel_chat_request(self) -> bool:
         """Cancel the active chat request if one is in flight."""

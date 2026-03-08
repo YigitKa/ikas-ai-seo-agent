@@ -13,10 +13,12 @@ Use cases:
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
 import threading
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime
 from typing import Any, Optional
 
@@ -48,7 +50,7 @@ KRITIK DÜRÜSTLÜK KURALLARI (ASLA IHLAL ETME):
 - ASLA yapmedigin bir islemi yaptigini iddia etme
 - ASLA "guncelledim", "uyguladim", "degistirdim", "kaydettim" gibi ifadeler kullanma
 - Sen urunleri DOGRUDAN degistiremezsin. Sen yalnizca oneri ve analiz sunabilirsin
-- Kullanici "uygula", "kaydet", "secenek X uygula" gibi bir istek yaptiginda sistem bunu otomatik algilar ve sohbetteki onerileri DB'ye kaydeder. Sen sadece oneri sun, uygulama islemini kendin yaptigini iddia etme
+- Kullanici sohbet sirasinda sunulan SEO onerilerini onaylayip "uygula", "kaydet", "bunu sectim" dediginde uygun alanlarla `save_seo_suggestion` aracini cagir. Bu kayit ikas'a aninda uygulama degildir
 - Bir MCP araci GERCEKTEN cagirip basarili sonuc aldiysan, yalnizca o zaman sonucu raporla
 - Emin olmadigin bilgiyi uydurma; bilmiyorsan "bilmiyorum" de
 
@@ -206,6 +208,10 @@ SEO_OPERATION_HINT_PATTERN = re.compile(
     r"\bseo\b|\bskor\b|\bissue\b|\bsorun\b|\boneri\b|\bsuggestion\b|\bmeta\b|\bbaslik\b|\btitle\b|\baciklama\b|\bdescription\b|\bicerik\b|\bcontent\b|\bkeyword\b|\betiket\b|\btag\b|\bkategori\b|\bsku\b|\bokunabilirlik\b|\breadability\b|\bteknik seo\b|\btechnical seo\b|\bisim\b|\bname\b",
     re.IGNORECASE,
 )
+SUGGESTION_REQUEST_HINT_PATTERN = re.compile(
+    r"\boneri\b|\bsuggestion\b|\balternatif\b|\bsecenek\b|\bopsiyon\b|\bvaryant\b|\bvariant\b|\byeniden yaz\b|\brewrite\b|\bolustur\b|\buret\b|\byaz\b|\bhazirla\b",
+    re.IGNORECASE,
+)
 LIVE_PRODUCT_HINT_PATTERNS = (
     STOCK_HINT_PATTERN,
     PRICE_HINT_PATTERN,
@@ -241,30 +247,64 @@ FALSE_ACTION_DISCLAIMER_TR = (
     "- Mesajınızı **@ikas** ile yazarak MCP üzerinden güncelleyin."
 )
 
-# Detect user intent to apply/save suggestions from chat
-APPLY_INTENT_PATTERN = re.compile(
-    r"(?:^|\b)(?:"
-    r"(?:bunu?\s+)?(?:uygula|kaydet|onayla|se[cç]enek\s*[a-cA-C]\s*(?:uygula|kaydet|se[cç]))|"
-    r"(?:se[cç]enek\s*[a-cA-C]'?[yıiu]?\s+(?:uygula|kaydet|se[cç]))|"
-    r"(?:bu\s+(?:[oö]neri(?:yi|leri)?|de[gğ]i[sş]ikli[gğ]i)\s*(?:uygula|kaydet|onayla))|"
-    r"(?:(?:hepsini|t[uü]m[uü]n[uü])\s*(?:uygula|kaydet))|"
-    r"apply|save\s+(?:this|these|suggestion)"
-    r")\b",
-    re.IGNORECASE,
+SAVE_SEO_SUGGESTION_TOOL_NAME = "save_seo_suggestion"
+SUGGESTION_SAVE_SUCCESS_MESSAGE = "\u00d6neri ba\u015far\u0131yla kaydedildi"
+SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION = (
+    "Kullanici sohbet sirasinda sunulan SEO degisikliklerini onaylayip "
+    "'uygula', 'kaydet' veya 'bunu sectim' dediginde "
+    "`save_seo_suggestion` aracini cagir. Bu arac degisiklikleri ikas'a "
+    "aninda uygulamaz; sadece pending suggestion olarak kaydeder."
 )
+STRUCTURED_SUGGESTION_OPTIONS_INSTRUCTION = (
+    "Eger birden fazla secenek uretiyorsan, yanitinin sonuna "
+    "```json\n"
+    '[{"tone":"Agresif","value":"..."}]\n'
+    "``` "
+    "formatinda gizli bir blok ekle. Bu blok yalnizca gecerli bir JSON dizisi icersin."
+)
+SAVE_SEO_SUGGESTION_FIELD_MAP = {
+    "suggested_meta_title": ("meta_title", "suggested_meta_title"),
+    "suggested_meta_description": ("meta_desc", "suggested_meta_description"),
+    "suggested_description": ("desc_tr", "suggested_description"),
+    "suggested_description_en": ("desc_en", "suggested_description_en"),
+}
 
-# System prompt for extracting structured suggestion data from conversation
-SUGGESTION_EXTRACTION_PROMPT = """Asagidaki sohbet gecmisinden secili urune onerilen degisiklikleri JSON olarak cikar.
-Yalnizca ACIKCA onerilmis alanlari dahil et. Onerilmemis alanlari bos birak.
-Birden fazla alternatif varsa, kullanicinin son sectigi veya en son onerileni kullan.
 
-SADECE su JSON formatini dondur, baska hicbir sey yazma:
-{"suggested_meta_title": "", "suggested_meta_description": "", "suggested_name": "", "suggested_description": "", "suggested_description_en": ""}
-
-Kurallar:
-- Deger onerilmemisse bos string birak
-- HTML etiketi ekleme
-- Sadece JSON dondur, aciklama ekleme"""
+def _build_save_seo_suggestion_tool() -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": SAVE_SEO_SUGGESTION_TOOL_NAME,
+            "description": (
+                "Kullanici sohbet sirasinda sunulan SEO degisikliklerini "
+                "(baslik, aciklama vb.) begendiginde ve 'uygula', 'kaydet', "
+                "'bunu sectim' dediginde bu araci cagir."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "suggested_meta_title": {
+                        "type": "string",
+                        "description": "Kaydedilecek yeni meta title onerisi.",
+                    },
+                    "suggested_meta_description": {
+                        "type": "string",
+                        "description": "Kaydedilecek yeni meta description onerisi.",
+                    },
+                    "suggested_description": {
+                        "type": "string",
+                        "description": "Kaydedilecek Turkce urun aciklamasi onerisi.",
+                    },
+                    "suggested_description_en": {
+                        "type": "string",
+                        "description": "Kaydedilecek Ingilizce urun aciklamasi onerisi.",
+                    },
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+        },
+    }
 
 SELECTED_PRODUCT_LIVE_QUERY = """query listProduct($id: StringFilterInput, $pagination: PaginationInput) {
   listProduct(id: $id, pagination: $pagination) {
@@ -396,11 +436,11 @@ def _extract_message_directives(user_message: str) -> tuple[str, str | None, boo
             cleaned_message,
             (
                 "Bu mesaj @local ile etiketlendi veya mention icermiyor. "
-                "Arac kullanma; yalnizca mevcut SEO metrikleri, secili urunun promptta bulunan alanlari ve sohbet baglamina gore yanit ver. "
+                "ikas MCP araci kullanma; yalnizca mevcut SEO metrikleri, secili urunun promptta bulunan alanlari ve sohbet baglamina gore yanit ver. "
                 "Stok, fiyat, siparis, kampanya veya musteri verisi uydurma. "
                 "Kullanici urun aciklamasi, meta title veya meta description gibi mevcut alanlari yorumlamani isterse bunu local baglamla yap. "
-                "KRITIK: Bu modda hicbir degisiklik uygulayamazsin. Kullanici 'uygula', 'degistir', 'guncelle' derse "
-                "onerilerin hazir oldugunu ama uygulamanin kullanicinin kendisi tarafindan yapilmasi gerektigini acikla. "
+                "KRITIK: Bu modda ikas'a dogrudan degisiklik uygulayamazsin. Kullanici sohbet sirasinda sunulan SEO onerilerini onaylarsa "
+                "`save_seo_suggestion` araciyla pending suggestion kaydi olusturabilirsin. "
                 "Uygun oldugunda @ikas ile MCP uzerinden veya uygulamadaki Oneriler paneliyle nasil ilerlenebilecegini oner."
             ),
             False,
@@ -463,6 +503,15 @@ def _build_local_no_think_instruction(config: AppConfig) -> str | None:
 
 def _normalize_matching_text(text: str) -> str:
     return (text or "").translate(MATCH_NORMALIZATION_TABLE).lower()
+
+
+def _should_request_structured_suggestion_options(user_message: str) -> bool:
+    normalized_text = _normalize_matching_text(user_message)
+    return bool(
+        normalized_text
+        and SEO_OPERATION_HINT_PATTERN.search(normalized_text)
+        and SUGGESTION_REQUEST_HINT_PATTERN.search(normalized_text)
+    )
 
 
 def _operation_footer_already_present(text: str) -> bool:
@@ -697,6 +746,74 @@ def _build_completion_meta(data: dict[str, Any], model: str, finish_reason: str)
     return meta
 
 
+def _extract_stream_delta_content(delta: dict[str, Any]) -> str:
+    content = delta.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+        return "".join(parts)
+    return ""
+
+
+def _merge_stream_tool_call(
+    tool_calls_by_index: dict[int, dict[str, Any]],
+    tool_call_delta: dict[str, Any],
+) -> None:
+    raw_index = tool_call_delta.get("index", 0)
+    index = raw_index if isinstance(raw_index, int) else 0
+    tool_call = tool_calls_by_index.setdefault(index, {
+        "id": "",
+        "type": "function",
+        "function": {
+            "name": "",
+            "arguments": "",
+        },
+    })
+
+    tool_call_id = tool_call_delta.get("id")
+    if isinstance(tool_call_id, str) and tool_call_id:
+        tool_call["id"] = tool_call_id
+
+    tool_call_type = tool_call_delta.get("type")
+    if isinstance(tool_call_type, str) and tool_call_type:
+        tool_call["type"] = tool_call_type
+
+    function_delta = tool_call_delta.get("function", {})
+    if not isinstance(function_delta, dict):
+        return
+
+    function_payload = tool_call.setdefault("function", {"name": "", "arguments": ""})
+    name = function_delta.get("name")
+    if isinstance(name, str) and name:
+        function_payload["name"] = f"{function_payload.get('name', '')}{name}"
+
+    arguments = function_delta.get("arguments")
+    if isinstance(arguments, str) and arguments:
+        function_payload["arguments"] = f"{function_payload.get('arguments', '')}{arguments}"
+
+
+def _merge_stream_meta_payload(target: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(target)
+
+    model_name = payload.get("model")
+    if isinstance(model_name, str) and model_name:
+        merged["model"] = model_name
+
+    for key in ("usage", "stats", "model_info", "stop_reason"):
+        value = payload.get(key)
+        if value not in (None, "", {}, []):
+            merged[key] = value
+
+    return merged
+
+
 class ChatService:
     """Multi-turn chat service with optional MCP tool integration.
 
@@ -903,16 +1020,146 @@ class ChatService:
             "\n".join(fallback_lines),
         )
 
+    def _build_chat_tools(
+        self,
+        *,
+        allow_mcp_tools: bool,
+        guided_context: str,
+        user_message: str,
+    ) -> tuple[list[dict[str, Any]] | None, list[str]]:
+        tools: list[dict[str, Any]] = []
+        instructions: list[str] = []
+
+        if self._product:
+            tools.append(_build_save_seo_suggestion_tool())
+            instructions.append(SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION)
+
+        if allow_mcp_tools and self._mcp_initialized and self._mcp and not guided_context:
+            tools.extend(self._mcp.get_tools_as_openai_functions())
+            tool_catalog_instruction = _build_tool_catalog_instruction(self.mcp_tools, user_message)
+            if tool_catalog_instruction:
+                instructions.append(tool_catalog_instruction)
+
+        return (tools or None), instructions
+
+    def _save_suggestion_from_tool_args(
+        self,
+        args: dict[str, Any],
+    ) -> tuple[str, dict[str, Any] | None]:
+        from core.suggestion_service import apply_suggestion_field, create_pending_suggestion
+        from data import db
+
+        if not self._product:
+            return json.dumps({
+                "ok": False,
+                "error": "Secili urun olmadan oneri kaydedilemez.",
+            }, ensure_ascii=False), None
+
+        suggestion = create_pending_suggestion(self._product)
+        saved_fields: dict[str, str] = {}
+
+        for arg_key, (field_name, attr_name) in SAVE_SEO_SUGGESTION_FIELD_MAP.items():
+            raw_value = args.get(arg_key)
+            if not isinstance(raw_value, str) or not raw_value.strip():
+                continue
+
+            apply_suggestion_field(suggestion, field_name, raw_value)
+            cleaned_value = getattr(suggestion, attr_name, "") or ""
+            if isinstance(cleaned_value, str) and cleaned_value.strip():
+                saved_fields[arg_key] = cleaned_value
+
+        if not saved_fields:
+            return json.dumps({
+                "ok": False,
+                "error": "Kaydedilecek gecerli bir SEO onerisi bulunamadi.",
+            }, ensure_ascii=False), None
+
+        db.save_or_update_pending_suggestion(suggestion)
+        suggestion_saved = {
+            "product_id": self._product.id,
+            "product_name": self._product.name,
+            "fields": saved_fields,
+        }
+        return json.dumps({
+            "ok": True,
+            "message": SUGGESTION_SAVE_SUCCESS_MESSAGE,
+            "suggestion_saved": suggestion_saved,
+        }, ensure_ascii=False), suggestion_saved
+
+    async def _execute_chat_tool(
+        self,
+        tool_name: str,
+        args: dict[str, Any],
+    ) -> tuple[str, dict[str, Any] | None]:
+        if tool_name == SAVE_SEO_SUGGESTION_TOOL_NAME:
+            return self._save_suggestion_from_tool_args(args)
+
+        if self._mcp and self._mcp_initialized:
+            try:
+                result = await self._mcp.call_tool(tool_name, args)
+                return json.dumps(result, ensure_ascii=False, indent=2), None
+            except Exception as exc:
+                return json.dumps({
+                    "error": str(exc),
+                    "available_tools": self._mcp.get_tool_names(),
+                }, ensure_ascii=False), None
+
+        return json.dumps({
+            "error": f"Tool '{tool_name}' is not available.",
+            "available_tools": [SAVE_SEO_SUGGESTION_TOOL_NAME],
+        }, ensure_ascii=False), None
+
     async def send_message(self, user_message: str) -> ChatResponse:
-        """Send a user message and get an AI response.
+        """Send a user message and get an AI response."""
+        return await self._run_message_flow(user_message)
 
-        If MCP is initialized, the AI model can call ikas tools during
-        the conversation to fetch real-time store data.
-        """
-        # Check for apply/save intent before normal processing
-        if self._product and self._history and APPLY_INTENT_PATTERN.search(user_message):
-            return await self._handle_apply_intent(user_message)
+    async def stream_message(self, user_message: str) -> AsyncIterator[dict[str, Any]]:
+        """Stream chat chunks followed by a final response payload."""
+        queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 
+        async def emit_chunk(chunk: str) -> None:
+            if not chunk:
+                return
+            await queue.put({
+                "type": "chunk",
+                "content": chunk,
+            })
+
+        async def runner() -> ChatResponse:
+            try:
+                return await self._run_message_flow(user_message, chunk_handler=emit_chunk)
+            finally:
+                await queue.put(None)
+
+        task = asyncio.create_task(runner())
+
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield event
+
+            response = await task
+        except asyncio.CancelledError:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+            raise
+        except Exception:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+            raise
+
+        yield self._build_response_done_event(response)
+
+    async def _run_message_flow(
+        self,
+        user_message: str,
+        chunk_handler: Callable[[str], Awaitable[None]] | None = None,
+    ) -> ChatResponse:
+        """Run the full chat flow, optionally streaming assistant chunks."""
         routing_mode = _get_routing_mode(user_message)
         cleaned_message, routing_instruction, allow_tools = _extract_message_directives(user_message)
 
@@ -926,6 +1173,10 @@ class ChatService:
 
         # Build messages for the AI
         system_prompt = _build_product_context(self._product, self._score)
+        if _should_request_structured_suggestion_options(cleaned_message):
+            system_prompt = (
+                f"{system_prompt}\n\n{STRUCTURED_SUGGESTION_OPTIONS_INSTRUCTION}"
+            )
         messages = [{"role": "system", "content": system_prompt}]
         if routing_instruction:
             messages.append({"role": "system", "content": routing_instruction})
@@ -953,7 +1204,7 @@ class ChatService:
                     )
                     assistant_msg = ChatMessage(role="assistant", content=guided_content)
                     self._history.append(assistant_msg)
-                    return ChatResponse(
+                    response = ChatResponse(
                         content=guided_content,
                         thinking="",
                         tool_results=guided_tool_results,
@@ -964,6 +1215,9 @@ class ChatService:
                             "source": "ikas_mcp",
                         },
                     )
+                    if chunk_handler and response.content:
+                        await chunk_handler(response.content)
+                    return response
                 messages.append({
                     "role": "system",
                     "content": (
@@ -981,6 +1235,17 @@ class ChatService:
                 ),
             })
 
+        tools, tool_instructions = self._build_chat_tools(
+            allow_mcp_tools=allow_tools,
+            guided_context=guided_context,
+            user_message=cleaned_message,
+        )
+        for instruction in tool_instructions:
+            messages.append({
+                "role": "system",
+                "content": instruction,
+            })
+
         for msg in self._history:
             m: dict[str, Any] = {"role": msg.role, "content": msg.content}
             if msg.tool_calls:
@@ -991,26 +1256,23 @@ class ChatService:
                 m["name"] = msg.name
             messages.append(m)
 
-        # Get MCP tools for function calling
-        tools = None
-        if allow_tools and self._mcp_initialized and self._mcp and not guided_context:
-            tools = self._mcp.get_tools_as_openai_functions()
-            tool_catalog_instruction = _build_tool_catalog_instruction(self.mcp_tools, cleaned_message)
-            if tool_catalog_instruction:
-                messages.insert(2 if routing_instruction else 1, {
-                    "role": "system",
-                    "content": tool_catalog_instruction,
-                })
-
-        # Call the AI model with tool-use loop
         response_text = ""
         thinking_text = ""
         tool_results: list[dict[str, Any]] = list(guided_tool_results)
         meta: dict[str, Any] = {}
+        suggestion_saved: dict[str, Any] | None = None
 
         try:
-            response_text, thinking_text, completion_tool_results, meta = await self._chat_completion(
-                messages, tools
+            if chunk_handler is None:
+                completion_result = await self._chat_completion(messages, tools)
+            else:
+                completion_result = await self._chat_completion_stream(
+                    messages,
+                    tools,
+                    chunk_handler,
+                )
+            response_text, thinking_text, completion_tool_results, meta, suggestion_saved = (
+                self._normalize_completion_result(completion_result)
             )
             tool_results.extend(completion_tool_results)
         except asyncio.CancelledError:
@@ -1030,7 +1292,7 @@ class ChatService:
                 )
                 assistant_msg = ChatMessage(role="assistant", content=guided_content)
                 self._history.append(assistant_msg)
-                return ChatResponse(
+                response = ChatResponse(
                     content=guided_content,
                     thinking="",
                     tool_results=tool_results,
@@ -1041,7 +1303,11 @@ class ChatService:
                         "source": "ikas_mcp",
                     },
                 )
-            return ChatResponse(
+                if chunk_handler and response.content:
+                    await chunk_handler(response.content)
+                return response
+
+            response = ChatResponse(
                 content=_append_operation_suggestion(
                     _format_chat_error(exc),
                     user_message=cleaned_message,
@@ -1052,6 +1318,9 @@ class ChatService:
                 error=True,
                 meta={},
             )
+            if chunk_handler and response.content:
+                await chunk_handler(response.content)
+            return response
 
         if not response_text and guided_fallback:
             response_text = guided_fallback
@@ -1060,16 +1329,17 @@ class ChatService:
                 "Model nihai cevap uretmedi. Yerel model dusunce modunda takilmis olabilir; "
                 "daha kisa bir istek deneyin veya Thinking Mode'u kapatin."
             )
-        response_text = _append_operation_suggestion(
-            response_text,
-            user_message=cleaned_message,
-            product=self._product,
-        )
+        elif suggestion_saved:
+            response_text = SUGGESTION_SAVE_SUCCESS_MESSAGE
 
-        # Guard against LLM hallucinating action confirmations
-        response_text = _append_false_action_disclaimer(response_text, tool_results)
+        if not suggestion_saved:
+            response_text = _append_operation_suggestion(
+                response_text,
+                user_message=cleaned_message,
+                product=self._product,
+            )
+            response_text = _append_false_action_disclaimer(response_text, tool_results)
 
-        # Add assistant response to history
         assistant_msg = ChatMessage(role="assistant", content=response_text)
         self._history.append(assistant_msg)
 
@@ -1079,114 +1349,88 @@ class ChatService:
             tool_results=tool_results,
             error=False,
             meta=meta,
+            suggestion_saved=suggestion_saved,
         )
 
-    async def _handle_apply_intent(self, user_message: str) -> ChatResponse:
-        """Handle user intent to save chat suggestions as a pending SeoSuggestion."""
-        from data import db
-
-        user_msg = ChatMessage(role="user", content=user_message)
-        self._history.append(user_msg)
-
-        if not self._product:
-            content = "Öneri kaydetmek için önce bir ürün seçmelisiniz."
-            assistant_msg = ChatMessage(role="assistant", content=content)
-            self._history.append(assistant_msg)
-            return ChatResponse(content=content, error=True)
-
-        # Check there's at least one assistant message with suggestions
-        has_assistant = any(m.role == "assistant" for m in self._history[:-1])
-        if not has_assistant:
-            content = "Henüz kaydedilecek bir öneri yok. Önce bir SEO önerisi isteyin."
-            assistant_msg = ChatMessage(role="assistant", content=content)
-            self._history.append(assistant_msg)
-            return ChatResponse(content=content, error=True)
-
-        try:
-            extracted = await self._extract_suggestions_from_chat()
-        except Exception as exc:
-            logger.warning("Suggestion extraction failed: %s", exc)
-            content = (
-                "Önerileri çıkarırken bir hata oluştu. "
-                "Lütfen hangi alanı güncellemek istediğinizi tekrar belirtin."
-            )
-            assistant_msg = ChatMessage(role="assistant", content=content)
-            self._history.append(assistant_msg)
-            return ChatResponse(content=content, error=True)
-
-        if not extracted:
-            content = (
-                "Sohbet geçmişinden somut bir öneri çıkaramadım. "
-                "Lütfen güncellemek istediğiniz alanı (meta title, açıklama vb.) ve yeni değeri açıkça belirtin."
-            )
-            assistant_msg = ChatMessage(role="assistant", content=content)
-            self._history.append(assistant_msg)
-            return ChatResponse(content=content, error=True)
-
-        suggestion = self._create_suggestion_from_extracted(extracted)
-        if not suggestion:
-            content = "Geçerli bir öneri oluşturulamadı. Lütfen tekrar deneyin."
-            assistant_msg = ChatMessage(role="assistant", content=content)
-            self._history.append(assistant_msg)
-            return ChatResponse(content=content, error=True)
-
-        # Save suggestion to database
-        db.save_or_update_pending_suggestion(suggestion)
-
-        # Build confirmation message
-        field_labels = {
-            "suggested_name": "Ürün Adı",
-            "suggested_meta_title": "Meta Title",
-            "suggested_meta_description": "Meta Description",
-            "suggested_description": "Açıklama (TR)",
-            "suggested_description_en": "Açıklama (EN)",
-        }
-        saved_fields: list[str] = []
-        saved_values: dict[str, str] = {}
-        for key, label in field_labels.items():
-            value = extracted.get(key, "").strip()
-            if value:
-                saved_fields.append(f"- **{label}**: {value[:100]}{'...' if len(value) > 100 else ''}")
-                saved_values[key] = value
-
-        content_lines = [
-            "✅ **Öneri kaydedildi!**",
-            "",
-            "Aşağıdaki alanlar öneri olarak kaydedildi:",
-            *saved_fields,
-            "",
-            "**Sonraki adım:** Ürün detayındaki **Öneriler** sekmesinden bu öneriyi onaylayıp ikas'a uygulayabilirsiniz.",
-        ]
-        content = "\n".join(content_lines)
-
-        assistant_msg = ChatMessage(role="assistant", content=content)
-        self._history.append(assistant_msg)
-
-        return ChatResponse(
-            content=content,
-            thinking="",
-            tool_results=[],
-            error=False,
-            meta={"source": "suggestion_saved"},
-            suggestion_saved={
-                "product_id": self._product.id,
-                "product_name": self._product.name,
-                "fields": saved_values,
-            },
-        )
-
-    async def _chat_completion(
+    async def _chat_completion_stream(
         self,
         messages: list[dict],
         tools: list[dict] | None,
-    ) -> tuple[str, str, list[dict], dict]:
-        """Run chat completion with automatic tool-call handling.
+        chunk_handler: Callable[[str], Awaitable[None]],
+    ) -> tuple[str, str, list[dict], dict, dict[str, Any] | None]:
+        """Consume the streaming completion generator and forward text chunks."""
+        final_event: dict[str, Any] | None = None
 
-        Returns (response_text, thinking_text, tool_results, meta).
-        """
+        async for event in self.async_stream_chat(messages, tools):
+            if event.get("type") == "chunk":
+                chunk = str(event.get("content") or "")
+                if chunk:
+                    await chunk_handler(chunk)
+                continue
+
+            if event.get("type") == "completion_result":
+                final_event = event
+
+        if final_event is None:
+            raise RuntimeError("Chat completion stream ended without a final result.")
+
+        return (
+            str(final_event.get("content") or ""),
+            str(final_event.get("thinking") or ""),
+            list(final_event.get("tool_results") or []),
+            dict(final_event.get("meta") or {}),
+            dict(final_event.get("suggestion_saved") or {}) or None,
+        )
+
+    @staticmethod
+    def _build_response_done_event(response: ChatResponse) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "type": "response_done",
+            "content": response.content,
+            "thinking": response.thinking,
+            "tool_results": response.tool_results,
+            "error": response.error,
+            "meta": response.meta,
+        }
+        if response.suggestion_saved:
+            payload["suggestion_saved"] = response.suggestion_saved
+        return payload
+
+    @staticmethod
+    def _normalize_completion_result(
+        result: Any,
+    ) -> tuple[str, str, list[dict[str, Any]], dict[str, Any], dict[str, Any] | None]:
+        if not isinstance(result, tuple):
+            raise TypeError("Chat completion must return a tuple.")
+
+        if len(result) == 4:
+            response_text, thinking_text, tool_results, meta = result
+            suggestion_saved = None
+        elif len(result) == 5:
+            response_text, thinking_text, tool_results, meta, suggestion_saved = result
+        else:
+            raise ValueError("Unexpected chat completion result shape.")
+
+        return (
+            str(response_text or ""),
+            str(thinking_text or ""),
+            list(tool_results or []),
+            dict(meta or {}),
+            dict(suggestion_saved or {}) or None,
+        )
+
+    async def async_stream_chat(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Stream chat completion chunks and resolve tool calls when needed."""
         base_url = self._get_base_url()
         model = self._config.ai_model_name or self._get_default_model()
         all_tool_results: list[dict[str, Any]] = []
+        last_message_content = ""
+        last_meta: dict[str, Any] = {}
+        last_suggestion_saved: dict[str, Any] | None = None
 
         for _round in range(MAX_TOOL_ROUNDS):
             request_body: dict[str, Any] = {
@@ -1194,9 +1438,9 @@ class ChatService:
                 "messages": messages,
                 "temperature": self._config.ai_temperature,
                 "max_tokens": self._config.ai_max_tokens,
+                "stream": True,
             }
 
-            # Only include tools if available and supported
             if tools and self._config.ai_provider in ("ollama", "lm-studio", "openai", "openrouter", "custom"):
                 request_body["tools"] = tools
 
@@ -1205,96 +1449,249 @@ class ChatService:
                 if self._config.ai_provider in ("ollama", "lm-studio")
                 else httpx.Timeout(120.0, connect=10.0)
             )
-            client = httpx.AsyncClient(timeout=timeout)
-            with self._active_request_lock:
-                self._active_http_client = client
-            try:
-                headers: dict[str, str] = {"Content-Type": "application/json"}
-                if self._config.ai_api_key:
-                    headers["Authorization"] = f"Bearer {self._config.ai_api_key}"
+            headers: dict[str, str] = {"Content-Type": "application/json"}
+            if self._config.ai_api_key:
+                headers["Authorization"] = f"Bearer {self._config.ai_api_key}"
 
-                resp = await client.post(
-                    f"{base_url}/chat/completions",
-                    json=request_body,
-                    headers=headers,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-            finally:
+            message_content = ""
+            finish_reason = "stop"
+            meta_payload: dict[str, Any] = {"model": model}
+            tool_calls: list[dict[str, Any]] = []
+            streamed_chunks: list[str] = []
+            tool_calls_by_index: dict[int, dict[str, Any]] = {}
+
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 with self._active_request_lock:
-                    if self._active_http_client is client:
-                        self._active_http_client = None
-                await client.aclose()
+                    self._active_http_client = client
+                try:
+                    async with client.stream(
+                        "POST",
+                        f"{base_url}/chat/completions",
+                        json=request_body,
+                        headers=headers,
+                    ) as resp:
+                        resp.raise_for_status()
+                        content_type = resp.headers.get("content-type", "").lower()
 
-            choice = data.get("choices", [{}])[0]
-            message = choice.get("message", {})
-            finish_reason = choice.get("finish_reason", "stop")
+                        if "text/event-stream" not in content_type:
+                            data = json.loads((await resp.aread()).decode("utf-8"))
+                            meta_payload = _merge_stream_meta_payload(meta_payload, data)
+                            choice = data.get("choices", [{}])[0]
+                            message = choice.get("message", {}) if isinstance(choice, dict) else {}
+                            finish_reason = choice.get("finish_reason", "stop") if isinstance(choice, dict) else "stop"
+                            message_content = str(message.get("content") or "")
+                            raw_tool_calls = message.get("tool_calls") if isinstance(message, dict) else None
+                            if isinstance(raw_tool_calls, list):
+                                tool_calls = raw_tool_calls
+                        else:
+                            pending_data_lines: list[str] = []
+                            async for line in resp.aiter_lines():
+                                if not line:
+                                    if not pending_data_lines:
+                                        continue
+                                    event_data = "\n".join(pending_data_lines)
+                                    pending_data_lines.clear()
+                                    if event_data == "[DONE]":
+                                        break
+                                    try:
+                                        data = json.loads(event_data)
+                                    except json.JSONDecodeError:
+                                        logger.debug("Skipping invalid SSE payload: %s", event_data[:200])
+                                        continue
 
-            # Track tokens
-            meta = _build_completion_meta(data, model, finish_reason)
+                                    meta_payload = _merge_stream_meta_payload(meta_payload, data)
+                                    choices = data.get("choices", [])
+                                    if not isinstance(choices, list) or not choices:
+                                        continue
+
+                                    choice = choices[0]
+                                    if not isinstance(choice, dict):
+                                        continue
+
+                                    delta = choice.get("delta", {})
+                                    if not isinstance(delta, dict):
+                                        delta = {}
+
+                                    raw_finish_reason = choice.get("finish_reason")
+                                    if isinstance(raw_finish_reason, str) and raw_finish_reason:
+                                        finish_reason = raw_finish_reason
+
+                                    chunk = _extract_stream_delta_content(delta)
+                                    if chunk:
+                                        message_content += chunk
+                                        streamed_chunks.append(chunk)
+
+                                    delta_tool_calls = delta.get("tool_calls")
+                                    if isinstance(delta_tool_calls, list):
+                                        for tool_call_delta in delta_tool_calls:
+                                            if isinstance(tool_call_delta, dict):
+                                                _merge_stream_tool_call(tool_calls_by_index, tool_call_delta)
+                                    continue
+
+                                if line.startswith(":"):
+                                    continue
+                                if line.startswith("data:"):
+                                    pending_data_lines.append(line[5:].lstrip())
+
+                            if pending_data_lines:
+                                event_data = "\n".join(pending_data_lines)
+                                if event_data != "[DONE]":
+                                    try:
+                                        data = json.loads(event_data)
+                                    except json.JSONDecodeError:
+                                        logger.debug("Skipping trailing SSE payload: %s", event_data[:200])
+                                    else:
+                                        meta_payload = _merge_stream_meta_payload(meta_payload, data)
+                                        choices = data.get("choices", [])
+                                        if isinstance(choices, list) and choices:
+                                            choice = choices[0]
+                                            if isinstance(choice, dict):
+                                                delta = choice.get("delta", {})
+                                                if not isinstance(delta, dict):
+                                                    delta = {}
+                                                raw_finish_reason = choice.get("finish_reason")
+                                                if isinstance(raw_finish_reason, str) and raw_finish_reason:
+                                                    finish_reason = raw_finish_reason
+                                                chunk = _extract_stream_delta_content(delta)
+                                                if chunk:
+                                                    message_content += chunk
+                                                    streamed_chunks.append(chunk)
+                                                delta_tool_calls = delta.get("tool_calls")
+                                                if isinstance(delta_tool_calls, list):
+                                                    for tool_call_delta in delta_tool_calls:
+                                                        if isinstance(tool_call_delta, dict):
+                                                            _merge_stream_tool_call(tool_calls_by_index, tool_call_delta)
+                finally:
+                    with self._active_request_lock:
+                        if self._active_http_client is client:
+                            self._active_http_client = None
+
+            if not tool_calls and tool_calls_by_index:
+                tool_calls = [tool_calls_by_index[index] for index in sorted(tool_calls_by_index)]
+
+            meta = _build_completion_meta(meta_payload, model, finish_reason)
             self._total_tokens["input"] += int(meta.get("input_tokens", 0) or 0)
             self._total_tokens["output"] += int(meta.get("output_tokens", 0) or 0)
 
-            # Check for tool calls
-            tool_calls = message.get("tool_calls")
-            if tool_calls and self._mcp and self._mcp_initialized:
-                # Add assistant message with tool calls to messages
+            last_message_content = message_content
+            last_meta = meta
+
+            if tool_calls:
                 messages.append({
                     "role": "assistant",
-                    "content": message.get("content") or "",
+                    "content": message_content,
                     "tool_calls": tool_calls,
                 })
 
-                # Execute each tool call via MCP
                 for tc in tool_calls:
-                    func = tc.get("function", {})
-                    tool_name = func.get("name", "")
+                    func = tc.get("function", {}) if isinstance(tc, dict) else {}
+                    tool_name = func.get("name", "") if isinstance(func, dict) else ""
                     try:
-                        args = json.loads(func.get("arguments", "{}"))
+                        args = json.loads(func.get("arguments", "{}")) if isinstance(func, dict) else {}
                     except json.JSONDecodeError:
                         args = {}
+                    if not isinstance(args, dict):
+                        args = {}
 
-                    try:
-                        result = await self._mcp.call_tool(tool_name, args)
-                        result_text = json.dumps(result, ensure_ascii=False, indent=2)
-                    except Exception as exc:
-                        result_text = json.dumps({
-                            "error": str(exc),
-                            "available_tools": self._mcp.get_tool_names(),
-                        }, ensure_ascii=False)
+                    result_text, suggestion_saved = await self._execute_chat_tool(tool_name, args)
+                    if suggestion_saved:
+                        last_suggestion_saved = suggestion_saved
 
                     tool_result = {
                         "tool": tool_name,
                         "arguments": args,
-                        "result": result_text[:2000],  # Limit size
+                        "result": result_text[:2000],
                     }
                     all_tool_results.append(tool_result)
 
-                    # Add tool result to messages for next round
                     messages.append({
                         "role": "tool",
-                        "tool_call_id": tc.get("id", ""),
+                        "tool_call_id": tc.get("id", "") if isinstance(tc, dict) else "",
                         "name": tool_name,
                         "content": result_text,
                     })
 
-                # Continue the loop to get the final response
+                if last_suggestion_saved:
+                    confirmation_message = SUGGESTION_SAVE_SUCCESS_MESSAGE
+                    yield {
+                        "type": "chunk",
+                        "content": confirmation_message,
+                    }
+                    yield {
+                        "type": "completion_result",
+                        "content": confirmation_message,
+                        "thinking": "",
+                        "tool_results": list(all_tool_results),
+                        "meta": {
+                            **meta,
+                            "source": "suggestion_saved",
+                        },
+                        "suggestion_saved": last_suggestion_saved,
+                    }
+                    return
+
                 continue
 
-            # No tool calls — we have the final response
-            response_text = message.get("content", "")
-            thinking_text = self._extract_thinking(response_text)
-            if thinking_text:
-                response_text = self._remove_thinking(response_text)
+            thinking_text = self._extract_thinking(message_content)
+            response_text = self._remove_thinking(message_content) if thinking_text else message_content
 
-            return response_text, thinking_text, all_tool_results, meta
+            if thinking_text and response_text:
+                yield {
+                    "type": "chunk",
+                    "content": response_text,
+                }
+            elif streamed_chunks:
+                for chunk in streamed_chunks:
+                    yield {
+                        "type": "chunk",
+                        "content": chunk,
+                    }
+            elif response_text:
+                yield {
+                    "type": "chunk",
+                    "content": response_text,
+                }
 
-        # Max rounds reached
+            yield {
+                "type": "completion_result",
+                "content": response_text,
+                "thinking": thinking_text,
+                "tool_results": list(all_tool_results),
+                "meta": meta,
+                "suggestion_saved": last_suggestion_saved,
+            }
+            return
+
+        yield {
+            "type": "completion_result",
+            "content": last_message_content or "Maksimum arac cagrisi sayisina ulasildi.",
+            "thinking": "",
+            "tool_results": list(all_tool_results),
+            "meta": last_meta,
+            "suggestion_saved": last_suggestion_saved,
+        }
+
+    async def _chat_completion(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None,
+    ) -> tuple[str, str, list[dict], dict, dict[str, Any] | None]:
+        """Run chat completion with automatic tool-call handling."""
+        final_event: dict[str, Any] | None = None
+
+        async for event in self.async_stream_chat(messages, tools):
+            if event.get("type") == "completion_result":
+                final_event = event
+
+        if final_event is None:
+            return "", "", [], {}, None
+
         return (
-            message.get("content", "") if 'message' in dir() else "Maksimum araç çağrısı sayısına ulaşıldı.",
-            "",
-            all_tool_results,
-            meta if 'meta' in dir() else {},
+            str(final_event.get("content") or ""),
+            str(final_event.get("thinking") or ""),
+            list(final_event.get("tool_results") or []),
+            dict(final_event.get("meta") or {}),
+            dict(final_event.get("suggestion_saved") or {}) or None,
         )
 
     def _get_base_url(self) -> str:
@@ -1345,127 +1742,6 @@ class ChatService:
         if "<think>" in cleaned:
             cleaned = cleaned.split("<think>", 1)[0]
         return cleaned.strip()
-
-    async def _extract_suggestions_from_chat(self) -> dict[str, str]:
-        """Extract suggested field values from conversation history using a structured LLM call.
-
-        Makes a focused extraction call asking the LLM to output only JSON with
-        the suggested values from the conversation. Returns a dict of field→value.
-        """
-        # Build a condensed conversation for extraction
-        recent_messages = self._history[-10:]  # Last 10 messages
-        conversation_text = "\n".join(
-            f"{'Kullanici' if m.role == 'user' else 'Asistan'}: {m.content[:500]}"
-            for m in recent_messages
-        )
-
-        product_info = ""
-        if self._product:
-            product_info = (
-                f"\nSecili urun: {self._product.name}"
-                f"\nMevcut meta title: {self._product.meta_title or '-'}"
-                f"\nMevcut meta description: {self._product.meta_description or '-'}"
-            )
-
-        messages = [
-            {"role": "system", "content": SUGGESTION_EXTRACTION_PROMPT + product_info},
-            {"role": "user", "content": conversation_text},
-        ]
-
-        base_url = self._get_base_url()
-        model = self._config.ai_model_name or self._get_default_model()
-
-        request_body = {
-            "model": model,
-            "messages": messages,
-            "temperature": 0.1,  # Low temperature for structured extraction
-            "max_tokens": 500,
-        }
-
-        timeout = (
-            httpx.Timeout(120.0, connect=10.0)
-            if self._config.ai_provider in ("ollama", "lm-studio")
-            else httpx.Timeout(30.0, connect=10.0)
-        )
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            headers: dict[str, str] = {"Content-Type": "application/json"}
-            if self._config.ai_api_key:
-                headers["Authorization"] = f"Bearer {self._config.ai_api_key}"
-
-            resp = await client.post(
-                f"{base_url}/chat/completions",
-                json=request_body,
-                headers=headers,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-        raw_content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        raw_content = self._remove_thinking(raw_content)
-
-        # Try to parse JSON from the response (handle markdown code blocks)
-        json_text = raw_content.strip()
-        if "```" in json_text:
-            # Extract JSON from code block
-            match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", json_text, re.DOTALL)
-            if match:
-                json_text = match.group(1)
-        # Also try to find raw JSON object
-        if not json_text.startswith("{"):
-            match = re.search(r"\{[^}]+\}", json_text, re.DOTALL)
-            if match:
-                json_text = match.group(0)
-
-        try:
-            extracted = json.loads(json_text)
-        except json.JSONDecodeError:
-            logger.warning("Failed to parse suggestion extraction JSON: %s", json_text[:200])
-            return {}
-
-        if not isinstance(extracted, dict):
-            return {}
-
-        # Filter to only non-empty values
-        valid_fields = {
-            "suggested_meta_title", "suggested_meta_description",
-            "suggested_name", "suggested_description", "suggested_description_en",
-        }
-        return {
-            k: str(v).strip()
-            for k, v in extracted.items()
-            if k in valid_fields and isinstance(v, str) and v.strip()
-        }
-
-    def _create_suggestion_from_extracted(
-        self,
-        extracted: dict[str, str],
-    ) -> "SeoSuggestion | None":
-        """Create a SeoSuggestion from extracted chat values."""
-        if not self._product or not extracted:
-            return None
-
-        from core.suggestion_service import create_pending_suggestion
-
-        suggestion = create_pending_suggestion(self._product)
-
-        field_map = {
-            "suggested_name": "name",
-            "suggested_meta_title": "meta_title",
-            "suggested_meta_description": "meta_desc",
-            "suggested_description": "desc_tr",
-            "suggested_description_en": "desc_en",
-        }
-
-        from core.suggestion_service import apply_suggestion_field
-
-        applied_count = 0
-        for extracted_key, field_name in field_map.items():
-            value = extracted.get(extracted_key, "").strip()
-            if value:
-                apply_suggestion_field(suggestion, field_name, value)
-                applied_count += 1
-
-        return suggestion if applied_count > 0 else None
 
     async def close(self) -> None:
         """Close MCP connection."""

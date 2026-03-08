@@ -176,7 +176,7 @@ export interface SuggestionSavedInfo {
 }
 
 export interface ChatWsMessage {
-  type: 'response' | 'error' | 'thinking' | 'mcp_status' | 'context_set' | 'cleared' | 'cancelled';
+  type: 'chunk' | 'response_done' | 'response' | 'error' | 'thinking' | 'mcp_status' | 'context_set' | 'cleared' | 'cancelled';
   content?: string;
   thinking?: string;
   tool_results?: ToolResult[];

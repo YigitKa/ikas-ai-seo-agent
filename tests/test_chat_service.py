@@ -4,8 +4,8 @@ import httpx
 import pytest
 
 from core.chat_service import (
-    APPLY_INTENT_PATTERN,
     ChatService,
+    SAVE_SEO_SUGGESTION_TOOL_NAME,
     _append_false_action_disclaimer,
     _build_completion_meta,
     _build_product_context,
@@ -248,10 +248,11 @@ def test_build_completion_meta_uses_stats_and_context_length():
 
 
 @pytest.mark.anyio
-async def test_send_message_local_does_not_pass_tools_even_if_mcp_ready():
+async def test_send_message_local_passes_only_save_suggestion_tool_even_if_mcp_ready():
     config = _make_config(ai_provider="lm-studio", ai_thinking_mode=False)
     service = ChatService(config)
-    service.set_product_context(_make_product(), _make_score())
+    product = _make_product()
+    service.set_product_context(product, _make_score())
     service._mcp_initialized = True
     service._mcp = object()
     captured: dict[str, object] = {}
@@ -268,13 +269,16 @@ async def test_send_message_local_does_not_pass_tools_even_if_mcp_ready():
     assert response.error is False
     assert "ikas MCP Operasyon Onerisi" in response.content
     assert "`updateProduct`" in response.content
-    assert captured["tools"] is None
+    tools = captured["tools"]
+    assert isinstance(tools, list)
+    assert [tool["function"]["name"] for tool in tools] == [SAVE_SEO_SUGGESTION_TOOL_NAME]
     system_messages = [
         msg["content"]
         for msg in captured["messages"]  # type: ignore[index]
         if msg["role"] == "system"
     ]
     assert any("/no_think" in content for content in system_messages)
+    assert any("save_seo_suggestion" in content for content in system_messages)
 
 
 @pytest.mark.anyio
@@ -403,49 +407,114 @@ async def test_send_message_adds_disclaimer_when_llm_hallucinates_action():
 # ── Apply intent detection tests ─────────────────────────────────────────
 
 
-def test_apply_intent_pattern_matches_turkish():
-    assert APPLY_INTENT_PATTERN.search("bunu uygula")
-    assert APPLY_INTENT_PATTERN.search("Seçenek B uygula")
-    assert APPLY_INTENT_PATTERN.search("secenek A kaydet")
-    assert APPLY_INTENT_PATTERN.search("bu öneriyi uygula")
-    assert APPLY_INTENT_PATTERN.search("bu değişikliği kaydet")
-    assert APPLY_INTENT_PATTERN.search("hepsini uygula")
-    assert APPLY_INTENT_PATTERN.search("tümünü kaydet")
+def test_save_suggestion_tool_name_is_stable():
+    assert SAVE_SEO_SUGGESTION_TOOL_NAME == "save_seo_suggestion"
 
 
-def test_apply_intent_pattern_matches_english():
-    assert APPLY_INTENT_PATTERN.search("apply")
-    assert APPLY_INTENT_PATTERN.search("save this suggestion")
-    assert APPLY_INTENT_PATTERN.search("save these")
+def test_local_routing_keeps_mcp_tools_disabled():
+    cleaned, instruction, allow_tools = _extract_message_directives("@local bunu uygula")
+    assert cleaned == "bunu uygula"
+    assert instruction is not None
+    assert "save_seo_suggestion" in instruction
+    assert allow_tools is False
 
 
-def test_apply_intent_pattern_does_not_match_questions():
-    assert not APPLY_INTENT_PATTERN.search("meta title nasıl olmalı")
-    assert not APPLY_INTENT_PATTERN.search("SEO skorunu yorumla")
-    assert not APPLY_INTENT_PATTERN.search("açıklamayı analiz et")
+def test_default_routing_is_local_without_mentions():
+    cleaned, instruction, allow_tools = _extract_message_directives("bunu kaydet")
+    assert cleaned == "bunu kaydet"
+    assert instruction is not None
+    assert allow_tools is False
 
 
 @pytest.mark.anyio
 async def test_handle_apply_intent_no_history():
     """Apply intent with no conversation history returns error."""
-    config = _make_config(ai_provider="lm-studio")
+    config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1")
     service = ChatService(config)
-    service.set_product_context(_make_product(), _make_score())
+    product = _make_product()
+    service.set_product_context(product, _make_score())
+
+    saved_suggestions = []
+
+    def fake_save(suggestion):
+        saved_suggestions.append(suggestion)
+
+    import data.db as _db
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(_db, "save_or_update_pending_suggestion", fake_save)
+
+    lines = [
+        'data: {"model":"gpt-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"save_seo_suggestion","arguments":"{"}}]},"finish_reason":null}]}',
+        "",
+        'data: {"model":"gpt-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"suggested_meta_title\\": \\"Yeni Meta Title\\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":4,"completion_tokens":3,"total_tokens":7}}',
+        "",
+        "data: [DONE]",
+        "",
+    ]
+
+    def fake_stream(self_client, method, url, **kwargs):
+        return _FakeStreamContext(_FakeStreamResponse(lines))
+
+    monkeypatch.setattr(httpx.AsyncClient, "stream", fake_stream)
     # No history → no assistant messages → should error
 
-    response = await service.send_message("bunu uygula")
+    try:
+        response = await service.send_message("bunu uygula")
+    finally:
+        monkeypatch.undo()
 
-    assert "kaydedilecek bir öneri yok" in response.content.lower() or response.error
+    assert response.error is False
+    assert response.content == "Öneri başarıyla kaydedildi"
+    assert response.suggestion_saved is not None
+    assert response.suggestion_saved["product_id"] == product.id
+    assert response.suggestion_saved["fields"]["suggested_meta_title"] == "Yeni Meta Title"
+    assert len(saved_suggestions) == 1
 
 
 @pytest.mark.anyio
 async def test_handle_apply_intent_creates_suggestion(monkeypatch):
-    """Apply intent with conversation history extracts and saves suggestion."""
-    import json as _json
-    config = _make_config(ai_provider="lm-studio", ai_thinking_mode=False)
+    config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1")
     service = ChatService(config)
     product = _make_product(name="60X Mikroskop")
     service.set_product_context(product, _make_score())
+
+    saved_suggestions = []
+
+    def fake_save(suggestion):
+        saved_suggestions.append(suggestion)
+
+    import data.db as _db
+    monkeypatch.setattr(_db, "save_or_update_pending_suggestion", fake_save)
+
+    lines = [
+        'data: {"model":"gpt-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"save_seo_suggestion","arguments":"{"}}]},"finish_reason":null}]}',
+        "",
+        'data: {"model":"gpt-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"suggested_meta_title\\": \\"Airontek 60X Tasinabilir Mikroskop | Mavi Isik\\""}}]},"finish_reason":null}]}',
+        "",
+        'data: {"model":"gpt-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":", \\"suggested_description\\": \\"Yeni urun aciklamasi\\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":4,"completion_tokens":3,"total_tokens":7}}',
+        "",
+        "data: [DONE]",
+        "",
+    ]
+
+    def fake_stream(self_client, method, url, **kwargs):
+        return _FakeStreamContext(_FakeStreamResponse(lines))
+
+    monkeypatch.setattr(httpx.AsyncClient, "stream", fake_stream)
+
+    response = await service.send_message("bunu uygula")
+
+    assert response.error is False
+    assert response.content == "Öneri başarıyla kaydedildi"
+    assert response.suggestion_saved is not None
+    assert response.suggestion_saved["product_id"] == product.id
+    assert response.suggestion_saved["fields"]["suggested_meta_title"] == "Airontek 60X Tasinabilir Mikroskop | Mavi Isik"
+    assert response.suggestion_saved["fields"]["suggested_description"] == "Yeni urun aciklamasi"
+    assert response.tool_results[0]["tool"] == SAVE_SEO_SUGGESTION_TOOL_NAME
+    assert len(saved_suggestions) == 1
+    assert saved_suggestions[0].suggested_meta_title == "Airontek 60X Tasinabilir Mikroskop | Mavi Isik"
+    assert saved_suggestions[0].suggested_description == "Yeni urun aciklamasi"
+    return
 
     # Simulate prior conversation
     service._history.append(ChatMessage(role="user", content="meta title oner"))
@@ -494,3 +563,143 @@ async def test_handle_apply_intent_creates_suggestion(monkeypatch):
     assert "kaydedildi" in response.content.lower()
     assert len(saved_suggestions) == 1
     assert saved_suggestions[0].suggested_meta_title == "Airontek 60X Tasinabilir Mikroskop | Mavi Isik"
+
+
+class _FakeStreamResponse:
+    def __init__(self, lines, content_type: str = "text/event-stream"):
+        self._lines = lines
+        self.headers = {"content-type": content_type}
+
+    def raise_for_status(self):
+        return None
+
+    async def aiter_lines(self):
+        for line in self._lines:
+            yield line
+
+    async def aread(self):
+        return b""
+
+
+class _FakeStreamContext:
+    def __init__(self, response):
+        self._response = response
+
+    async def __aenter__(self):
+        return self._response
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+@pytest.mark.anyio
+async def test_async_stream_chat_yields_content_chunks_from_sse(monkeypatch):
+    config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1")
+    service = ChatService(config)
+
+    lines = [
+        'data: {"model":"gpt-test","choices":[{"index":0,"delta":{"content":"Mer"},"finish_reason":null}]}',
+        "",
+        'data: {"model":"gpt-test","choices":[{"index":0,"delta":{"content":"haba"},"finish_reason":null}]}',
+        "",
+        'data: {"model":"gpt-test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}',
+        "",
+        "data: [DONE]",
+        "",
+    ]
+
+    def fake_stream(self_client, method, url, **kwargs):
+        assert method == "POST"
+        assert url.endswith("/chat/completions")
+        assert kwargs["json"]["stream"] is True
+        return _FakeStreamContext(_FakeStreamResponse(lines))
+
+    monkeypatch.setattr(httpx.AsyncClient, "stream", fake_stream)
+
+    events = [event async for event in service.async_stream_chat(
+        [{"role": "user", "content": "Merhaba de"}],
+        None,
+    )]
+
+    assert [event["type"] for event in events] == ["chunk", "chunk", "completion_result"]
+    assert [event["content"] for event in events[:2]] == ["Mer", "haba"]
+    assert events[-1]["content"] == "Merhaba"
+    assert events[-1]["meta"]["model"] == "gpt-test"
+    assert service.total_tokens == {"input": 3, "output": 2}
+
+
+@pytest.mark.anyio
+async def test_async_stream_chat_buffers_tool_calls_until_final_response(monkeypatch):
+    config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1")
+    service = ChatService(config)
+    tool_invocations = []
+
+    class FakeMCP:
+        async def call_tool(self, name, args):
+            tool_invocations.append((name, args))
+            return {"ok": True, "product_id": args.get("id")}
+
+        def get_tool_names(self):
+            return ["listProduct"]
+
+    service._mcp = FakeMCP()
+    service._mcp_initialized = True
+
+    stream_rounds = [
+        [
+            'data: {"model":"gpt-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"listProduct","arguments":"{"}}]},"finish_reason":null}]}',
+            "",
+            'data: {"model":"gpt-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"id\\": \\"prod-1\\""}}]},"finish_reason":null}]}',
+            "",
+            'data: {"model":"gpt-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":4,"completion_tokens":3,"total_tokens":7}}',
+            "",
+            "data: [DONE]",
+            "",
+        ],
+        [
+            'data: {"model":"gpt-test","choices":[{"index":0,"delta":{"content":"Tamam"},"finish_reason":null}]}',
+            "",
+            'data: {"model":"gpt-test","choices":[{"index":0,"delta":{"content":"landi"},"finish_reason":null}]}',
+            "",
+            'data: {"model":"gpt-test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}',
+            "",
+            "data: [DONE]",
+            "",
+        ],
+    ]
+
+    def fake_stream(self_client, method, url, **kwargs):
+        return _FakeStreamContext(_FakeStreamResponse(stream_rounds.pop(0)))
+
+    monkeypatch.setattr(httpx.AsyncClient, "stream", fake_stream)
+
+    events = [event async for event in service.async_stream_chat(
+        [{"role": "user", "content": "@ikas urunu kontrol et"}],
+        [{"type": "function", "function": {"name": "listProduct"}}],
+    )]
+
+    assert [event["type"] for event in events] == ["chunk", "chunk", "completion_result"]
+    assert "".join(event["content"] for event in events[:-1]) == "Tamamlandi"
+    assert tool_invocations == [("listProduct", {"id": "prod-1"})]
+    assert events[-1]["tool_results"][0]["tool"] == "listProduct"
+    assert events[-1]["content"] == "Tamamlandi"
+
+
+@pytest.mark.anyio
+async def test_stream_message_emits_response_done_after_chunks():
+    config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1")
+    service = ChatService(config)
+
+    async def fake_chat_completion_stream(messages, tools, chunk_handler):
+        await chunk_handler("Mer")
+        await chunk_handler("haba")
+        return "Merhaba", "", [], {"model": "stream-test"}
+
+    service._chat_completion_stream = fake_chat_completion_stream  # type: ignore[method-assign]
+
+    events = [event async for event in service.stream_message("selam")]
+
+    assert [event["type"] for event in events] == ["chunk", "chunk", "response_done"]
+    assert [event["content"] for event in events[:2]] == ["Mer", "haba"]
+    assert events[-1]["content"].startswith("Merhaba")
+    assert events[-1]["meta"]["model"] == "stream-test"
