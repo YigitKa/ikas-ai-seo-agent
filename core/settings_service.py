@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from config.settings import save_config_to_env
+from config.settings import save_config_to_db
 from core.prompt_store import (
     get_prompt_editor_groups,
     get_prompt_editor_meta,
@@ -65,7 +65,7 @@ class SettingsService:
         return contents
 
     def save_settings(self, values: dict[str, Any]) -> None:
-        save_config_to_env(values)
+        save_config_to_db(values)
 
     def test_connection(self, values: dict[str, Any]) -> dict[str, Any]:
         return test_settings_connection(values)
