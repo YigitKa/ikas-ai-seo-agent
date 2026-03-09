@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional, TypeVar
 
-from config.settings import get_config, save_config_to_env
+from config.settings import get_config, save_config_to_db
 from core.ai_client import (
     BaseAIClient,
     build_en_translation_request,
@@ -181,7 +181,7 @@ class ProductManager:
         await self.reject_suggestion(product_id)
 
     def save_settings(self, values: dict) -> None:
-        save_config_to_env(values)
+        save_config_to_db(values)
         self.reload_ai_client()
 
     def get_provider_health(self) -> dict[str, str]:
