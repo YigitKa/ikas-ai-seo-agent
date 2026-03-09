@@ -1394,7 +1394,7 @@ class ChatService:
 
         return (tools or None), instructions
 
-    def _save_suggestion_from_tool_args(
+    async def _save_suggestion_from_tool_args(
         self,
         args: dict[str, Any],
     ) -> tuple[str, dict[str, Any] | None]:
@@ -1426,7 +1426,7 @@ class ChatService:
                 "error": "Kaydedilecek gecerli bir SEO onerisi bulunamadi.",
             }, ensure_ascii=False), None
 
-        db.save_or_update_pending_suggestion(suggestion)
+        await db.save_or_update_pending_suggestion(suggestion)
         suggestion_saved = {
             "product_id": self._product.id,
             "product_name": self._product.name,
@@ -1444,7 +1444,7 @@ class ChatService:
         args: dict[str, Any],
     ) -> tuple[str, dict[str, Any] | None]:
         if tool_name == SAVE_SEO_SUGGESTION_TOOL_NAME:
-            return self._save_suggestion_from_tool_args(args)
+            return await self._save_suggestion_from_tool_args(args)
 
         if self._mcp and self._mcp_initialized:
             try:

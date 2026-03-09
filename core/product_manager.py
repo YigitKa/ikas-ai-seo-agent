@@ -52,36 +52,36 @@ class ProductManager:
 
     async def fetch_products(self, limit: int = 50, page: int = 1) -> List[Product]:
         products = await self._ikas.get_products(limit=limit, page=page)
-        db.save_products(products)
+        await db.save_products(products)
         logger.info(f"Fetched and cached {len(products)} products (page {page})")
         return products
 
     async def fetch_and_score_products(self, limit: int = 50, page: int = 1) -> tuple[list[tuple[Product, SeoScore]], int]:
         products = await self.fetch_products(limit=limit, page=page)
-        return self.score_products(products), self._ikas.total_count
+        return await self.score_products(products), self._ikas.total_count
 
     async def sync_all_products(self, batch_size: int = 50) -> tuple[int, int]:
         products = await self._ikas.get_all_products(batch_size=batch_size)
-        db.save_products(products)
-        self.score_products(products)
+        await db.save_products(products)
+        await self.score_products(products)
         logger.info("Fetched and cached %s/%s products (full sync)", len(products), self._ikas.total_count)
         return len(products), self._ikas.total_count
 
     async def fetch_product(self, product_id: str) -> Optional[Product]:
         product = await self._ikas.get_product_by_id(product_id)
         if product:
-            db.save_product(product)
+            await db.save_product(product)
         return product
 
-    def get_cached_products(self) -> List[Product]:
-        return db.get_all_products()
+    async def get_cached_products(self) -> List[Product]:
+        return await db.get_all_products()
 
-    def clear_local_data(self) -> dict[str, int]:
-        counts = db.clear_all_data()
+    async def clear_local_data(self) -> dict[str, int]:
+        counts = await db.clear_all_data()
         logger.info("Cleared local cache: %s", counts)
         return counts
 
-    def score_products(self, products: List[Product]) -> List[tuple[Product, SeoScore]]:
+    async def score_products(self, products: List[Product]) -> List[tuple[Product, SeoScore]]:
         scored_products: List[tuple[Product, SeoScore]] = []
         scores: List[SeoScore] = []
 
@@ -90,12 +90,12 @@ class ProductManager:
             scored_products.append((product, score))
             scores.append(score)
 
-        db.save_scores(scores)
+        await db.save_scores(scores)
         logger.info("Analyzed %s products", len(products))
         return scored_products
 
-    def analyze_product(self, product: Product) -> SeoScore:
-        return self.score_products([product])[0][1]
+    async def analyze_product(self, product: Product) -> SeoScore:
+        return (await self.score_products([product]))[0][1]
 
     def filter_products_by_score(
         self,
@@ -118,23 +118,23 @@ class ProductManager:
             )
         ]
 
-    def analyze_products(
+    async def analyze_products(
         self,
         products: List[Product],
         threshold: int = 100,
     ) -> List[tuple[Product, SeoScore]]:
-        scored_products = self.score_products(products)
+        scored_products = await self.score_products(products)
         results = [(product, score) for product, score in scored_products if score.total_score <= threshold]
         logger.info(f"Analyzed {len(products)} products, {len(results)} below threshold {threshold}")
         return results
 
-    def rewrite_products(
+    async def rewrite_products(
         self,
         products_with_scores: List[tuple[Product, SeoScore]],
     ) -> List[SeoSuggestion]:
         suggestions = self._ai.rewrite_products_batch(products_with_scores)
         for s in suggestions:
-            db.save_suggestion(s)
+            await db.save_suggestion(s)
         logger.info(f"Generated {len(suggestions)} suggestions")
         return suggestions
 
@@ -153,9 +153,9 @@ class ProductManager:
     def get_active_model_name(self) -> str:
         return self._config.ai_model_name or self._config.ai_provider
 
-    def rewrite_product(self, product: Product, score: SeoScore) -> SeoSuggestion:
+    async def rewrite_product(self, product: Product, score: SeoScore) -> SeoSuggestion:
         suggestion = self._ai.rewrite_product(product, score)
-        db.save_suggestion(suggestion)
+        await db.save_suggestion(suggestion)
         return suggestion
 
     def rewrite_field(self, field: str, product: Product, score: SeoScore) -> tuple[str, str]:
@@ -173,12 +173,12 @@ class ProductManager:
     def has_translatable_description(self, product: Product) -> bool:
         return bool(get_tr_description_value(product.description, product.description_translations))
 
-    def approve_pending_suggestion(self, suggestion: SeoSuggestion) -> None:
-        self.save_or_update_pending_suggestion(suggestion)
-        self.approve_suggestion(suggestion.product_id)
+    async def approve_pending_suggestion(self, suggestion: SeoSuggestion) -> None:
+        await self.save_or_update_pending_suggestion(suggestion)
+        await self.approve_suggestion(suggestion.product_id)
 
-    def reject_pending_suggestion(self, product_id: str) -> None:
-        self.reject_suggestion(product_id)
+    async def reject_pending_suggestion(self, product_id: str) -> None:
+        await self.reject_suggestion(product_id)
 
     def save_settings(self, values: dict) -> None:
         save_config_to_env(values)
@@ -222,48 +222,48 @@ class ProductManager:
             try:
                 success = await self._ikas.update_product(suggestion.product_id, updates)
                 if success:
-                    db.update_suggestion_status(suggestion.product_id, "applied")
-                    db.log_operation("apply", suggestion.product_id, updates, True)
+                    await db.update_suggestion_status(suggestion.product_id, "applied")
+                    await db.log_operation("apply", suggestion.product_id, updates, True)
                     applied += 1
             except Exception as e:
                 logger.error(f"Failed to apply suggestion for {suggestion.product_id}: {e}")
-                db.log_operation("apply", suggestion.product_id, {"error": str(e)}, False)
+                await db.log_operation("apply", suggestion.product_id, {"error": str(e)}, False)
 
         logger.info(f"Applied {applied}/{len(suggestions)} suggestions")
         return applied
 
     async def apply_approved_suggestions(self) -> tuple[int, bool]:
-        approved = self.get_approved_suggestions()
+        approved = await self.get_approved_suggestions()
         if not approved:
             return 0, False
         return await self.apply_suggestions(approved), True
 
-    def get_pending_suggestions(self) -> List[SeoSuggestion]:
-        return db.get_pending_suggestions()
+    async def get_pending_suggestions(self) -> List[SeoSuggestion]:
+        return await db.get_pending_suggestions()
 
-    def get_approved_suggestions(self) -> List[SeoSuggestion]:
-        return db.get_approved_suggestions()
+    async def get_approved_suggestions(self) -> List[SeoSuggestion]:
+        return await db.get_approved_suggestions()
 
-    def get_pending_suggestion_count(self) -> int:
-        return db.count_suggestions("pending")
+    async def get_pending_suggestion_count(self) -> int:
+        return await db.count_suggestions("pending")
 
-    def get_suggestion_product_ids(self, status: str) -> set[str]:
-        return db.get_suggestion_product_ids(status)
+    async def get_suggestion_product_ids(self, status: str) -> set[str]:
+        return await db.get_suggestion_product_ids(status)
 
-    def get_latest_suggestion(self, product_id: str) -> Optional[SeoSuggestion]:
-        return db.get_latest_suggestion_by_product(product_id)
+    async def get_latest_suggestion(self, product_id: str) -> Optional[SeoSuggestion]:
+        return await db.get_latest_suggestion_by_product(product_id)
 
-    def update_latest_pending_suggestion(self, suggestion: SeoSuggestion) -> None:
-        db.update_latest_pending_suggestion(suggestion)
+    async def update_latest_pending_suggestion(self, suggestion: SeoSuggestion) -> None:
+        await db.update_latest_pending_suggestion(suggestion)
 
-    def save_or_update_pending_suggestion(self, suggestion: SeoSuggestion) -> None:
-        db.save_or_update_pending_suggestion(suggestion)
+    async def save_or_update_pending_suggestion(self, suggestion: SeoSuggestion) -> None:
+        await db.save_or_update_pending_suggestion(suggestion)
 
-    def approve_suggestion(self, product_id: str) -> None:
-        db.update_suggestion_status(product_id, "approved")
+    async def approve_suggestion(self, product_id: str) -> None:
+        await db.update_suggestion_status(product_id, "approved")
 
-    def reject_suggestion(self, product_id: str) -> None:
-        db.update_suggestion_status(product_id, "rejected")
+    async def reject_suggestion(self, product_id: str) -> None:
+        await db.update_suggestion_status(product_id, "rejected")
 
     def get_token_usage(self) -> dict:
         return self._ai.total_tokens
