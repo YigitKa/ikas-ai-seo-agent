@@ -652,7 +652,7 @@ async def test_handle_apply_intent_no_history():
 
     saved_suggestions = []
 
-    def fake_save(suggestion):
+    async def fake_save(suggestion):
         saved_suggestions.append(suggestion)
 
     import data.db as _db
@@ -697,7 +697,7 @@ async def test_handle_apply_intent_creates_suggestion(monkeypatch):
 
     saved_suggestions = []
 
-    def fake_save(suggestion):
+    async def fake_save(suggestion):
         saved_suggestions.append(suggestion)
 
     import data.db as _db

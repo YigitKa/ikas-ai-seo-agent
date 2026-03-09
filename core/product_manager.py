@@ -180,8 +180,8 @@ class ProductManager:
     async def reject_pending_suggestion(self, product_id: str) -> None:
         await self.reject_suggestion(product_id)
 
-    def save_settings(self, values: dict) -> None:
-        save_config_to_db(values)
+    async def save_settings(self, values: dict) -> None:
+        await save_config_to_db(values)
         self.reload_ai_client()
 
     def get_provider_health(self) -> dict[str, str]:

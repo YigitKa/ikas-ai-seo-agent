@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 from getpass import getpass
@@ -41,11 +42,38 @@ KEY_MAP = {
 }
 
 
+def _run_coro_sync(coro):
+    """Run async DB helper from sync code, even if an event loop is already running."""
+    result: dict[str, str] | None = None
+    error: Exception | None = None
+
+    def _runner() -> None:
+        nonlocal result, error
+        try:
+            result = asyncio.run(coro)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            error = exc
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    import threading
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join()
+    if error is not None:
+        raise error
+    return result
+
+
 def _get_db_overrides() -> dict[str, str]:
     """Read persisted settings from the SQLite DB (sync, fallback-safe)."""
     try:
-        from data.db import get_all_settings_sync
-        return get_all_settings_sync()
+        from data.db import get_all_settings
+        return _run_coro_sync(get_all_settings()) or {}
     except Exception:
         return {}
 
@@ -194,14 +222,14 @@ def reset_config() -> None:
     _config = None
 
 
-def save_config_to_db(values: dict) -> None:
+async def save_config_to_db(values: dict) -> None:
     """Persist settings to the SQLite DB and reset the in-memory config cache.
 
     The physical .env file is NEVER modified; it remains a read-only fallback
     for default values.  This makes the application safe for read-only
     filesystems (Docker, Cloud Run, etc.).
     """
-    from data.db import set_settings_sync
+    from data.db import set_settings
 
     db_updates: dict[str, str] = {}
     for settings_key, env_key in KEY_MAP.items():
@@ -212,7 +240,7 @@ def save_config_to_db(values: dict) -> None:
             db_updates[env_key] = str(val)
 
     if db_updates:
-        set_settings_sync(db_updates)
+        await set_settings(db_updates)
 
     reset_config()
 
