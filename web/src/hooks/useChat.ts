@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatResponseMeta, ChatWsMessage, MCPToolInfo, SuggestionSavedInfo, ToolResult } from '../types';
 
 export interface ChatMessage {
@@ -33,9 +33,15 @@ interface SendMessageOptions {
 const AUTO_PRODUCT_OVERVIEW_PROMPT =
   'Bu urunun SEO durumunu incele ve ilk tespitlerini bir asistan gibi proaktif bir dille bana sun.';
 
+const MAX_RECONNECT_ATTEMPTS = 8;
+const BASE_RECONNECT_DELAY_MS = 1000;
+
+type BufferedChunk = { type: 'content' | 'thinking'; text: string };
+
 export function useChat(productContext?: ChatProductContext) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [pendingSince, setPendingSince] = useState<number | null>(null);
   const [liveChunkCount, setLiveChunkCount] = useState(0);
   const [autoIntroProductId, setAutoIntroProductId] = useState<string | null>(null);
@@ -46,6 +52,7 @@ export function useChat(productContext?: ChatProductContext) {
     tools: [],
     message: '',
   });
+
   const wsRef = useRef<WebSocket | null>(null);
   const productContextRef = useRef(productContext);
   const activeProductIdRef = useRef<string | undefined>(undefined);
@@ -53,6 +60,19 @@ export function useChat(productContext?: ChatProductContext) {
   const pendingSinceRef = useRef<number | null>(null);
   const queuedAutoIntroProductIdRef = useRef<string | null>(null);
   const activeAutoIntroProductIdRef = useRef<string | null>(null);
+
+  // RAF buffer for stream chunks — avoids calling setMessages on every single chunk
+  const chunkBufferRef = useRef<BufferedChunk[]>([]);
+  const rafIdRef = useRef<number | null>(null);
+
+  // Reconnect state
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intentionalDisconnectRef = useRef(false);
+
+  // Forward-ref so scheduleReconnect can call connect without a circular dep
+  const connectRef = useRef<() => void>(() => {});
+
   productContextRef.current = productContext;
 
   const syncAutoIntroState = useCallback(() => {
@@ -108,6 +128,132 @@ export function useChat(productContext?: ChatProductContext) {
     [],
   );
 
+  // ---------------------------------------------------------------------------
+  // RAF-buffered chunk flushing
+  // ---------------------------------------------------------------------------
+
+  const flushChunkBuffer = useCallback(() => {
+    rafIdRef.current = null;
+    const buffer = chunkBufferRef.current;
+    if (buffer.length === 0) return;
+    chunkBufferRef.current = [];
+
+    setMessages((prev) => {
+      const next = [...prev];
+      let lastMessage = next[next.length - 1];
+
+      for (const chunk of buffer) {
+        if (chunk.type === 'content') {
+          if (lastMessage?.role === 'assistant') {
+            lastMessage = {
+              ...lastMessage,
+              content: `${lastMessage.content}${chunk.text}`,
+            };
+            next[next.length - 1] = lastMessage;
+          } else {
+            lastMessage = { role: 'assistant', content: chunk.text };
+            next.push(lastMessage);
+          }
+        } else {
+          // thinking chunk
+          if (lastMessage?.role === 'assistant') {
+            lastMessage = {
+              ...lastMessage,
+              thinking: `${lastMessage.thinking ?? ''}${chunk.text}`,
+            };
+            next[next.length - 1] = lastMessage;
+          } else {
+            lastMessage = { role: 'assistant', content: '', thinking: chunk.text };
+            next.push(lastMessage);
+          }
+        }
+      }
+
+      return next;
+    });
+  }, []);
+
+  const scheduleFlush = useCallback(() => {
+    if (rafIdRef.current === null) {
+      rafIdRef.current = requestAnimationFrame(flushChunkBuffer);
+    }
+  }, [flushChunkBuffer]);
+
+  const appendAssistantChunk = useCallback((chunk: string) => {
+    if (!chunk) return;
+    chunkBufferRef.current.push({ type: 'content', text: chunk });
+    scheduleFlush();
+  }, [scheduleFlush]);
+
+  const appendThinkingChunk = useCallback((chunk: string) => {
+    if (!chunk) return;
+    chunkBufferRef.current.push({ type: 'thinking', text: chunk });
+    scheduleFlush();
+  }, [scheduleFlush]);
+
+  const finalizeAssistantMessage = useCallback((data: ChatWsMessage) => {
+    // Cancel any pending RAF flush — the finalized payload replaces streamed state
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    chunkBufferRef.current = [];
+
+    const elapsedSeconds = finishPendingRequest();
+    const meta: ChatResponseMeta = {
+      ...(data.meta ?? {}),
+      ...(typeof elapsedSeconds === 'number' ? { elapsed_seconds: elapsedSeconds } : {}),
+    };
+
+    setMessages((prev) => {
+      const next = [...prev];
+      const finalizedMessage: ChatMessage = {
+        role: 'assistant',
+        content: typeof data.content === 'string' ? data.content : '',
+        thinking: data.thinking,
+        toolResults: data.tool_results,
+        meta,
+        suggestionSaved: data.suggestion_saved,
+      };
+      const lastMessage = next[next.length - 1];
+
+      if (lastMessage?.role === 'assistant') {
+        next[next.length - 1] = {
+          ...lastMessage,
+          ...finalizedMessage,
+          content: typeof data.content === 'string' ? data.content : lastMessage.content,
+        };
+        return next;
+      }
+
+      next.push(finalizedMessage);
+      return next;
+    });
+  }, [finishPendingRequest]);
+
+  // ---------------------------------------------------------------------------
+  // Exponential-backoff auto-reconnect
+  // ---------------------------------------------------------------------------
+
+  const scheduleReconnect = useCallback(() => {
+    if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+      setIsReconnecting(false);
+      return;
+    }
+
+    const delay = Math.min(
+      BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttemptsRef.current),
+      60_000,
+    );
+    reconnectAttemptsRef.current += 1;
+    setIsReconnecting(true);
+
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectTimerRef.current = null;
+      connectRef.current();
+    }, delay);
+  }, []);
+
   const sendHiddenAutoIntro = useCallback((productId: string) => {
     if (queuedAutoIntroProductIdRef.current !== productId) {
       return;
@@ -137,91 +283,9 @@ export function useChat(productContext?: ChatProductContext) {
     );
   }, [startPendingRequest, syncAutoIntroState]);
 
-  const appendAssistantChunk = useCallback((chunk: string) => {
-    if (!chunk) {
-      return;
-    }
-
-    setMessages((prev) => {
-      const next = [...prev];
-      const lastMessage = next[next.length - 1];
-
-      if (lastMessage?.role === 'assistant') {
-        next[next.length - 1] = {
-          ...lastMessage,
-          content: `${lastMessage.content}${chunk}`,
-        };
-        return next;
-      }
-
-      next.push({
-        role: 'assistant',
-        content: chunk,
-      });
-      return next;
-    });
-  }, []);
-
-  const appendThinkingChunk = useCallback((chunk: string) => {
-    if (!chunk) {
-      return;
-    }
-
-    setMessages((prev) => {
-      const next = [...prev];
-      const lastMessage = next[next.length - 1];
-
-      if (lastMessage?.role === 'assistant') {
-        next[next.length - 1] = {
-          ...lastMessage,
-          thinking: `${lastMessage.thinking ?? ''}${chunk}`,
-        };
-        return next;
-      }
-
-      next.push({
-        role: 'assistant',
-        content: '',
-        thinking: chunk,
-      });
-      return next;
-    });
-  }, []);
-
-  const finalizeAssistantMessage = useCallback((data: ChatWsMessage) => {
-    const elapsedSeconds = finishPendingRequest();
-    const meta: ChatResponseMeta = {
-      ...(data.meta ?? {}),
-      ...(typeof elapsedSeconds === 'number' ? { elapsed_seconds: elapsedSeconds } : {}),
-    };
-
-    startTransition(() => {
-      setMessages((prev) => {
-        const next = [...prev];
-        const finalizedMessage: ChatMessage = {
-          role: 'assistant',
-          content: typeof data.content === 'string' ? data.content : '',
-          thinking: data.thinking,
-          toolResults: data.tool_results,
-          meta,
-          suggestionSaved: data.suggestion_saved,
-        };
-        const lastMessage = next[next.length - 1];
-
-        if (lastMessage?.role === 'assistant') {
-          next[next.length - 1] = {
-            ...lastMessage,
-            ...finalizedMessage,
-            content: typeof data.content === 'string' ? data.content : lastMessage.content,
-          };
-          return next;
-        }
-
-        next.push(finalizedMessage);
-        return next;
-      });
-    });
-  }, [finishPendingRequest]);
+  // ---------------------------------------------------------------------------
+  // WebSocket connect
+  // ---------------------------------------------------------------------------
 
   const connect = useCallback(() => {
     if (
@@ -231,11 +295,16 @@ export function useChat(productContext?: ChatProductContext) {
       return;
     }
 
+    intentionalDisconnectRef.current = false;
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${window.location.host}/ws/chat`);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      reconnectAttemptsRef.current = 0;
+      setIsReconnecting(false);
+
       const productId = productContextRef.current?.id;
       if (productId) {
         ws.send(JSON.stringify({ action: 'set_context', product_id: productId }));
@@ -314,6 +383,10 @@ export function useChat(productContext?: ChatProductContext) {
       wsRef.current = null;
       finishPendingRequest();
       clearAutoIntro();
+
+      if (!intentionalDisconnectRef.current) {
+        scheduleReconnect();
+      }
     };
   }, [
     appendAssistantChunk,
@@ -323,8 +396,15 @@ export function useChat(productContext?: ChatProductContext) {
     finalizeAssistantMessage,
     finishPendingRequest,
     resetToContextIntro,
+    scheduleReconnect,
     sendHiddenAutoIntro,
   ]);
+
+  // Keep the forward-ref up to date after every render so scheduleReconnect
+  // always calls the latest version of connect.
+  useEffect(() => {
+    connectRef.current = connect;
+  });
 
   useEffect(() => {
     const nextProductId = productContext?.id;
@@ -361,6 +441,18 @@ export function useChat(productContext?: ChatProductContext) {
     queueAutoIntro,
     resetToContextIntro,
   ]);
+
+  // Clean up RAF and reconnect timer on unmount
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+      if (reconnectTimerRef.current !== null) {
+        clearTimeout(reconnectTimerRef.current);
+      }
+    };
+  }, []);
 
   const sendMessage = useCallback(
     (message: string, options?: SendMessageOptions) => {
@@ -402,6 +494,13 @@ export function useChat(productContext?: ChatProductContext) {
   }, []);
 
   const disconnect = useCallback(() => {
+    intentionalDisconnectRef.current = true;
+    if (reconnectTimerRef.current !== null) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    reconnectAttemptsRef.current = 0;
+    setIsReconnecting(false);
     wsRef.current?.close();
     wsRef.current = null;
   }, []);
@@ -409,6 +508,7 @@ export function useChat(productContext?: ChatProductContext) {
   return {
     messages,
     isLoading,
+    isReconnecting,
     isAutoIntroActive: autoIntroProductId === productContext?.id,
     pendingSince,
     liveChunkCount,
