@@ -51,16 +51,8 @@ async def mcp_status(
     manager: ProductManager = Depends(get_manager),
 ) -> MCPStatusResponse:
     """Check MCP connection status."""
-    cfg = manager.get_config()
-    has_token = bool(cfg.ikas_mcp_token)
-    initialized = manager.chat_mcp_initialized
-    return MCPStatusResponse(
-        has_token=has_token,
-        initialized=initialized,
-        tool_count=manager.chat_mcp_tool_count,
-        tools=manager.chat_mcp_tools,
-        message="MCP bagli" if initialized else ("Token var, baglanti bekleniyor" if has_token else "MCP token yok"),
-    )
+    payload = _build_mcp_status_payload(manager)
+    return MCPStatusResponse(**payload)
 
 
 @router.post("/api/mcp/initialize", response_model=MCPStatusResponse)
