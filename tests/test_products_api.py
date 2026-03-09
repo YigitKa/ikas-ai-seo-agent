@@ -45,10 +45,10 @@ class _StubManager:
         }
         self.missing_english_calls = 0
 
-    def get_cached_products(self):
+    async def get_cached_products(self):
         return self._products
 
-    def score_products(self, products):
+    async def score_products(self, products):
         return [(product, self._scores[product.id]) for product in products]
 
     def filter_products_by_score(self, scored):
@@ -62,13 +62,13 @@ class _StubManager:
             if not product.description_translations.get("en", "").strip()
         ]
 
-    def get_suggestion_product_ids(self, status: str):
+    async def get_suggestion_product_ids(self, status: str):
         return set()
 
     async def sync_all_products(self, batch_size: int = 50) -> tuple[int, int]:
         return 512, 512
 
-    def clear_local_data(self) -> dict[str, int]:
+    async def clear_local_data(self) -> dict[str, int]:
         return {
             "products": 512,
             "seo_scores": 512,
