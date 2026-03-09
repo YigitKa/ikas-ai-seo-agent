@@ -22,6 +22,9 @@ import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
+# Type alias for local tool handlers registered in ToolRegistry
+ToolHandler = Callable[[dict[str, Any]], Awaitable[tuple[str, "dict[str, Any] | None"]]]
+
 import httpx
 
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore
@@ -193,11 +196,6 @@ Sorunlar: {issues}"""
 
 IKAS_MENTION_PATTERN = re.compile(r"@\s*ikas\b", re.IGNORECASE)
 LOCAL_MENTION_PATTERN = re.compile(r"@\s*local\b", re.IGNORECASE)
-STOCK_HINT_PATTERN = re.compile(r"\bstok\b|\benvanter\b|\bkaç tane\b|\bkaç kald[iı]\b", re.IGNORECASE)
-PRICE_HINT_PATTERN = re.compile(r"\bfiyat\b|\bücret\b|\bprice\b", re.IGNORECASE)
-VARIANT_HINT_PATTERN = re.compile(r"\bvaryant\b|\bvariant\b", re.IGNORECASE)
-ORDER_HINT_PATTERN = re.compile(r"\bsipari[sş]\b|\border\b", re.IGNORECASE)
-CUSTOMER_HINT_PATTERN = re.compile(r"\bm[uü]steri\b|\bcustomer\b", re.IGNORECASE)
 MATCH_NORMALIZATION_TABLE = str.maketrans({
     "\u00c7": "c",
     "\u00e7": "c",
@@ -218,23 +216,6 @@ SEO_OPERATION_HINT_PATTERN = re.compile(
 )
 SUGGESTION_REQUEST_HINT_PATTERN = re.compile(
     r"\boneri\b|\bsuggestion\b|\balternatif\b|\bsecenek\b|\bopsiyon\b|\bvaryant\b|\bvariant\b|\byeniden yaz\b|\brewrite\b|\bolustur\b|\buret\b|\byaz\b|\bhazirla\b",
-    re.IGNORECASE,
-)
-LIVE_PRODUCT_HINT_PATTERNS = (
-    STOCK_HINT_PATTERN,
-    PRICE_HINT_PATTERN,
-    VARIANT_HINT_PATTERN,
-)
-LIVE_DATA_HINT_PATTERNS = (
-    STOCK_HINT_PATTERN,
-    PRICE_HINT_PATTERN,
-    VARIANT_HINT_PATTERN,
-    ORDER_HINT_PATTERN,
-    CUSTOMER_HINT_PATTERN,
-)
-NORMALIZED_LIVE_DATA_HINT_PATTERN = re.compile(
-    r"\bstok\b|\benvanter\b|\bkac tane\b|\bkac kaldi\b|\bfiyat\b|\bucret\b|"
-    r"\bprice\b|\bvaryant\b|\bvariant\b|\bsiparis\b|\border\b|\bmusteri\b|\bcustomer\b",
     re.IGNORECASE,
 )
 SEMANTIC_ROUTING_SYSTEM_PROMPT = (
@@ -436,12 +417,6 @@ def _parse_needs_mcp_flag(content: str) -> bool | None:
     return None
 
 
-def _fallback_needs_mcp(user_message: str) -> bool:
-    if any(pattern.search(user_message) for pattern in LIVE_DATA_HINT_PATTERNS):
-        return True
-    return bool(NORMALIZED_LIVE_DATA_HINT_PATTERN.search(_normalize_matching_text(user_message)))
-
-
 def _build_product_context(product: Product | None, score: SeoScore | None) -> str:
     """Build product context string for the system prompt."""
     product_ctx = ""
@@ -485,7 +460,6 @@ def _build_product_context(product: Product | None, score: SeoScore | None) -> s
 
 def _build_tool_catalog_instruction(
     tool_summaries: list[dict[str, str]],
-    user_message: str,
 ) -> str | None:
     if not tool_summaries:
         return None
@@ -493,26 +467,8 @@ def _build_tool_catalog_instruction(
     tool_names = [tool["name"] for tool in tool_summaries if tool.get("name")]
     instructions = [
         "MCP araci kullanacaksan yalnizca asagidaki tam tool adlarini kullan.",
-        "Tool adi uydurma. Ornegin get_stock gibi bir isim yoksa kullanma.",
+        "Tool adi uydurma; listede olmayan isim kullanma.",
     ]
-
-    if "listProduct" in tool_names and (
-        STOCK_HINT_PATTERN.search(user_message)
-        or PRICE_HINT_PATTERN.search(user_message)
-        or VARIANT_HINT_PATTERN.search(user_message)
-    ):
-        instructions.append(
-            "Bu mesaj stok/fiyat/varyant ile ilgili. Uygunsa once listProduct aracini kullan."
-        )
-        instructions.append(
-            "listProduct cagirirken tam GraphQL query string'i gonder ve operationName olarak listProduct kullan."
-        )
-
-    if "listOrder" in tool_names and ORDER_HINT_PATTERN.search(user_message):
-        instructions.append("Bu mesaj siparis ile ilgili. Uygunsa listOrder ile basla.")
-
-    if "listCustomer" in tool_names and CUSTOMER_HINT_PATTERN.search(user_message):
-        instructions.append("Bu mesaj musteri ile ilgili. Uygunsa listCustomer ile basla.")
 
     if any(name.startswith("update") or name.startswith("create") or name.startswith("delete") for name in tool_names):
         instructions.append(
@@ -966,6 +922,31 @@ def _merge_stream_meta_payload(target: dict[str, Any], payload: dict[str, Any]) 
     return merged
 
 
+class ToolRegistry:
+    """Dictionary-based registry that maps local tool names to async handler functions.
+
+    Follows the Open-Closed Principle: new local tools can be registered without
+    modifying _execute_chat_tool. Handlers must be async callables with the
+    signature ``async (args: dict[str, Any]) -> tuple[str, dict[str, Any] | None]``.
+    """
+
+    def __init__(self) -> None:
+        self._handlers: dict[str, ToolHandler] = {}
+
+    def register(self, name: str, handler: ToolHandler) -> None:
+        """Register a new tool handler under the given name."""
+        self._handlers[name] = handler
+
+    def get(self, name: str) -> ToolHandler | None:
+        """Return the handler for *name*, or None if not registered."""
+        return self._handlers.get(name)
+
+    @property
+    def local_tool_names(self) -> list[str]:
+        """Names of all locally registered tools."""
+        return list(self._handlers.keys())
+
+
 class ChatService:
     """Multi-turn chat service with optional MCP tool integration.
 
@@ -984,6 +965,10 @@ class ChatService:
         self._total_tokens = {"input": 0, "output": 0}
         self._active_request_lock = threading.Lock()
         self._active_http_client: httpx.AsyncClient | None = None
+
+        # Local tool registry — add new local tools here without touching _execute_chat_tool
+        self._tool_registry = ToolRegistry()
+        self._tool_registry.register(SAVE_SEO_SUGGESTION_TOOL_NAME, self._save_suggestion_from_tool_args)
 
     @property
     def has_mcp(self) -> bool:
@@ -1181,16 +1166,16 @@ class ChatService:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.warning("Semantic routing request failed: %s", exc)
-            return _fallback_needs_mcp(cleaned_message)
+            logger.warning("Semantic routing request failed, defaulting to local mode: %s", exc)
+            return False
 
         completion_text = _extract_chat_completion_content(payload)
         needs_mcp = _parse_needs_mcp_flag(completion_text)
         if needs_mcp is not None:
             return needs_mcp
 
-        logger.warning("Semantic routing returned invalid payload: %s", completion_text[:200])
-        return _fallback_needs_mcp(cleaned_message)
+        logger.warning("Semantic routing returned invalid payload, defaulting to local mode: %s", completion_text[:200])
+        return False
 
     async def _extract_message_directives(
         self,
@@ -1259,13 +1244,13 @@ class ChatService:
 
     async def _maybe_run_guided_mcp_request(
         self,
-        user_message: str,
     ) -> tuple[str, list[dict[str, Any]], str] | None:
-        """Run a deterministic MCP query for common selected-product live-data questions."""
-        if not self._product or not self._mcp or not self._mcp_initialized:
-            return None
+        """Run a deterministic MCP query to fetch live product data (stock, price, variants).
 
-        if not any(pattern.search(user_message) for pattern in LIVE_PRODUCT_HINT_PATTERNS):
+        Called only when the Semantic Router has already determined that live MCP data is
+        needed. Fetches a focused snapshot of the currently selected product from ikas.
+        """
+        if not self._product or not self._mcp or not self._mcp_initialized:
             return None
 
         result = await self._mcp.call_tool("listProduct", {
@@ -1379,7 +1364,6 @@ class ChatService:
         *,
         allow_mcp_tools: bool,
         guided_context: str,
-        user_message: str,
     ) -> tuple[list[dict[str, Any]] | None, list[str]]:
         tools: list[dict[str, Any]] = [_build_save_seo_suggestion_tool()]
         instructions: list[str] = []
@@ -1388,7 +1372,7 @@ class ChatService:
 
         if allow_mcp_tools and self._mcp_initialized and self._mcp and not guided_context:
             tools.extend(self._mcp.get_tools_as_openai_functions())
-            tool_catalog_instruction = _build_tool_catalog_instruction(self.mcp_tools, user_message)
+            tool_catalog_instruction = _build_tool_catalog_instruction(self.mcp_tools)
             if tool_catalog_instruction:
                 instructions.append(tool_catalog_instruction)
 
@@ -1443,9 +1427,12 @@ class ChatService:
         tool_name: str,
         args: dict[str, Any],
     ) -> tuple[str, dict[str, Any] | None]:
-        if tool_name == SAVE_SEO_SUGGESTION_TOOL_NAME:
-            return await self._save_suggestion_from_tool_args(args)
+        # Check the local registry first (Open-Closed: new tools registered, not hardcoded)
+        handler = self._tool_registry.get(tool_name)
+        if handler:
+            return await handler(args)
 
+        # Fall through to MCP for all dynamically-discovered ikas tools
         if self._mcp and self._mcp_initialized:
             try:
                 result = await self._mcp.call_tool(tool_name, args)
@@ -1458,7 +1445,7 @@ class ChatService:
 
         return json.dumps({
             "error": f"Tool '{tool_name}' is not available.",
-            "available_tools": [SAVE_SEO_SUGGESTION_TOOL_NAME],
+            "available_tools": self._tool_registry.local_tool_names,
         }, ensure_ascii=False), None
 
     async def send_message(self, user_message: str) -> ChatResponse:
@@ -1563,7 +1550,6 @@ class ChatService:
         tools, tool_instructions = self._build_chat_tools(
             allow_mcp_tools=allow_tools,
             guided_context=guided_context,
-            user_message=cleaned_message,
         )
         for instruction in tool_instructions:
             messages.append({"role": "system", "content": instruction})
@@ -1605,7 +1591,7 @@ class ChatService:
         mcp_available = bool(self._mcp_initialized and self._mcp)
         if allow_tools and mcp_available:
             try:
-                guided_result = await self._maybe_run_guided_mcp_request(cleaned_message)
+                guided_result = await self._maybe_run_guided_mcp_request()
             except Exception as exc:
                 logger.warning("Guided MCP request failed: %s", exc)
                 guided_result = None
