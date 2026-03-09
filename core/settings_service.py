@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from collections.abc import Iterable, Mapping
 from typing import Any
 
@@ -65,7 +67,7 @@ class SettingsService:
         return contents
 
     def save_settings(self, values: dict[str, Any]) -> None:
-        save_config_to_db(values)
+        asyncio.run(save_config_to_db(values))
 
     def test_connection(self, values: dict[str, Any]) -> dict[str, Any]:
         return test_settings_connection(values)

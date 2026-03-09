@@ -85,7 +85,7 @@ async def update_settings(
     manager: ProductManager = Depends(get_manager),
 ) -> MessageResponse:
     """Persist settings to .env and reload."""
-    manager.save_settings(body.values)
+    await manager.save_settings(body.values)
     return MessageResponse(message="Settings updated")
 
 

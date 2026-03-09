@@ -1,5 +1,4 @@
 import json
-import sqlite3
 import aiosqlite
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -76,6 +75,13 @@ async def _configure_connection(conn: aiosqlite.Connection) -> aiosqlite.Connect
 async def connection() -> AsyncIterator[aiosqlite.Connection]:
     async with aiosqlite.connect(str(DB_PATH), timeout=30) as conn:
         await _configure_connection(conn)
+        yield conn
+
+
+@asynccontextmanager
+async def get_connection() -> AsyncIterator[aiosqlite.Connection]:
+    """Backward-compatible async connection helper."""
+    async with connection() as conn:
         yield conn
 
 
@@ -386,59 +392,29 @@ async def get_operation_history(limit: int = 50) -> list:
     return [dict(row) for row in rows]
 
 
-# ---------------------------------------------------------------------------
-# Settings — synchronous helpers (sqlite3) so they can be called from
-# synchronous config loading code without requiring a running event loop.
-# ---------------------------------------------------------------------------
-
-def _sync_db_connection() -> sqlite3.Connection:
-    """Open a synchronous SQLite connection for settings operations."""
-    conn = sqlite3.connect(str(DB_PATH), timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    return conn
-
-
-def _ensure_settings_table(conn: sqlite3.Connection) -> None:
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL,
-            updated_at TIMESTAMP
-        )
-        """
-    )
-    conn.commit()
-
-
-def get_all_settings_sync() -> dict[str, str]:
-    """Return all persisted settings as a key→value dict (sync)."""
+async def get_all_settings() -> dict[str, str]:
+    """Return all persisted settings as a key→value dict."""
     try:
-        conn = _sync_db_connection()
-        _ensure_settings_table(conn)
-        cursor = conn.execute("SELECT key, value FROM settings")
-        rows = cursor.fetchall()
-        conn.close()
+        async with connection() as conn:
+            async with conn.execute("SELECT key, value FROM settings") as cursor:
+                rows = await cursor.fetchall()
         return {row["key"]: row["value"] for row in rows}
     except Exception:
         return {}
 
 
-def set_settings_sync(values: dict[str, str]) -> None:
-    """Upsert multiple key→value pairs into the settings table (sync)."""
+async def set_settings(values: dict[str, str]) -> None:
+    """Upsert multiple key→value pairs into the settings table."""
     if not values:
         return
+
     now = datetime.now().isoformat()
-    conn = _sync_db_connection()
-    _ensure_settings_table(conn)
-    conn.executemany(
-        """
-        INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-        """,
-        [(k, v, now) for k, v in values.items()],
-    )
-    conn.commit()
-    conn.close()
+    async with connection() as conn:
+        await conn.executemany(
+            """
+            INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+            """,
+            [(k, v, now) for k, v in values.items()],
+        )
+        await conn.commit()
