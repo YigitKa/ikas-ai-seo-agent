@@ -20,8 +20,7 @@ import logging
 import re
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
-from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -905,6 +904,53 @@ def _merge_stream_tool_call(
         function_payload["arguments"] = f"{function_payload.get('arguments', '')}{arguments}"
 
 
+# LM Studio native event names (compat endpoint) that carry no text content
+_LM_STUDIO_NON_CONTENT_EVENTS: frozenset[str] = frozenset({
+    "chat.start", "chat.end",
+    "model_load.start", "model_load.progress", "model_load.end",
+    "prompt_processing.start", "prompt_processing.progress",
+    "prompt_processing.end",
+    "reasoning.start", "reasoning.end",
+    "tool_call.start", "tool_call.arguments",
+    "tool_call.success", "tool_call.failure",
+    "message.start", "message.end",
+    "error",
+})
+
+
+def _apply_choice_delta(
+    choice: dict[str, Any],
+    visible_text_filter: "_StreamingVisibleTextFilter",
+    tool_calls_by_index: dict[int, dict[str, Any]],
+) -> tuple[str, str, str]:
+    """Process one OpenAI-style choice delta. Mutates tool_calls_by_index.
+
+    Returns (content_delta, finish_reason, visible_chunk).
+    visible_chunk is empty when tool calls are already pending.
+    """
+    delta = choice.get("delta", {})
+    if not isinstance(delta, dict):
+        delta = {}
+
+    raw_finish_reason = choice.get("finish_reason")
+    finish_reason = raw_finish_reason if isinstance(raw_finish_reason, str) and raw_finish_reason else ""
+
+    content_delta = _extract_stream_delta_content(delta)
+    visible_chunk = ""
+    if content_delta:
+        visible = visible_text_filter.consume(content_delta)
+        if visible and not tool_calls_by_index:
+            visible_chunk = visible
+
+    delta_tool_calls = delta.get("tool_calls")
+    if isinstance(delta_tool_calls, list):
+        for tc_delta in delta_tool_calls:
+            if isinstance(tc_delta, dict):
+                _merge_stream_tool_call(tool_calls_by_index, tc_delta)
+
+    return content_delta, finish_reason, visible_chunk
+
+
 def _merge_stream_meta_payload(target: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     merged = dict(target)
 
@@ -1476,83 +1522,36 @@ class ChatService:
 
         yield self._build_response_done_event(response)
 
-    async def _run_message_flow(
+    def _build_completion_messages(
         self,
-        user_message: str,
-        chunk_handler: Callable[[str], Awaitable[None]] | None = None,
-        event_handler: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
-    ) -> ChatResponse:
-        """Run the full chat flow, optionally streaming assistant chunks."""
-        cleaned_message, routing_instruction, allow_tools = await self._extract_message_directives(user_message)
-        explicit_ikas_mode = bool(IKAS_MENTION_PATTERN.search(user_message)) and not bool(
-            LOCAL_MENTION_PATTERN.search(user_message)
-        )
-
-        # Add user message to history
-        user_msg = ChatMessage(role="user", content=cleaned_message)
-        self._history.append(user_msg)
-
-        # Trim history if too long
-        if len(self._history) > MAX_HISTORY_MESSAGES:
-            self._history = self._history[-MAX_HISTORY_MESSAGES:]
-
-        # Build messages for the AI
+        cleaned_message: str,
+        routing_instruction: str | None,
+        allow_tools: bool,
+        guided_context: str,
+        mcp_available: bool,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
+        """Build the messages list and tools for the AI completion call."""
         system_prompt = _build_product_context(self._product, self._score)
         if _should_request_structured_suggestion_options(cleaned_message):
-            system_prompt = (
-                f"{system_prompt}\n\n{STRUCTURED_SUGGESTION_OPTIONS_INSTRUCTION}"
-            )
-        messages = [{"role": "system", "content": system_prompt}]
+            system_prompt = f"{system_prompt}\n\n{STRUCTURED_SUGGESTION_OPTIONS_INSTRUCTION}"
+
+        messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
         if routing_instruction:
             messages.append({"role": "system", "content": routing_instruction})
         local_no_think_instruction = _build_local_no_think_instruction(self._config)
         if local_no_think_instruction:
             messages.append({"role": "system", "content": local_no_think_instruction})
 
-        guided_context = ""
-        guided_tool_results: list[dict[str, Any]] = []
-        guided_fallback = ""
-        if allow_tools and self._mcp_initialized and self._mcp:
-            try:
-                guided_result = await self._maybe_run_guided_mcp_request(cleaned_message)
-            except Exception as exc:
-                logger.warning("Guided MCP request failed: %s", exc)
-                guided_result = None
-
-            if guided_result:
-                guided_context, guided_tool_results, guided_fallback = guided_result
-                if explicit_ikas_mode:
-                    guided_content = _append_operation_suggestion(
-                        guided_fallback,
-                        user_message=cleaned_message,
-                        product=self._product,
-                    )
-                    assistant_msg = ChatMessage(role="assistant", content=guided_content)
-                    self._history.append(assistant_msg)
-                    response = ChatResponse(
-                        content=guided_content,
-                        thinking="",
-                        tool_results=guided_tool_results,
-                        error=False,
-                        meta={
-                            "model": "ikas MCP",
-                            "finish_reason": "guided_mcp",
-                            "source": "ikas_mcp",
-                        },
-                    )
-                    if chunk_handler and response.content:
-                        await chunk_handler(response.content)
-                    self._schedule_history_summarization()
-                    return response
-                messages.append({
-                    "role": "system",
-                    "content": (
-                        "Asagidaki ikas MCP sonucu dogrulanmis canli veridir. "
-                        "Bu veriyi esas al, veri uydurma ve degistirme:\n"
-                        f"{guided_context}"
-                    ),
-                })
-        elif allow_tools:
+        if allow_tools and mcp_available and guided_context:
+            messages.append({
+                "role": "system",
+                "content": (
+                    "Asagidaki ikas MCP sonucu dogrulanmis canli veridir. "
+                    "Bu veriyi esas al, veri uydurma ve degistirme:\n"
+                    f"{guided_context}"
+                ),
+            })
+        elif allow_tools and not mcp_available:
             messages.append({
                 "role": "system",
                 "content": (
@@ -1567,10 +1566,7 @@ class ChatService:
             user_message=cleaned_message,
         )
         for instruction in tool_instructions:
-            messages.append({
-                "role": "system",
-                "content": instruction,
-            })
+            messages.append({"role": "system", "content": instruction})
 
         for msg in self._history:
             m: dict[str, Any] = {"role": msg.role, "content": msg.content}
@@ -1581,6 +1577,64 @@ class ChatService:
             if msg.role == "tool" and msg.name:
                 m["name"] = msg.name
             messages.append(m)
+
+        return messages, tools
+
+    async def _run_message_flow(
+        self,
+        user_message: str,
+        chunk_handler: Callable[[str], Awaitable[None]] | None = None,
+        event_handler: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+    ) -> ChatResponse:
+        """Run the full chat flow, optionally streaming assistant chunks."""
+        cleaned_message, routing_instruction, allow_tools = await self._extract_message_directives(user_message)
+        explicit_ikas_mode = bool(IKAS_MENTION_PATTERN.search(user_message)) and not bool(
+            LOCAL_MENTION_PATTERN.search(user_message)
+        )
+
+        # Add user message to history and trim if needed
+        user_msg = ChatMessage(role="user", content=cleaned_message)
+        self._history.append(user_msg)
+        if len(self._history) > MAX_HISTORY_MESSAGES:
+            self._history = self._history[-MAX_HISTORY_MESSAGES:]
+
+        # Optionally prefetch guided MCP data for live-data questions
+        guided_context = ""
+        guided_tool_results: list[dict[str, Any]] = []
+        guided_fallback = ""
+        mcp_available = bool(self._mcp_initialized and self._mcp)
+        if allow_tools and mcp_available:
+            try:
+                guided_result = await self._maybe_run_guided_mcp_request(cleaned_message)
+            except Exception as exc:
+                logger.warning("Guided MCP request failed: %s", exc)
+                guided_result = None
+
+            if guided_result:
+                guided_context, guided_tool_results, guided_fallback = guided_result
+                if explicit_ikas_mode:
+                    # Return the MCP result directly without a secondary AI call
+                    guided_content = _append_operation_suggestion(
+                        guided_fallback,
+                        user_message=cleaned_message,
+                        product=self._product,
+                    )
+                    self._history.append(ChatMessage(role="assistant", content=guided_content))
+                    response = ChatResponse(
+                        content=guided_content,
+                        thinking="",
+                        tool_results=guided_tool_results,
+                        error=False,
+                        meta={"model": "ikas MCP", "finish_reason": "guided_mcp", "source": "ikas_mcp"},
+                    )
+                    if chunk_handler and response.content:
+                        await chunk_handler(response.content)
+                    self._schedule_history_summarization()
+                    return response
+
+        messages, tools = self._build_completion_messages(
+            cleaned_message, routing_instruction, allow_tools, guided_context, mcp_available,
+        )
 
         response_text = ""
         thinking_text = ""
@@ -1595,16 +1649,11 @@ class ChatService:
                 stream_signature = inspect.signature(self._chat_completion_stream)
                 if "event_handler" in stream_signature.parameters:
                     completion_result = await self._chat_completion_stream(
-                        messages,
-                        tools,
-                        chunk_handler,
-                        event_handler=event_handler,
+                        messages, tools, chunk_handler, event_handler=event_handler,
                     )
                 else:
                     completion_result = await self._chat_completion_stream(
-                        messages,
-                        tools,
-                        chunk_handler,
+                        messages, tools, chunk_handler,
                     )
             response_text, thinking_text, completion_tool_results, meta, suggestion_saved = (
                 self._normalize_completion_result(completion_result)
@@ -1621,39 +1670,26 @@ class ChatService:
                 self._history.pop()
             if guided_fallback:
                 guided_content = _append_operation_suggestion(
-                    guided_fallback,
-                    user_message=cleaned_message,
-                    product=self._product,
+                    guided_fallback, user_message=cleaned_message, product=self._product,
                 )
-                assistant_msg = ChatMessage(role="assistant", content=guided_content)
-                self._history.append(assistant_msg)
+                self._history.append(ChatMessage(role="assistant", content=guided_content))
                 response = ChatResponse(
                     content=guided_content,
                     thinking="",
                     tool_results=tool_results,
                     error=False,
-                    meta={
-                        "model": "ikas MCP",
-                        "finish_reason": "guided_mcp_fallback",
-                        "source": "ikas_mcp",
-                    },
+                    meta={"model": "ikas MCP", "finish_reason": "guided_mcp_fallback", "source": "ikas_mcp"},
                 )
-                if chunk_handler and response.content:
-                    await chunk_handler(response.content)
-                self._schedule_history_summarization()
-                return response
-
-            response = ChatResponse(
-                content=_append_operation_suggestion(
-                    _format_chat_error(exc),
-                    user_message=cleaned_message,
-                    product=self._product,
-                ),
-                thinking="",
-                tool_results=tool_results,
-                error=True,
-                meta={},
-            )
+            else:
+                response = ChatResponse(
+                    content=_append_operation_suggestion(
+                        _format_chat_error(exc), user_message=cleaned_message, product=self._product,
+                    ),
+                    thinking="",
+                    tool_results=tool_results,
+                    error=True,
+                    meta={},
+                )
             if chunk_handler and response.content:
                 await chunk_handler(response.content)
             self._schedule_history_summarization()
@@ -1671,14 +1707,11 @@ class ChatService:
 
         if not suggestion_saved:
             response_text = _append_operation_suggestion(
-                response_text,
-                user_message=cleaned_message,
-                product=self._product,
+                response_text, user_message=cleaned_message, product=self._product,
             )
             response_text = _append_false_action_disclaimer(response_text, tool_results)
 
-        assistant_msg = ChatMessage(role="assistant", content=response_text)
-        self._history.append(assistant_msg)
+        self._history.append(ChatMessage(role="assistant", content=response_text))
         self._schedule_history_summarization()
 
         return ChatResponse(
@@ -2114,18 +2147,6 @@ class ChatService:
                         else:
                             pending_data_lines: list[str] = []
                             sse_event_name = ""
-                            # Non-delta LM Studio native event names that carry no text content
-                            _LM_STUDIO_NON_CONTENT_EVENTS = frozenset({
-                                "chat.start", "chat.end",
-                                "model_load.start", "model_load.progress", "model_load.end",
-                                "prompt_processing.start", "prompt_processing.progress",
-                                "prompt_processing.end",
-                                "reasoning.start", "reasoning.end",
-                                "tool_call.start", "tool_call.arguments",
-                                "tool_call.success", "tool_call.failure",
-                                "message.start", "message.end",
-                                "error",
-                            })
                             async for line in resp.aiter_lines():
                                 if not line:
                                     if not pending_data_lines:
@@ -2156,40 +2177,23 @@ class ChatService:
                                                 visible_chunk = visible_text_filter.consume(native_content)
                                                 if visible_chunk and not tool_calls_by_index:
                                                     streamed_chunk_emitted = True
-                                                    yield {
-                                                        "type": "chunk",
-                                                        "content": visible_chunk,
-                                                    }
+                                                    yield {"type": "chunk", "content": visible_chunk}
                                         continue
 
                                     choice = choices[0]
                                     if not isinstance(choice, dict):
                                         continue
 
-                                    delta = choice.get("delta", {})
-                                    if not isinstance(delta, dict):
-                                        delta = {}
-
-                                    raw_finish_reason = choice.get("finish_reason")
-                                    if isinstance(raw_finish_reason, str) and raw_finish_reason:
-                                        finish_reason = raw_finish_reason
-
-                                    chunk = _extract_stream_delta_content(delta)
-                                    if chunk:
-                                        message_content += chunk
-                                        visible_chunk = visible_text_filter.consume(chunk)
-                                        if visible_chunk and not tool_calls_by_index:
-                                            streamed_chunk_emitted = True
-                                            yield {
-                                                "type": "chunk",
-                                                "content": visible_chunk,
-                                            }
-
-                                    delta_tool_calls = delta.get("tool_calls")
-                                    if isinstance(delta_tool_calls, list):
-                                        for tool_call_delta in delta_tool_calls:
-                                            if isinstance(tool_call_delta, dict):
-                                                _merge_stream_tool_call(tool_calls_by_index, tool_call_delta)
+                                    content_delta, finish_reason_update, visible_chunk = _apply_choice_delta(
+                                        choice, visible_text_filter, tool_calls_by_index,
+                                    )
+                                    if content_delta:
+                                        message_content += content_delta
+                                    if finish_reason_update:
+                                        finish_reason = finish_reason_update
+                                    if visible_chunk:
+                                        streamed_chunk_emitted = True
+                                        yield {"type": "chunk", "content": visible_chunk}
                                     continue
 
                                 if line.startswith(":"):
@@ -2213,27 +2217,16 @@ class ChatService:
                                         if isinstance(choices, list) and choices:
                                             choice = choices[0]
                                             if isinstance(choice, dict):
-                                                delta = choice.get("delta", {})
-                                                if not isinstance(delta, dict):
-                                                    delta = {}
-                                                raw_finish_reason = choice.get("finish_reason")
-                                                if isinstance(raw_finish_reason, str) and raw_finish_reason:
-                                                    finish_reason = raw_finish_reason
-                                                chunk = _extract_stream_delta_content(delta)
-                                                if chunk:
-                                                    message_content += chunk
-                                                    visible_chunk = visible_text_filter.consume(chunk)
-                                                    if visible_chunk and not tool_calls_by_index:
-                                                        streamed_chunk_emitted = True
-                                                        yield {
-                                                            "type": "chunk",
-                                                            "content": visible_chunk,
-                                                        }
-                                                delta_tool_calls = delta.get("tool_calls")
-                                                if isinstance(delta_tool_calls, list):
-                                                    for tool_call_delta in delta_tool_calls:
-                                                        if isinstance(tool_call_delta, dict):
-                                                            _merge_stream_tool_call(tool_calls_by_index, tool_call_delta)
+                                                content_delta, finish_reason_update, visible_chunk = _apply_choice_delta(
+                                                    choice, visible_text_filter, tool_calls_by_index,
+                                                )
+                                                if content_delta:
+                                                    message_content += content_delta
+                                                if finish_reason_update:
+                                                    finish_reason = finish_reason_update
+                                                if visible_chunk:
+                                                    streamed_chunk_emitted = True
+                                                    yield {"type": "chunk", "content": visible_chunk}
                 finally:
                     with self._active_request_lock:
                         if self._active_http_client is client:
@@ -2397,7 +2390,6 @@ class ChatService:
     @staticmethod
     def _extract_thinking(text: str) -> str:
         """Extract <think>...</think> blocks from response."""
-        import re
         match = re.search(r"<think>(.*?)</think>", text, re.DOTALL)
         if match:
             return match.group(1).strip()
@@ -2407,7 +2399,6 @@ class ChatService:
     @staticmethod
     def _remove_thinking(text: str) -> str:
         """Remove <think>...</think> blocks from response."""
-        import re
         cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
         if "<think>" in cleaned:
             cleaned = cleaned.split("<think>", 1)[0]
