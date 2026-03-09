@@ -366,7 +366,11 @@ async def test_get_routing_mode_uses_semantic_llm_request(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_get_routing_mode_falls_back_to_live_data_hints_on_invalid_payload(monkeypatch):
+async def test_get_routing_mode_defaults_to_local_on_invalid_payload(monkeypatch):
+    """When semantic router returns an unparseable payload, routing defaults to local mode (False).
+
+    Regex-based fallback was removed; the Semantic Router is the sole decision-maker.
+    """
     service = ChatService(_make_config(
         ai_provider="openai",
         ai_base_url="https://example.com/v1",
@@ -383,7 +387,8 @@ async def test_get_routing_mode_falls_back_to_live_data_hints_on_invalid_payload
 
     monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
 
-    assert await service._get_routing_mode("stokta kac tane kaldi") is True
+    # Both messages default to False (local mode) when router payload is invalid
+    assert await service._get_routing_mode("stokta kac tane kaldi") is False
     assert await service._get_routing_mode("seo skorunu yorumla") is False
 
 
@@ -422,7 +427,6 @@ def test_build_chat_tools_always_includes_save_suggestion_tool():
     tools, instructions = service._build_chat_tools(  # type: ignore[attr-defined]
         allow_mcp_tools=False,
         guided_context="",
-        user_message="bunu uygula",
     )
 
     assert tools is not None
