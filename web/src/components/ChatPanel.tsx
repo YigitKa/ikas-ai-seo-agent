@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { getLmStudioLiveStatus, getSettings } from '../api/client';
-import { useChat, type ChatMessage } from '../hooks/useChat';
-import type { ChatResponseMeta, Product, SeoScore, SuggestionSavedInfo, ToolResult } from '../types';
+import { useChat } from '../hooks/useChat';
+import type { Product, SeoScore } from '../types';
+import { formatCompactNumber, formatDuration, readMetaNumber } from './chat/chatUtils';
+import { MessageBubble, type SuggestionOption } from './chat/ChatMessage';
+import {
+  buildPromptParamOptions,
+  getParamTriggerState,
+  resolvePromptTemplate,
+  type ParamTriggerState,
+  type StarterPrompt,
+} from './chat/promptParams';
 
 interface Props {
   productId?: string;
@@ -15,1014 +22,7 @@ interface Props {
   score?: SeoScore | null;
 }
 
-interface PromptParamOption {
-  key: string;
-  label: string;
-  description: string;
-  value: string;
-  preview: string;
-  searchText: string;
-}
-
-interface ParamTriggerState {
-  start: number;
-  end: number;
-  query: string;
-}
-
-interface StarterPrompt {
-  label: string;
-  template: string;
-}
-
-function stripHtml(value: string) {
-  return value
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<\/li>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/\r/g, '')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
-}
-
-function compactPreview(value: string, maxLength = 120) {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-  return `${normalized.slice(0, maxLength - 1)}...`;
-}
-
-function createPromptParamOption(
-  key: string,
-  label: string,
-  description: string,
-  rawValue: string | null | undefined,
-) {
-  const normalizedValue = (rawValue ?? '').trim() || 'Belirtilmemis';
-  return {
-    key,
-    label,
-    description,
-    value: normalizedValue,
-    preview: compactPreview(normalizedValue),
-    searchText: `${key} ${label} ${description}`.toLowerCase(),
-  } satisfies PromptParamOption;
-}
-
-function buildSeoMetricsSummary(score?: SeoScore | null) {
-  if (!score) {
-    return 'SEO metrikleri henuz okunmadi.';
-  }
-
-  const sections = [
-    `Toplam SEO skoru: ${score.total_score}/100`,
-    `Baslik skoru: ${score.title_score}/15`,
-    `Aciklama skoru: ${score.description_score}/20`,
-    `Ingilizce aciklama skoru: ${score.english_description_score}/5`,
-    `Meta title skoru: ${score.meta_score}/15`,
-    `Meta description skoru: ${score.meta_desc_score}/10`,
-    `Anahtar kelime skoru: ${score.keyword_score}/10`,
-    `Icerik kalitesi skoru: ${score.content_quality_score}/10`,
-    `Teknik SEO skoru: ${score.technical_seo_score}/10`,
-    `Okunabilirlik skoru: ${score.readability_score}/5`,
-  ];
-
-  if (score.issues.length > 0) {
-    sections.push(`Sorunlar:\n- ${score.issues.join('\n- ')}`);
-  }
-
-  if (score.suggestions.length > 0) {
-    sections.push(`Oneriler:\n- ${score.suggestions.join('\n- ')}`);
-  }
-
-  return sections.join('\n');
-}
-
-function buildPromptParamOptions(product?: Product | null, score?: SeoScore | null) {
-  const productDescription = stripHtml(product?.description || '');
-  const productDescriptionEn = stripHtml(product?.description_translations?.en || '');
-  const seoIssues = score?.issues.length ? `- ${score.issues.join('\n- ')}` : 'Belirtilmemis';
-  const seoSuggestions = score?.suggestions.length ? `- ${score.suggestions.join('\n- ')}` : 'Belirtilmemis';
-
-  return [
-    createPromptParamOption('productName', 'Urun adi', 'Secili urunun basligi', product?.name),
-    createPromptParamOption('productCategory', 'Kategori', 'Secili urunun kategorisi', product?.category),
-    createPromptParamOption('productDescription', 'Urun aciklamasi', 'Temizlenmis urun aciklama metni', productDescription),
-    createPromptParamOption('productDescriptionEn', 'EN aciklama', 'Varsa Ingilizce aciklama', productDescriptionEn),
-    createPromptParamOption('productMetaTitle', 'Meta title', 'Mevcut meta title alani', product?.meta_title),
-    createPromptParamOption('productMetaDescription', 'Meta description', 'Mevcut meta description alani', product?.meta_description),
-    createPromptParamOption('productTags', 'Etiketler', 'Secili urunun etiketleri', product?.tags.join(', ')),
-    createPromptParamOption('productSku', 'SKU', 'Secili urunun SKU degeri', product?.sku),
-    createPromptParamOption('productStatus', 'Durum', 'Secili urunun yayindaki durumu', product?.status),
-    createPromptParamOption(
-      'productPrice',
-      'Fiyat',
-      'Secili urunun kayitli fiyati',
-      typeof product?.price === 'number' ? `${product.price.toFixed(2)} TL` : undefined,
-    ),
-    createPromptParamOption('seoMetricsSummary', 'SEO ozeti', 'Tum mevcut SEO skor kirilimlari', buildSeoMetricsSummary(score)),
-    createPromptParamOption(
-      'seoTotalScore',
-      'Toplam SEO skoru',
-      'Toplam skor',
-      typeof score?.total_score === 'number' ? `${score.total_score}/100` : undefined,
-    ),
-    createPromptParamOption(
-      'seoTitleScore',
-      'Baslik skoru',
-      'Title skor kirilimi',
-      typeof score?.title_score === 'number' ? `${score.title_score}/15` : undefined,
-    ),
-    createPromptParamOption(
-      'seoDescriptionScore',
-      'Aciklama skoru',
-      'Description skor kirilimi',
-      typeof score?.description_score === 'number' ? `${score.description_score}/20` : undefined,
-    ),
-    createPromptParamOption(
-      'seoEnglishDescriptionScore',
-      'EN aciklama skoru',
-      'English description skor kirilimi',
-      typeof score?.english_description_score === 'number' ? `${score.english_description_score}/5` : undefined,
-    ),
-    createPromptParamOption(
-      'seoMetaTitleScore',
-      'Meta title skoru',
-      'Meta title skor kirilimi',
-      typeof score?.meta_score === 'number' ? `${score.meta_score}/15` : undefined,
-    ),
-    createPromptParamOption(
-      'seoMetaDescriptionScore',
-      'Meta description skoru',
-      'Meta description skor kirilimi',
-      typeof score?.meta_desc_score === 'number' ? `${score.meta_desc_score}/10` : undefined,
-    ),
-    createPromptParamOption(
-      'seoKeywordScore',
-      'Keyword skoru',
-      'Anahtar kelime skor kirilimi',
-      typeof score?.keyword_score === 'number' ? `${score.keyword_score}/10` : undefined,
-    ),
-    createPromptParamOption(
-      'seoContentQualityScore',
-      'Icerik kalitesi skoru',
-      'Content quality skor kirilimi',
-      typeof score?.content_quality_score === 'number' ? `${score.content_quality_score}/10` : undefined,
-    ),
-    createPromptParamOption(
-      'seoTechnicalScore',
-      'Teknik SEO skoru',
-      'Technical SEO skor kirilimi',
-      typeof score?.technical_seo_score === 'number' ? `${score.technical_seo_score}/10` : undefined,
-    ),
-    createPromptParamOption(
-      'seoReadabilityScore',
-      'Okunabilirlik skoru',
-      'Readability skor kirilimi',
-      typeof score?.readability_score === 'number' ? `${score.readability_score}/5` : undefined,
-    ),
-    createPromptParamOption('seoIssues', 'SEO sorunlari', 'Mevcut issue listesi', seoIssues),
-    createPromptParamOption('seoSuggestions', 'SEO onerileri', 'Mevcut suggestion listesi', seoSuggestions),
-  ];
-}
-
-function resolvePromptTemplate(template: string, options: PromptParamOption[]) {
-  return options.reduce(
-    (resolved, option) => resolved.split(`{${option.key}}`).join(option.value),
-    template,
-  );
-}
-
-function getParamTriggerState(value: string, caretPosition: number | null) {
-  if (caretPosition === null) {
-    return null;
-  }
-
-  const textBeforeCaret = value.slice(0, caretPosition);
-  const openIndex = textBeforeCaret.lastIndexOf('{');
-  if (openIndex === -1) {
-    return null;
-  }
-
-  if (textBeforeCaret.lastIndexOf('}') > openIndex) {
-    return null;
-  }
-
-  const query = textBeforeCaret.slice(openIndex + 1);
-  if (/\s/.test(query)) {
-    return null;
-  }
-
-  const closingIndex = value.indexOf('}', openIndex);
-  if (closingIndex !== -1 && closingIndex < caretPosition) {
-    return null;
-  }
-
-  return {
-    start: openIndex,
-    end: caretPosition,
-    query,
-  } satisfies ParamTriggerState;
-}
-
-function formatDuration(seconds: number) {
-  const safeSeconds = Math.max(seconds, 0);
-  if (safeSeconds < 60) {
-    return safeSeconds < 10 ? `${safeSeconds.toFixed(2)}s` : `${safeSeconds.toFixed(1)}s`;
-  }
-
-  const minutes = Math.floor(safeSeconds / 60);
-  const remainder = Math.floor(safeSeconds % 60);
-  return `${minutes}m ${remainder}s`;
-}
-
-function formatCompactNumber(value: number) {
-  if (value >= 1000) {
-    return value >= 10_000 ? `${Math.round(value / 1000)}K` : `${(value / 1000).toFixed(1)}K`;
-  }
-  return String(value);
-}
-
-function formatThoughtDuration(seconds: number) {
-  const safeSeconds = Math.max(seconds, 0);
-  if (safeSeconds < 60) {
-    return `${safeSeconds.toFixed(2)} seconds`;
-  }
-  return formatDuration(safeSeconds);
-}
-
-function formatPercent(value: number) {
-  return `${value.toFixed(1)}%`;
-}
-
-function clampPercent(value: number) {
-  return Math.min(100, Math.max(0, value));
-}
-
-function resolveContextUsage(meta?: ChatResponseMeta, fallbackContextLength?: number | null) {
-  const inputTokens = readMetaNumber(meta, 'input_tokens');
-  const contextLength = readMetaNumber(meta, 'context_length') ?? fallbackContextLength ?? undefined;
-  const usedPercent = readMetaNumber(meta, 'context_used_percent');
-  const remainingPercent = readMetaNumber(meta, 'context_remaining_percent');
-
-  if (typeof inputTokens !== 'number' || typeof contextLength !== 'number' || contextLength <= 0) {
-    return null;
-  }
-
-  const derivedUsed = clampPercent((inputTokens / contextLength) * 100);
-  const normalizedUsed = typeof usedPercent === 'number' ? clampPercent(usedPercent) : derivedUsed;
-  const normalizedRemaining =
-    typeof remainingPercent === 'number'
-      ? clampPercent(remainingPercent)
-      : clampPercent(100 - normalizedUsed);
-
-  return {
-    inputTokens,
-    contextLength,
-    usedPercent: normalizedUsed,
-    remainingPercent: normalizedRemaining,
-  };
-}
-
-function readMetaNumber(meta: ChatResponseMeta | undefined, key: keyof ChatResponseMeta) {
-  const value = meta?.[key];
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  return undefined;
-}
-
-function getAssistantMetrics(meta?: ChatResponseMeta) {
-  if (!meta) {
-    return [];
-  }
-
-  const metrics: Array<{ key: string; label: string; value: string }> = [];
-  const outputTokens = readMetaNumber(meta, 'output_tokens');
-  const totalTokens = readMetaNumber(meta, 'total_tokens');
-  const elapsedSeconds = readMetaNumber(meta, 'elapsed_seconds');
-  let tokensPerSecond = readMetaNumber(meta, 'tokens_per_second');
-  const ttft = readMetaNumber(meta, 'time_to_first_token_seconds');
-
-  if (typeof totalTokens === 'number' && totalTokens > 0) {
-    metrics.push({
-      key: 'tokens',
-      label: 'Token',
-      value: `${formatCompactNumber(totalTokens)} tok`,
-    });
-  } else if (typeof outputTokens === 'number' && outputTokens > 0) {
-    metrics.push({
-      key: 'tokens',
-      label: 'Token',
-      value: `${formatCompactNumber(outputTokens)} tok`,
-    });
-  }
-
-  if (typeof elapsedSeconds === 'number' && elapsedSeconds > 0) {
-    metrics.push({
-      key: 'elapsed',
-      label: 'Sure',
-      value: formatDuration(elapsedSeconds),
-    });
-  }
-
-  if (
-    (typeof tokensPerSecond !== 'number' || tokensPerSecond <= 0)
-    && typeof elapsedSeconds === 'number'
-    && elapsedSeconds > 0
-  ) {
-    const rateBase = outputTokens ?? totalTokens;
-    if (typeof rateBase === 'number' && rateBase > 0) {
-      tokensPerSecond = rateBase / elapsedSeconds;
-    }
-  }
-
-  if (typeof tokensPerSecond === 'number' && tokensPerSecond > 0) {
-    const roundedRate =
-      tokensPerSecond >= 100 ? Math.round(tokensPerSecond) : Number(tokensPerSecond.toFixed(1));
-    metrics.push({
-      key: 'speed',
-      label: 'Hiz',
-      value: `${formatCompactNumber(roundedRate)} tok/sn`,
-    });
-  }
-
-  if (typeof ttft === 'number' && ttft > 0) {
-    metrics.push({
-      key: 'ttft',
-      label: 'TTFT',
-      value: formatDuration(ttft),
-    });
-  }
-
-  return metrics;
-}
-
-function ContextUsageCard({
-  meta,
-  fallbackContextLength,
-}: {
-  meta?: ChatResponseMeta;
-  fallbackContextLength?: number | null;
-}) {
-  const usage = resolveContextUsage(meta, fallbackContextLength);
-  if (!usage) {
-    return null;
-  }
-
-  return (
-    <div
-      className="mr-6 rounded-xl p-3"
-      style={{
-        background: 'rgba(255,255,255,0.035)',
-        border: '1px solid rgba(255,255,255,0.08)',
-      }}
-    >
-      <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1.5 text-[12px] leading-5">
-            <div style={{ color: 'var(--color-text-secondary)' }}>
-            Current conversation tokens: <span className="font-semibold text-white">{usage.inputTokens}</span>
-            </div>
-            <div style={{ color: 'var(--color-text-secondary)' }}>
-            Total loaded context: <span className="font-semibold text-white">{usage.contextLength}</span>
-            </div>
-          <div style={{ color: 'var(--color-text-muted)' }}>
-            {formatPercent(usage.usedPercent)} used ({formatPercent(usage.remainingPercent)} left)
-          </div>
-        </div>
-        <div className="flex min-w-[60px] flex-col items-center gap-2">
-          <div
-            className="relative h-11 w-11 rounded-full"
-            style={{
-              background: `conic-gradient(#60a5fa ${usage.usedPercent}%, rgba(255,255,255,0.08) 0)`,
-            }}
-          >
-            <div
-              className="absolute inset-[4px] flex items-center justify-center rounded-full text-[10px] font-semibold"
-              style={{ background: 'var(--color-bg-surface)', color: '#93c5fd' }}
-            >
-              {Math.round(usage.usedPercent)}%
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface SuggestionOption {
-  tone: string;
-  value: string;
-}
-
-function parseSuggestionOptions(rawValue: unknown) {
-  if (!Array.isArray(rawValue)) {
-    return [] as SuggestionOption[];
-  }
-
-  return rawValue.reduce<SuggestionOption[]>((items, entry) => {
-    if (!entry || typeof entry !== 'object') {
-      return items;
-    }
-
-    const candidate = entry as { tone?: unknown; value?: unknown };
-    const tone = typeof candidate.tone === 'string' ? candidate.tone.trim() : '';
-    const value = typeof candidate.value === 'string' ? candidate.value.trim() : '';
-    if (!tone || !value) {
-      return items;
-    }
-
-    items.push({ tone, value });
-    return items;
-  }, []);
-}
-
-function extractSuggestionOptions(content: string) {
-  const matcher = /```json\s*([\s\S]*?)\s*```/gi;
-  let matchedRange: { start: number; end: number } | null = null;
-  let parsedOptions: SuggestionOption[] = [];
-  let match: RegExpExecArray | null;
-
-  while ((match = matcher.exec(content)) !== null) {
-    try {
-      const options = parseSuggestionOptions(JSON.parse(match[1]));
-      if (!options.length) {
-        continue;
-      }
-
-      matchedRange = {
-        start: match.index,
-        end: match.index + match[0].length,
-      };
-      parsedOptions = options;
-    } catch {
-      continue;
-    }
-  }
-
-  let markdownContent = content;
-
-  if (matchedRange) {
-    markdownContent = `${content.slice(0, matchedRange.start)}${content.slice(matchedRange.end)}`;
-  } else {
-    const lowerContent = content.toLowerCase();
-    const trailingJsonBlockIndex = lowerContent.lastIndexOf('```json');
-    if (trailingJsonBlockIndex !== -1 && lowerContent.indexOf('```', trailingJsonBlockIndex + 7) === -1) {
-      markdownContent = content.slice(0, trailingJsonBlockIndex);
-    }
-  }
-
-  return {
-    markdownContent: markdownContent.replace(/\n{3,}/g, '\n\n').trim(),
-    options: parsedOptions,
-  };
-}
-
-function getSuggestionCardPalette(tone: string, index: number) {
-  const normalizedTone = tone.toLocaleLowerCase('tr-TR');
-
-  if (normalizedTone.includes('agresif') || normalizedTone.includes('iddiali')) {
-    return {
-      accent: '#f97316',
-      background: 'linear-gradient(145deg, rgba(249, 115, 22, 0.14), rgba(15, 23, 42, 0.94))',
-      border: 'rgba(249, 115, 22, 0.24)',
-      badgeBackground: 'rgba(249, 115, 22, 0.14)',
-      badgeColor: '#fdba74',
-      buttonBackground: 'rgba(249, 115, 22, 0.12)',
-      buttonBorder: 'rgba(249, 115, 22, 0.24)',
-      buttonColor: '#ffedd5',
-      shadow: '0 18px 34px rgba(249, 115, 22, 0.12)',
-    };
-  }
-
-  if (normalizedTone.includes('guvenli') || normalizedTone.includes('temkinli')) {
-    return {
-      accent: '#10b981',
-      background: 'linear-gradient(145deg, rgba(16, 185, 129, 0.12), rgba(15, 23, 42, 0.94))',
-      border: 'rgba(16, 185, 129, 0.22)',
-      badgeBackground: 'rgba(16, 185, 129, 0.14)',
-      badgeColor: '#6ee7b7',
-      buttonBackground: 'rgba(16, 185, 129, 0.12)',
-      buttonBorder: 'rgba(16, 185, 129, 0.24)',
-      buttonColor: '#d1fae5',
-      shadow: '0 18px 34px rgba(16, 185, 129, 0.1)',
-    };
-  }
-
-  if (normalizedTone.includes('teknik') || normalizedTone.includes('seo')) {
-    return {
-      accent: '#38bdf8',
-      background: 'linear-gradient(145deg, rgba(56, 189, 248, 0.12), rgba(15, 23, 42, 0.94))',
-      border: 'rgba(56, 189, 248, 0.22)',
-      badgeBackground: 'rgba(56, 189, 248, 0.14)',
-      badgeColor: '#7dd3fc',
-      buttonBackground: 'rgba(56, 189, 248, 0.12)',
-      buttonBorder: 'rgba(56, 189, 248, 0.24)',
-      buttonColor: '#e0f2fe',
-      shadow: '0 18px 34px rgba(56, 189, 248, 0.1)',
-    };
-  }
-
-  const fallbackPalettes = [
-    {
-      accent: '#a78bfa',
-      background: 'linear-gradient(145deg, rgba(167, 139, 250, 0.12), rgba(15, 23, 42, 0.94))',
-      border: 'rgba(167, 139, 250, 0.22)',
-      badgeBackground: 'rgba(167, 139, 250, 0.14)',
-      badgeColor: '#c4b5fd',
-      buttonBackground: 'rgba(167, 139, 250, 0.12)',
-      buttonBorder: 'rgba(167, 139, 250, 0.24)',
-      buttonColor: '#ede9fe',
-      shadow: '0 18px 34px rgba(167, 139, 250, 0.1)',
-    },
-    {
-      accent: '#f59e0b',
-      background: 'linear-gradient(145deg, rgba(245, 158, 11, 0.12), rgba(15, 23, 42, 0.94))',
-      border: 'rgba(245, 158, 11, 0.22)',
-      badgeBackground: 'rgba(245, 158, 11, 0.14)',
-      badgeColor: '#fcd34d',
-      buttonBackground: 'rgba(245, 158, 11, 0.12)',
-      buttonBorder: 'rgba(245, 158, 11, 0.24)',
-      buttonColor: '#fef3c7',
-      shadow: '0 18px 34px rgba(245, 158, 11, 0.1)',
-    },
-    {
-      accent: '#22c55e',
-      background: 'linear-gradient(145deg, rgba(34, 197, 94, 0.12), rgba(15, 23, 42, 0.94))',
-      border: 'rgba(34, 197, 94, 0.22)',
-      badgeBackground: 'rgba(34, 197, 94, 0.14)',
-      badgeColor: '#86efac',
-      buttonBackground: 'rgba(34, 197, 94, 0.12)',
-      buttonBorder: 'rgba(34, 197, 94, 0.24)',
-      buttonColor: '#dcfce7',
-      shadow: '0 18px 34px rgba(34, 197, 94, 0.1)',
-    },
-  ];
-
-  return fallbackPalettes[index % fallbackPalettes.length];
-}
-
-function MarkdownMessage({ content }: { content: string }) {
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        h1: ({ children }) => <h1 className="mb-3 text-lg font-semibold text-white">{children}</h1>,
-        h2: ({ children }) => <h2 className="mb-3 text-base font-semibold text-white">{children}</h2>,
-        h3: ({ children }) => <h3 className="mb-2 text-sm font-semibold text-white">{children}</h3>,
-        p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
-        ul: ({ children }) => <ul className="mb-3 list-disc space-y-1 pl-5 last:mb-0">{children}</ul>,
-        ol: ({ children }) => <ol className="mb-3 list-decimal space-y-1 pl-5 last:mb-0">{children}</ol>,
-        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-        blockquote: ({ children }) => (
-          <blockquote
-            className="mb-3 border-l-2 pl-3 italic"
-            style={{ borderColor: 'rgba(99, 102, 241, 0.35)', color: 'var(--color-text-secondary)' }}
-          >
-            {children}
-          </blockquote>
-        ),
-        pre: ({ children }) => (
-          <pre
-            className="mb-3 overflow-x-auto rounded-lg p-3 text-[12px]"
-            style={{ background: 'rgba(0,0,0,0.18)' }}
-          >
-            {children}
-          </pre>
-        ),
-        code: ({ children }) => (
-          <code
-            className="rounded px-1.5 py-0.5 text-[12px]"
-            style={{ background: 'rgba(255,255,255,0.06)', color: '#c7d2fe' }}
-          >
-            {children}
-          </code>
-        ),
-        table: ({ children }) => (
-          <div className="mb-3 overflow-x-auto last:mb-0">
-            <table
-              className="min-w-full border-collapse text-left text-[12px]"
-              style={{ border: '1px solid var(--color-border)' }}
-            >
-              {children}
-            </table>
-          </div>
-        ),
-        thead: ({ children }) => (
-          <thead style={{ background: 'rgba(255,255,255,0.04)' }}>{children}</thead>
-        ),
-        th: ({ children }) => (
-          <th
-            className="px-3 py-2 font-semibold"
-            style={{ borderBottom: '1px solid var(--color-border)' }}
-          >
-            {children}
-          </th>
-        ),
-        td: ({ children }) => (
-          <td
-            className="px-3 py-2 align-top"
-            style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
-          >
-            {children}
-          </td>
-        ),
-        strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
-        hr: () => <hr className="my-3" style={{ borderColor: 'var(--color-border)' }} />,
-      }}
-    >
-      {content}
-    </ReactMarkdown>
-  );
-}
-
-function SuggestionCards({
-  options,
-  onApplyOption,
-  disabled,
-}: {
-  options: SuggestionOption[];
-  onApplyOption: (option: SuggestionOption, index: number) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <div className="mt-4 flex flex-wrap gap-3">
-      {options.map((option, index) => {
-        const palette = getSuggestionCardPalette(option.tone, index);
-
-        return (
-          <div
-            key={`${option.tone}-${index}`}
-            className="relative flex min-w-[220px] flex-1 flex-col overflow-hidden rounded-2xl p-4 transition-all duration-200 hover:-translate-y-0.5"
-            style={{
-              background: palette.background,
-              border: `1px solid ${palette.border}`,
-              boxShadow: palette.shadow,
-            }}
-          >
-            <div
-              className="absolute inset-x-0 top-0 h-1"
-              style={{ background: `linear-gradient(90deg, ${palette.accent}, transparent)` }}
-            />
-            <div className="flex items-center justify-between gap-3">
-              <span
-                className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]"
-                style={{
-                  background: palette.badgeBackground,
-                  color: palette.badgeColor,
-                }}
-              >
-                {option.tone}
-              </span>
-              <span className="text-[10px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
-                Secenek {index + 1}
-              </span>
-            </div>
-
-            <p className="mt-3 flex-1 text-sm leading-relaxed" style={{ color: 'var(--color-text-primary)' }}>
-              {option.value}
-            </p>
-
-            <button
-              type="button"
-              onClick={() => onApplyOption(option, index)}
-              disabled={disabled}
-              className="mt-4 rounded-xl px-3 py-2 text-xs font-semibold transition-all hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
-              style={{
-                background: palette.buttonBackground,
-                border: `1px solid ${palette.buttonBorder}`,
-                color: palette.buttonColor,
-              }}
-            >
-              Bunu Uygula
-            </button>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function AssistantMessageContent({
-  content,
-  onApplyOption,
-  applyDisabled,
-}: {
-  content: string;
-  onApplyOption?: (option: SuggestionOption, index: number) => void;
-  applyDisabled?: boolean;
-}) {
-  const { markdownContent, options } = extractSuggestionOptions(content);
-
-  return (
-    <div className="space-y-4">
-      {markdownContent ? <MarkdownMessage content={markdownContent} /> : null}
-      {options.length > 0 && onApplyOption ? (
-        <SuggestionCards options={options} onApplyOption={onApplyOption} disabled={applyDisabled} />
-      ) : null}
-    </div>
-  );
-}
-
-function ToolResultCard({ result }: { result: ToolResult }) {
-  const [expanded, setExpanded] = useState(false);
-  let parsed: string;
-  try {
-    parsed = JSON.stringify(JSON.parse(result.result), null, 2);
-  } catch {
-    parsed = result.result;
-  }
-
-  return (
-    <div
-      className="rounded-lg px-3 py-2 text-xs"
-      style={{
-        background: 'rgba(245, 158, 11, 0.06)',
-        border: '1px solid rgba(245, 158, 11, 0.15)',
-      }}
-    >
-      <div
-        className="mb-1 px-0.5 text-[10px] font-semibold uppercase tracking-[0.16em]"
-        style={{ color: 'rgba(245, 158, 11, 0.72)' }}
-      >
-        ikas MCP
-      </div>
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center gap-1.5 text-left"
-        style={{ color: '#fbbf24' }}
-      >
-        <svg className="h-3 w-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-        <span className="font-mono font-semibold">{result.tool}</span>
-        <span style={{ color: 'rgba(245, 158, 11, 0.5)' }}>
-          ({Object.keys(result.arguments).length} arg)
-        </span>
-        <span className="ml-auto text-[10px]" style={{ color: 'rgba(245, 158, 11, 0.6)' }}>
-          {expanded ? 'Gizle' : 'Goster'}
-        </span>
-      </button>
-      {expanded && (
-        <pre
-          className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md p-2 text-[11px]"
-          style={{
-            background: 'rgba(0,0,0,0.2)',
-            color: 'rgba(245, 158, 11, 0.7)',
-          }}
-        >
-          {parsed}
-        </pre>
-      )}
-    </div>
-  );
-}
-
-function SuggestionSavedCard({ info }: { info: SuggestionSavedInfo }) {
-  const fieldLabels: Record<string, string> = {
-    suggested_name: 'Urun Adi',
-    suggested_meta_title: 'Meta Title',
-    suggested_meta_description: 'Meta Description',
-    suggested_description: 'Aciklama (TR)',
-    suggested_description_en: 'Aciklama (EN)',
-  };
-
-  const entries = Object.entries(info.fields).filter(([, v]) => v.trim());
-
-  return (
-    <div
-      className="rounded-lg px-3 py-2.5 text-xs"
-      style={{
-        background: 'rgba(34, 197, 94, 0.08)',
-        border: '1px solid rgba(34, 197, 94, 0.2)',
-      }}
-    >
-      <div
-        className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-[0.16em]"
-        style={{ color: 'rgba(34, 197, 94, 0.8)' }}
-      >
-        Oneri Kaydedildi
-      </div>
-      <div className="space-y-1">
-        {entries.map(([key, value]) => (
-          <div key={key} className="flex gap-2">
-            <span
-              className="flex-shrink-0 font-medium"
-              style={{ color: 'rgba(34, 197, 94, 0.7)', minWidth: '90px' }}
-            >
-              {fieldLabels[key] || key}:
-            </span>
-            <span style={{ color: 'rgba(34, 197, 94, 0.9)' }}>
-              {value.length > 80 ? value.slice(0, 80) + '...' : value}
-            </span>
-          </div>
-        ))}
-      </div>
-      <div
-        className="mt-2 text-[11px]"
-        style={{ color: 'rgba(34, 197, 94, 0.5)' }}
-      >
-        Oneriler sekmesinden onaylayip ikas'a uygulayabilirsiniz.
-      </div>
-    </div>
-  );
-}
-
-function ThinkingBlock({
-  text,
-  assistantLabel,
-  durationSeconds,
-}: {
-  text: string;
-  assistantLabel: string;
-  durationSeconds?: number;
-}) {
-  const isLive = typeof durationSeconds !== 'number' || durationSeconds <= 0;
-  const [expanded, setExpanded] = useState(isLive);
-
-  useEffect(() => {
-    if (isLive && text) {
-      setExpanded(true);
-    }
-  }, [isLive, text]);
-
-  const title =
-    typeof durationSeconds === 'number' && durationSeconds > 0
-      ? `Thought for ${formatThoughtDuration(durationSeconds)}`
-      : `${assistantLabel} dusunce`;
-  return (
-    <div
-      className="rounded-lg px-3 py-2 text-xs"
-      style={{
-        background: 'rgba(139, 92, 246, 0.06)',
-        border: '1px solid rgba(139, 92, 246, 0.15)',
-      }}
-    >
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center gap-1.5 text-left"
-        style={{ color: '#a78bfa' }}
-      >
-        <svg className="h-3 w-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-        </svg>
-        <span className="font-medium">{title}</span>
-        <span className="ml-auto text-[10px]" style={{ color: 'rgba(139, 92, 246, 0.6)' }}>
-          {expanded ? 'Gizle' : 'Goster'}
-        </span>
-      </button>
-      {expanded && (
-        <div
-          className="mt-2 text-[12px] leading-relaxed"
-          style={{ color: 'rgba(139, 92, 246, 0.78)' }}
-        >
-          <MarkdownMessage content={text} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function getRoleMeta(role: ChatMessage['role'], assistantLabel: string) {
-  if (role === 'user') {
-    return {
-      label: 'Sen',
-      color: '#c7d2fe',
-    };
-  }
-
-  if (role === 'assistant') {
-    return {
-      label: assistantLabel,
-      color: 'var(--color-text-muted)',
-    };
-  }
-
-  return {
-    label: 'Akis',
-    color: 'var(--color-text-muted)',
-  };
-}
-
-function MessageBubble({
-  msg,
-  assistantLabel,
-  fallbackContextLength,
-  onApplyOption,
-  applyDisabled,
-}: {
-  msg: ChatMessage;
-  assistantLabel: string;
-  fallbackContextLength?: number | null;
-  onApplyOption?: (option: SuggestionOption, index: number) => void;
-  applyDisabled?: boolean;
-}) {
-  const isUser = msg.role === 'user';
-  const isSystem = msg.role === 'system';
-  const isAssistant = msg.role === 'assistant';
-  const hasVisibleAssistantContent = isAssistant ? Boolean(msg.content.trim()) : true;
-  const roleMeta = getRoleMeta(msg.role, assistantLabel);
-  const assistantMetrics = isAssistant ? getAssistantMetrics(msg.meta) : [];
-  const thoughtDuration = readMetaNumber(msg.meta, 'elapsed_seconds');
-
-  return (
-    <div className="space-y-2">
-      {isAssistant && msg.toolResults && msg.toolResults.length > 0 && (
-        <div className="mr-6 space-y-1.5">
-          {msg.toolResults.map((tr, i) => (
-            <ToolResultCard key={i} result={tr} />
-          ))}
-        </div>
-      )}
-
-      {isAssistant && msg.suggestionSaved ? (
-        <div className="mr-6">
-          <SuggestionSavedCard info={msg.suggestionSaved} />
-        </div>
-      ) : null}
-
-      {isAssistant && msg.thinking ? (
-        <ThinkingBlock
-          text={msg.thinking}
-          assistantLabel={assistantLabel}
-          durationSeconds={thoughtDuration}
-        />
-      ) : null}
-
-      {hasVisibleAssistantContent && (
-        <div className={`${isUser ? 'ml-6' : isSystem ? '' : 'mr-6'}`}>
-          <div
-            className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-[0.16em]"
-            style={{ color: roleMeta.color }}
-          >
-            {roleMeta.label}
-          </div>
-          <div
-            className="rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed"
-            style={{
-              background: isUser
-                ? 'rgba(99, 102, 241, 0.15)'
-                : isSystem
-                  ? 'rgba(255, 255, 255, 0.03)'
-                  : 'var(--color-bg-elevated)',
-              border: isSystem ? 'none' : `1px solid ${isUser ? 'rgba(99, 102, 241, 0.2)' : 'var(--color-border)'}`,
-              color: isUser
-                ? '#c7d2fe'
-                : isSystem
-                  ? 'var(--color-text-muted)'
-                  : 'var(--color-text-primary)',
-              fontStyle: isSystem ? 'italic' : 'normal',
-              fontSize: isSystem ? '12px' : '13px',
-            }}
-          >
-            {isAssistant ? (
-              <AssistantMessageContent
-                content={msg.content}
-                onApplyOption={onApplyOption}
-                applyDisabled={applyDisabled}
-              />
-            ) : msg.content}
-          </div>
-        </div>
-      )}
-
-      {isAssistant && assistantMetrics.length > 0 ? (
-        <div className="mr-6 flex flex-wrap justify-end gap-1.5">
-          {assistantMetrics.map((metric) => (
-            <div
-              key={metric.key}
-              className="rounded-full px-2.5 py-1 text-[10px] font-medium"
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                color: 'var(--color-text-muted)',
-                border: '1px solid rgba(255,255,255,0.08)',
-              }}
-            >
-              {metric.label}: {metric.value}
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {isAssistant ? <ContextUsageCard meta={msg.meta} fallbackContextLength={fallbackContextLength} /> : null}
-    </div>
-  );
-}
+// ── StatusPill ────────────────────────────────────────────────────────────────
 
 function StatusPill({
   label,
@@ -1051,18 +51,18 @@ function StatusPill({
     },
   } as const;
 
-  const style = palette[tone];
-
   return (
     <div
       className="rounded-full px-2 py-1 text-[10px] font-medium"
-      style={style}
+      style={palette[tone]}
       title={`${label}: ${value}`}
     >
       {label}: {value}
     </div>
   );
 }
+
+// ── ChatPanel ─────────────────────────────────────────────────────────────────
 
 export default function ChatPanel({
   productId,
@@ -1086,10 +86,12 @@ export default function ChatPanel({
     staleTime: 2_000,
     refetchInterval: configuredProvider === 'lm-studio' ? 5_000 : false,
   });
+
   const configuredAssistantLabel = configuredModel || configuredProvider || 'AI modeli';
   const displayProductName = productName || product?.name;
   const displayProductCategory = productCategory ?? product?.category ?? null;
   const displaySeoScore = seoScore ?? score?.total_score ?? null;
+
   const {
     messages,
     isLoading,
@@ -1109,6 +111,7 @@ export default function ChatPanel({
     score: displaySeoScore,
     assistantLabel: configuredAssistantLabel,
   });
+
   const [input, setInput] = useState('');
   const [liveElapsedSeconds, setLiveElapsedSeconds] = useState(0);
   const [paramTrigger, setParamTrigger] = useState<ParamTriggerState | null>(null);
@@ -1117,59 +120,52 @@ export default function ChatPanel({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const promptParamOptions = buildPromptParamOptions(product, score);
 
+  // Connect/disconnect WebSocket on mount
   useEffect(() => {
     connect();
     return () => disconnect();
   }, [connect, disconnect]);
 
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: 'smooth',
-    });
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
+  // Live elapsed timer while request is pending
   useEffect(() => {
     if (pendingSince === null) {
       setLiveElapsedSeconds(0);
       return;
     }
-
-    const updateElapsed = () => {
-      setLiveElapsedSeconds((performance.now() - pendingSince) / 1000);
-    };
-
+    const updateElapsed = () => setLiveElapsedSeconds((performance.now() - pendingSince) / 1000);
     updateElapsed();
     const intervalId = window.setInterval(updateElapsed, 100);
     return () => window.clearInterval(intervalId);
   }, [pendingSince]);
 
+  // Auto-resize textarea
   useEffect(() => {
     const textarea = textareaRef.current;
-    if (!textarea) {
-      return;
-    }
-
+    if (!textarea) return;
     textarea.style.height = '0px';
     textarea.style.height = `${Math.min(textarea.scrollHeight, 220)}px`;
   }, [input]);
 
+  // Reset input when product changes
   useEffect(() => {
     setInput('');
     setParamTrigger(null);
     setActiveParamIndex(0);
   }, [productId]);
 
+  // Derived state
   const latestAssistant = [...messages].reverse().find(
     (msg) => msg.role === 'assistant' && typeof msg.meta?.model === 'string',
   );
   const liveContextLength = lmStatusQ.data?.selected_model?.context_length ?? null;
   let sessionTotalTokens = 0;
   for (const msg of messages) {
-    if (msg.role !== 'assistant') {
-      continue;
-    }
-
+    if (msg.role !== 'assistant') continue;
     const totalTokens = readMetaNumber(msg.meta, 'total_tokens');
     const inputTokens = readMetaNumber(msg.meta, 'input_tokens');
     const outputTokens = readMetaNumber(msg.meta, 'output_tokens');
@@ -1183,23 +179,19 @@ export default function ChatPanel({
   const starterPrompts: StarterPrompt[] = [
     {
       label: 'SEO metriklerini yorumla',
-      template:
-        '@local Bu mevcut SEO metriklerini alan bazinda yorumla ve sadece bu skorlara gore 3 oncelikli tavsiye ver.\n\n{seoMetricsSummary}',
+      template: '@local Bu mevcut SEO metriklerini alan bazinda yorumla ve sadece bu skorlara gore 3 oncelikli tavsiye ver.\n\n{seoMetricsSummary}',
     },
     {
       label: 'Urun aciklamasini yorumla',
-      template:
-        '@local Bu urunun mevcut aciklamasini yorumla. Yalnizca eldeki metni kullan.\n\n{productDescription}',
+      template: '@local Bu urunun mevcut aciklamasini yorumla. Yalnizca eldeki metni kullan.\n\n{productDescription}',
     },
     {
       label: 'Meta titlei yorumla',
-      template:
-        '@local Bu mevcut meta titlei SEO acisindan yorumla.\n\n{productMetaTitle}',
+      template: '@local Bu mevcut meta titlei SEO acisindan yorumla.\n\n{productMetaTitle}',
     },
     {
       label: 'Meta descriptioni yorumla',
-      template:
-        '@local Bu mevcut meta descriptioni SEO acisindan yorumla.\n\n{productMetaDescription}',
+      template: '@local Bu mevcut meta descriptioni SEO acisindan yorumla.\n\n{productMetaDescription}',
     },
   ];
 
@@ -1214,33 +206,25 @@ export default function ChatPanel({
     : [];
   const showParamMenu = !isAutoIntroActive && filteredParamOptions.length > 0;
 
+  // Handlers
   const syncParamTrigger = (value: string, caretPosition: number | null) => {
     setParamTrigger(getParamTriggerState(value, caretPosition));
     setActiveParamIndex(0);
   };
 
-  const applyParamOption = (option: PromptParamOption) => {
-    if (!paramTrigger) {
-      return;
-    }
-
+  const applyParamOption = (option: typeof promptParamOptions[number]) => {
+    if (!paramTrigger) return;
     const closingIndex = input.indexOf('}', paramTrigger.start);
     const replaceEnd =
-      closingIndex !== -1 && closingIndex >= paramTrigger.end
-        ? closingIndex + 1
-        : paramTrigger.end;
+      closingIndex !== -1 && closingIndex >= paramTrigger.end ? closingIndex + 1 : paramTrigger.end;
     const nextValue = `${input.slice(0, paramTrigger.start)}${option.value}${input.slice(replaceEnd)}`;
     const nextCaretPosition = paramTrigger.start + option.value.length;
-
     setInput(nextValue);
     setParamTrigger(null);
     setActiveParamIndex(0);
-
     window.requestAnimationFrame(() => {
       const textarea = textareaRef.current;
-      if (!textarea) {
-        return;
-      }
+      if (!textarea) return;
       textarea.focus();
       textarea.setSelectionRange(nextCaretPosition, nextCaretPosition);
     });
@@ -1267,15 +251,10 @@ export default function ChatPanel({
   return (
     <div
       className="flex h-full flex-col overflow-hidden rounded-xl"
-      style={{
-        background: 'var(--color-bg-surface)',
-        border: '1px solid var(--color-border)',
-      }}
+      style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)' }}
     >
-      <div
-        className="px-4 py-3"
-        style={{ borderBottom: '1px solid var(--color-border)' }}
-      >
+      {/* ── Header ── */}
+      <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--color-border)' }}>
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -1294,9 +273,7 @@ export default function ChatPanel({
 
             {displayProductName && (
               <div className="mt-2 min-w-0">
-                <div className="truncate text-[18px] font-semibold text-white">
-                  {displayProductName}
-                </div>
+                <div className="truncate text-[18px] font-semibold text-white">{displayProductName}</div>
                 <div className="mt-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
                   {displayProductCategory || 'Kategori yok'}
                   {typeof displaySeoScore === 'number' ? ` | SEO ${displaySeoScore}/100` : ''}
@@ -1326,32 +303,16 @@ export default function ChatPanel({
             tone={mcpState.initialized ? 'success' : mcpState.hasToken ? 'warn' : 'neutral'}
           />
           {mcpState.initialized && (
-            <StatusPill
-              label="Arac"
-              value={String(mcpState.toolCount)}
-              tone="success"
-            />
+            <StatusPill label="Arac" value={String(mcpState.toolCount)} tone="success" />
           )}
           {sessionTotalTokens > 0 && (
-            <StatusPill
-              label="Token"
-              value={`${formatCompactNumber(sessionTotalTokens)} tok`}
-              tone="neutral"
-            />
+            <StatusPill label="Token" value={`${formatCompactNumber(sessionTotalTokens)} tok`} tone="neutral" />
           )}
           {typeof liveContextLength === 'number' && liveContextLength > 0 && (
-            <StatusPill
-              label="Context"
-              value={formatCompactNumber(liveContextLength)}
-              tone="neutral"
-            />
+            <StatusPill label="Context" value={formatCompactNumber(liveContextLength)} tone="neutral" />
           )}
           {isLoading && (
-            <StatusPill
-              label="Sure"
-              value={formatDuration(liveElapsedSeconds)}
-              tone="warn"
-            />
+            <StatusPill label="Sure" value={formatDuration(liveElapsedSeconds)} tone="warn" />
           )}
           {isLoading && liveElapsedSeconds > 0 && (
             <StatusPill
@@ -1363,6 +324,7 @@ export default function ChatPanel({
         </div>
       </div>
 
+      {/* ── Messages ── */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
         {showStarterState && (
           <div
@@ -1387,7 +349,6 @@ export default function ChatPanel({
               `@local` ile mevcut baglami yorumlat. {'{'} yazarak `productDescription` veya `seoMetricsSummary`
               gibi alanlari mesaja ekleyebilirsin.
             </p>
-
             <div className="mt-4 flex flex-wrap justify-center gap-2">
               {starterPrompts.map((prompt) => (
                 <button
@@ -1422,28 +383,20 @@ export default function ChatPanel({
         {(isLoading || isInspectingProduct) && (
           <div
             className="mr-6 rounded-xl px-4 py-3"
-            style={{
-              background: 'var(--color-bg-elevated)',
-              border: '1px solid var(--color-border)',
-            }}
+            style={{ background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)' }}
           >
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <div className="flex gap-1">
-                  <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-primary-light)' }} />
-                  <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-primary-light)' }} />
-                  <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-primary-light)' }} />
-                </div>
-                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                  {isAutoIntroActive ? 'Asistan urunu inceliyor...' : `${assistantLabel} dusunuyor...`}
-                </span>
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1">
+                <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-primary-light)' }} />
+                <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-primary-light)' }} />
+                <span className="typing-dot h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-primary-light)' }} />
               </div>
+              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                {isAutoIntroActive ? 'Asistan urunu inceliyor...' : `${assistantLabel} dusunuyor...`}
+              </span>
             </div>
             {isLoading && (
-              <div
-                className="mt-2 text-[11px]"
-                style={{ color: 'var(--color-text-secondary)' }}
-              >
+              <div className="mt-2 text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
                 Sure: {formatDuration(liveElapsedSeconds)}
               </div>
             )}
@@ -1451,6 +404,7 @@ export default function ChatPanel({
         )}
       </div>
 
+      {/* ── Input ── */}
       <div className="p-3" style={{ borderTop: '1px solid var(--color-border)' }}>
         <div className="flex items-end gap-2">
           <div className="relative flex-1">
@@ -1465,10 +419,7 @@ export default function ChatPanel({
               >
                 <div
                   className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em]"
-                  style={{
-                    color: 'var(--color-text-muted)',
-                    borderBottom: '1px solid rgba(255,255,255,0.06)',
-                  }}
+                  style={{ color: 'var(--color-text-muted)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
                 >
                   Parametreler
                 </div>
@@ -1483,14 +434,8 @@ export default function ChatPanel({
                       }}
                       className="mb-1 block w-full rounded-lg px-2.5 py-2 text-left last:mb-0"
                       style={{
-                        background:
-                          index === activeParamIndex
-                            ? 'rgba(99, 102, 241, 0.14)'
-                            : 'rgba(255,255,255,0.02)',
-                        border:
-                          index === activeParamIndex
-                            ? '1px solid rgba(99, 102, 241, 0.28)'
-                            : '1px solid transparent',
+                        background: index === activeParamIndex ? 'rgba(99, 102, 241, 0.14)' : 'rgba(255,255,255,0.02)',
+                        border: index === activeParamIndex ? '1px solid rgba(99, 102, 241, 0.28)' : '1px solid transparent',
                       }}
                     >
                       <div className="flex items-center gap-2">
@@ -1531,7 +476,6 @@ export default function ChatPanel({
                     setActiveParamIndex((prev) => (prev + 1) % filteredParamOptions.slice(0, 8).length);
                     return;
                   }
-
                   if (e.key === 'ArrowUp') {
                     e.preventDefault();
                     setActiveParamIndex((prev) => (
@@ -1539,13 +483,11 @@ export default function ChatPanel({
                     ));
                     return;
                   }
-
                   if ((e.key === 'Enter' || e.key === 'Tab') && filteredParamOptions[activeParamIndex]) {
                     e.preventDefault();
                     applyParamOption(filteredParamOptions[activeParamIndex]);
                     return;
                   }
-
                   if (e.key === 'Escape') {
                     e.preventDefault();
                     setParamTrigger(null);
@@ -1589,6 +531,7 @@ export default function ChatPanel({
                 )}
             </div>
           </div>
+
           <button
             onClick={isLoading ? cancelMessage : handleSend}
             disabled={(!isLoading && !input.trim()) || (isAutoIntroActive && !isLoading)}
