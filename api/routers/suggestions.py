@@ -27,15 +27,15 @@ async def generate_suggestion(
     manager: ProductManager = Depends(get_manager),
 ) -> RewriteResponse:
     """Generate a full AI rewrite for a product."""
-    product = db.get_product(product_id)
+    product = await db.get_product(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    score = db.get_latest_score(product_id)
+    score = await db.get_latest_score(product_id)
     if not score:
-        score = manager.analyze_product(product)
+        score = await manager.analyze_product(product)
 
-    suggestion = manager.rewrite_product(product, score)
+    suggestion = await manager.rewrite_product(product, score)
     return RewriteResponse(
         suggestion=suggestion,
         thinking_text=suggestion.thinking_text,
@@ -49,13 +49,13 @@ async def generate_field_rewrite(
     manager: ProductManager = Depends(get_manager),
 ) -> RewriteResponse:
     """Rewrite a single field (name, desc_tr, meta_title, meta_desc, desc_en)."""
-    product = db.get_product(product_id)
+    product = await db.get_product(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    score = db.get_latest_score(product_id)
+    score = await db.get_latest_score(product_id)
     if not score:
-        score = manager.analyze_product(product)
+        score = await manager.analyze_product(product)
 
     if body.field == "desc_en":
         value, thinking = manager.translate_description_to_en(product)
@@ -68,7 +68,7 @@ async def generate_field_rewrite(
 @router.get("/{product_id}", response_model=list[SeoSuggestion])
 async def get_suggestions(product_id: str) -> list[SeoSuggestion]:
     """Get all suggestions for a product."""
-    return db.get_suggestions_by_product(product_id)
+    return await db.get_suggestions_by_product(product_id)
 
 
 @router.patch("/{product_id}/approve", response_model=MessageResponse)
@@ -77,7 +77,7 @@ async def approve_suggestion(
     manager: ProductManager = Depends(get_manager),
 ) -> MessageResponse:
     """Approve the pending suggestion for a product."""
-    manager.approve_suggestion(product_id)
+    await manager.approve_suggestion(product_id)
     return MessageResponse(message=f"Suggestion for {product_id} approved")
 
 
@@ -87,7 +87,7 @@ async def reject_suggestion(
     manager: ProductManager = Depends(get_manager),
 ) -> MessageResponse:
     """Reject the pending suggestion for a product."""
-    manager.reject_suggestion(product_id)
+    await manager.reject_suggestion(product_id)
     return MessageResponse(message=f"Suggestion for {product_id} rejected")
 
 
@@ -98,14 +98,14 @@ async def update_suggestion_fields(
     manager: ProductManager = Depends(get_manager),
 ) -> MessageResponse:
     """Update individual fields on the latest pending suggestion."""
-    suggestion = manager.get_latest_suggestion(product_id)
+    suggestion = await manager.get_latest_suggestion(product_id)
     if not suggestion:
         raise HTTPException(status_code=404, detail="No pending suggestion found")
 
     for field_update in body.fields:
         apply_suggestion_field(suggestion, field_update.field, field_update.value)
 
-    manager.save_or_update_pending_suggestion(suggestion)
+    await manager.save_or_update_pending_suggestion(suggestion)
     return MessageResponse(message="Suggestion fields updated")
 
 
@@ -114,7 +114,7 @@ async def apply_approved(
     manager: ProductManager = Depends(get_manager),
 ) -> ApplyResponse:
     """Apply all approved suggestions to ikas."""
-    approved = manager.get_approved_suggestions()
+    approved = await manager.get_approved_suggestions()
     if not approved:
         return ApplyResponse(applied=0, total=0)
 

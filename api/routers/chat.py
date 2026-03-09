@@ -164,8 +164,8 @@ async def ws_chat(ws: WebSocket) -> None:
             if action == "set_context":
                 product_id = payload.get("product_id")
                 if product_id:
-                    product = db.get_product(product_id)
-                    score = db.get_latest_score(product_id) if product else None
+                    product = await db.get_product(product_id)
+                    score = await db.get_latest_score(product_id) if product else None
                     manager.set_chat_product_context(product, score)
                     await send_json({
                         "type": "context_set",
@@ -198,8 +198,8 @@ async def ws_chat(ws: WebSocket) -> None:
 
             product_id = payload.get("product_id")
             if product_id:
-                product = db.get_product(product_id)
-                score = db.get_latest_score(product_id) if product else None
+                product = await db.get_product(product_id)
+                score = await db.get_latest_score(product_id) if product else None
                 manager.set_chat_product_context(product, score)
 
             await send_json({"type": "thinking"})

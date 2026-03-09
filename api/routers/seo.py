@@ -17,11 +17,11 @@ async def analyze_all(
     manager: ProductManager = Depends(get_manager),
 ) -> MessageResponse:
     """Score all cached products."""
-    products = manager.get_cached_products()
+    products = await manager.get_cached_products()
     if not products:
         raise HTTPException(status_code=400, detail="No products cached. Fetch first.")
 
-    scored = manager.score_products(products)
+    scored = await manager.score_products(products)
     return MessageResponse(message=f"Analyzed {len(scored)} products")
 
 
@@ -31,11 +31,11 @@ async def analyze_one(
     manager: ProductManager = Depends(get_manager),
 ) -> ScoreResponse:
     """Score a single product."""
-    product = db.get_product(product_id)
+    product = await db.get_product(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    score = manager.analyze_product(product)
+    score = await manager.analyze_product(product)
     return ScoreResponse(product_id=product_id, score=score)
 
 
@@ -44,7 +44,7 @@ async def get_score(
     product_id: str,
 ) -> ScoreResponse:
     """Get the latest SEO score for a product."""
-    score = db.get_latest_score(product_id)
+    score = await db.get_latest_score(product_id)
     if not score:
         raise HTTPException(status_code=404, detail="No score found")
     return ScoreResponse(product_id=product_id, score=score)

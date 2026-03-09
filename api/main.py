@@ -14,6 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.dependencies import close_manager, get_manager
 from api.routers import products, seo, suggestions, settings, chat
+from data import db
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class SPAStaticFiles(StaticFiles):
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting ikas AI SEO Agent API")
+    await db.init_db()
     get_manager()  # warm up singleton
     yield
     await close_manager()

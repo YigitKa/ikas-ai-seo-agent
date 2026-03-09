@@ -26,18 +26,18 @@ async def list_products(
     manager: ProductManager = Depends(get_manager),
 ) -> ProductListResponse:
     """Return cached products with their latest scores."""
-    products = manager.get_cached_products()
-    scored = manager.score_products(products) if products else []
+    products = await manager.get_cached_products()
+    scored = await manager.score_products(products) if products else []
 
     if filter == "low_score":
         scored = manager.filter_products_by_score(scored)
     elif filter == "missing_english":
         scored = manager.filter_products_missing_english_translation(scored)
     elif filter == "pending":
-        pending_ids = manager.get_suggestion_product_ids("pending")
+        pending_ids = await manager.get_suggestion_product_ids("pending")
         scored = [(p, s) for p, s in scored if p.id in pending_ids]
     elif filter == "approved":
-        approved_ids = manager.get_suggestion_product_ids("approved")
+        approved_ids = await manager.get_suggestion_product_ids("approved")
         scored = [(p, s) for p, s in scored if p.id in approved_ids]
 
     total = len(scored)
@@ -84,7 +84,7 @@ async def reset_local_product_data(
     manager: ProductManager = Depends(get_manager),
 ) -> LocalDataResetResponse:
     """Clear local product cache, SEO scores, suggestions and logs."""
-    counts = manager.clear_local_data()
+    counts = await manager.clear_local_data()
     return LocalDataResetResponse(
         message="Local product data cleared",
         products_deleted=counts["products"],
@@ -100,7 +100,7 @@ async def get_product(
     manager: ProductManager = Depends(get_manager),
 ) -> ProductWithScore:
     """Get a single product with its score."""
-    product = db.get_product(product_id)
+    product = await db.get_product(product_id)
     if not product or not product.slug:
         fresh_product = await manager.fetch_product(product_id)
         if fresh_product:
@@ -108,8 +108,8 @@ async def get_product(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    score = db.get_latest_score(product_id)
+    score = await db.get_latest_score(product_id)
     if not score:
-        score = manager.analyze_product(product)
+        score = await manager.analyze_product(product)
 
     return ProductWithScore(product=product, score=score)
