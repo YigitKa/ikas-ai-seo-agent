@@ -15,6 +15,9 @@ from api.schemas import MCPStatusResponse, MessageResponse
 from core.product_manager import ProductManager
 from data import db
 
+# Each WebSocket connection creates its own ProductManager so that chat
+# history, product context, and MCP state are fully isolated per client.
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -81,9 +84,14 @@ async def clear_chat(
 
 @router.websocket("/ws/chat")
 async def ws_chat(ws: WebSocket) -> None:
-    """Multi-turn AI chat with MCP tool calling support."""
+    """Multi-turn AI chat with MCP tool calling support.
+
+    A fresh ProductManager is instantiated for every connection so that
+    conversation history and product context are fully isolated between
+    clients.  The instance is closed when the connection ends.
+    """
     await ws.accept()
-    manager = get_manager()
+    manager = ProductManager()  # per-connection instance — NOT the global singleton
     send_lock = asyncio.Lock()
     active_chat_task: asyncio.Task | None = None
     notify_on_cancel = True
@@ -201,6 +209,7 @@ async def ws_chat(ws: WebSocket) -> None:
     except WebSocketDisconnect:
         logger.info("Chat WebSocket disconnected")
     finally:
+        # Cancel any in-flight requests before tearing down this connection's manager.
         manager.cancel_chat_request()
         if 'receive_task' in locals():
             receive_task.cancel()
@@ -210,6 +219,9 @@ async def ws_chat(ws: WebSocket) -> None:
             active_chat_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await active_chat_task
+        # Release HTTP clients and MCP connection owned by this per-connection instance.
+        with contextlib.suppress(Exception):
+            await manager.close()
 
 
 async def _stream_chat_response(
