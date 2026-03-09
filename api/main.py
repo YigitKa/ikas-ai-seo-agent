@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from api.dependencies import close_manager, get_manager
+from api.dependencies import close_manager
 from api.routers import products, seo, suggestions, settings, chat
 from data import db
 
@@ -37,7 +37,6 @@ class SPAStaticFiles(StaticFiles):
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting ikas AI SEO Agent API")
     await db.init_db()
-    get_manager()  # warm up singleton
     yield
     await close_manager()
     logger.info("Shut down ikas AI SEO Agent API")
