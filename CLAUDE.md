@@ -12,9 +12,10 @@ This file provides AI assistants with everything needed to understand, navigate,
 - Fetches products from ikas via OAuth2 + GraphQL
 - Scores each product's SEO on a 100-point rule-based rubric (including GEO/AI citability)
 - Sends content to an AI provider (Claude, GPT, Gemini, Ollama, etc.) for rewrite suggestions
-- Shows before/after diffs, allows approval, and applies changes back to ikas
-- Real-time AI chat with MCP (Model Context Protocol) tool integration for live store data queries
 - GEO (Generative Engine Optimization) rewrites and `llms.txt` generation for AI citability
+- Full **GEO site audit** — crawls a website, runs 5 parallel analysis agents, and produces a composite GEO score with an action plan
+- Shows before/after diffs, allows approval, and applies changes back to ikas
+- Real-time AI chat with **multi-agent architecture** (SEO Expert, Store Operator, General) and MCP tool integration for live store data queries
 - Supports Turkish and English product content
 - Dry-run mode by default (no writes to ikas unless explicitly enabled)
 
@@ -39,8 +40,9 @@ ikas-ai-seo-agent/
 │   ├── claude_client.py     # Legacy Anthropic-only client (backward compat)
 │   ├── product_manager.py   # Orchestrator — coordinates all core operations
 │   ├── seo_analyzer.py      # Rule-based SEO scoring engine (100-point scale + GEO)
+│   ├── geo_audit.py         # Full GEO audit pipeline (GeoAuditor class)
 │   ├── csv_handler.py       # CSV import/export for products and suggestions
-│   ├── prompt_store.py      # Loads and renders prompt templates from prompts/
+│   ├── prompt_store.py      # Loads and renders prompt templates; multi-agent system prompts
 │   ├── chat_service.py      # Multi-turn AI chat with MCP tool integration
 │   ├── mcp_client.py        # ikas MCP (Model Context Protocol) JSON-RPC client
 │   ├── provider_service.py  # Provider detection, health checks, model discovery
@@ -55,7 +57,7 @@ ikas-ai-seo-agent/
 │   ├── schemas.py           # API request/response Pydantic schemas
 │   └── routers/
 │       ├── products.py      # Product list, fetch, detail, sync, reset endpoints
-│       ├── seo.py           # SEO analysis, scoring, llms.txt generation endpoints
+│       ├── seo.py           # SEO analysis, scoring, llms.txt, geo-audit endpoints
 │       ├── suggestions.py   # Suggestion CRUD endpoints
 │       ├── settings.py      # Settings management endpoints
 │       └── chat.py          # WebSocket chat + MCP endpoints
@@ -102,6 +104,8 @@ ikas-ai-seo-agent/
 │   ├── description_rewrite.user.txt
 │   ├── translation_en.system.txt
 │   ├── translation_en.user.txt
+│   ├── geo_rewrite.system.txt   # GEO rewrite system prompt (auto-created if missing)
+│   ├── geo_rewrite.user.txt     # GEO rewrite user prompt (auto-created if missing)
 │   └── README.txt
 │
 └── tests/
@@ -121,7 +125,8 @@ ikas-ai-seo-agent/
     ├── test_chat_service.py
     ├── test_mcp_client.py
     ├── test_product_manager.py
-    └── test_products_api.py
+    ├── test_products_api.py
+    └── test_geo_audit.py
 ```
 
 ---
@@ -253,7 +258,8 @@ ProductManager (core/product_manager.py)  [request-scoped — fresh per HTTP req
     ├── IkasClient      -> ikas GraphQL API
     ├── AIClient         -> AI provider (pluggable)
     ├── SEOAnalyzer      -> rule-based scoring (incl. GEO/AI citability)
-    ├── ChatService      -> multi-turn AI chat + MCP tools
+    ├── GeoAuditor       -> full site GEO audit pipeline (standalone, no ProductManager dependency)
+    ├── ChatService      -> multi-turn AI chat + multi-agent routing + MCP tools
     ├── IkasMCPClient    -> ikas MCP (live store queries)
     ├── ProviderService  -> provider detection & health
     ├── CSVHandler       -> import/export
@@ -268,6 +274,19 @@ ProductManager (core/product_manager.py)  [request-scoped — fresh per HTTP req
 5. UI displays scores and diffs for user approval
 6. On approval: `ProductManager.apply_suggestion()` → `IkasClient` writes back to ikas (if `DRY_RUN=false`)
 
+### Data flow for a GEO site audit
+1. Client posts `{ url, max_pages }` to `POST /api/seo/geo-audit`
+2. `GeoAuditor.run_full_audit()` crawls the homepage + sitemap (up to `max_pages`)
+3. 5 analysis agents run in parallel via `asyncio.gather`:
+   - AI visibility (citability score, robots.txt crawler policy, llms.txt check, brand mentions)
+   - Platform readiness (ChatGPT / Perplexity / Google AIO signal scores)
+   - Technical SEO (HTTPS, mobile viewport, CSP, render-blocking, SSR)
+   - Content quality (readability, EEAT signals, freshness)
+   - Schema markup (JSON-LD detection, type variety)
+4. `_synthesize()` combines the five dimensions into a composite GEO score using fixed weights
+5. `_build_report()` returns a prioritized Markdown action plan
+6. Full `GeoAuditResponse` (JSON) is returned to the client
+
 ### Design patterns used
 - **Factory** — `create_ai_client(config)` in `core/ai_client.py` instantiates the correct provider adapter
 - **Adapter** — All AI providers implement `BaseAIClient` with a uniform `generate()` interface
@@ -276,9 +295,10 @@ ProductManager (core/product_manager.py)  [request-scoped — fresh per HTTP req
 - **Template** — Prompts use `{{variable}}` placeholders, rendered by `PromptStore`
 - **Repository** — `data/db.py` abstracts all async SQLite reads/writes behind plain functions
 - **Dependency Injection** — `api/dependencies.py` yields a fresh `ProductManager` per FastAPI request (request-scoped, not a global singleton)
+- **Multi-agent routing** — `chat_service.py` selects one of three agent personas (SEO Expert, Store Operator, General) based on the conversation context; prompts are defined in `prompt_store.py` as `AGENT_SYSTEM_PROMPTS_TR`
 
 ### Async usage
-`IkasClient`, `IkasMCPClient`, and `data/db.py` use async I/O (`httpx.AsyncClient`, `aiosqlite`). The FastAPI backend handles async natively. All database access is async — do not call `db.*` functions from synchronous code.
+`IkasClient`, `IkasMCPClient`, `GeoAuditor`, and `data/db.py` use async I/O (`httpx.AsyncClient`, `aiosqlite`). The FastAPI backend handles async natively. All database access is async — do not call `db.*` functions from synchronous code.
 
 ---
 
@@ -310,6 +330,36 @@ Scoring inspired by Ahrefs, Semrush, Yoast, Moz, and Screaming Frog.
 | Readability | 5 | Avg sentence length (15-25 words), sentence length variation, transition words |
 | AI Citability (GEO) | 10 | Structured facts, clear product attributes, AI-readable formatting |
 
+### `core/geo_audit.py` — Full GEO audit pipeline
+
+`GeoAuditor` performs a standalone, provider-agnostic crawl-and-score of any public website URL. It does not require an ikas connection or AI provider.
+
+**Pipeline stages:**
+
+| Stage | Method | What it does |
+|---|---|---|
+| Discovery | `_discover()` | Fetches homepage HTML; parses `sitemap.xml` for additional URLs; crawls up to `max_pages` same-domain pages |
+| AI Visibility | `_analyze_ai_visibility()` | Scores passage citability (134–167 word "optimal" blocks), analyzes `robots.txt` for AI crawler policies, checks for `llms.txt`, scans for brand-platform mentions |
+| Platform Analysis | `_analyze_platforms()` | Estimates ChatGPT / Perplexity / Google AIO readiness from FAQ, Q&A, source, and comparison signals |
+| Technical SEO | `_analyze_technical_seo()` | Checks HTTPS, mobile viewport, CSP, asset deferral/preload, and SSR markup presence |
+| Content Quality | `_analyze_content_quality()` | Measures avg sentence length, EEAT signals (author/about/contact/review mentions), date freshness |
+| Schema Markup | `_analyze_schema()` | Detects `application/ld+json` blocks and enumerates `@type` values |
+| Synthesis | `_synthesize()` | Combines the six category scores with fixed weights into a composite GEO score (0–100) |
+| Report | `_build_report()` | Renders a prioritized Markdown action plan |
+
+**Synthesis weights:**
+
+| Category | Weight |
+|---|---|
+| AI Citability / Visibility | 25% |
+| Brand Authority Signals | 20% |
+| Content Quality (EEAT) | 20% |
+| Technical Foundations | 15% |
+| Structured Data | 10% |
+| Platform Optimization | 10% |
+
+**Known AI crawlers tracked in `robots.txt` analysis:** GPTBot, ChatGPT-User, CCBot, ClaudeBot, Claude-Web, anthropic-ai, PerplexityBot, Google-Extended, GoogleOther, Bytespider, Amazonbot, Applebot-Extended, Meta-ExternalAgent, OAI-SearchBot.
+
 ### `core/ai_client.py` — supported providers
 | `AI_PROVIDER` value | SDK / Endpoint | Default model |
 |---|---|---|
@@ -326,6 +376,29 @@ Key implementations:
 - `AnthropicAIClient` — Direct Anthropic SDK with extended thinking support and token/cost tracking
 - `OpenAICompatibleClient` — Unified handler for all OpenAI-compatible providers
 - `NoneAIClient` — Placeholder that raises errors if rewrite is attempted
+- `build_geo_rewrite_request()` — Helper that loads `geo_rewrite` prompt templates and builds the LLM request for GEO rewrites
+- All providers implement `rewrite_product_for_geo()` — generates AI-bot-optimised, encyclopaedic product descriptions
+
+### `core/prompt_store.py` — prompt templates and multi-agent system prompts
+
+**Editable prompt files** (stored in `prompts/`, auto-created from defaults if missing):
+| Key | File | Variables |
+|---|---|---|
+| `description_system` | `description_rewrite.system.txt` | — |
+| `description_user` | `description_rewrite.user.txt` | `name`, `description`, `category`, `keywords` |
+| `translation_system` | `translation_en.system.txt` | — |
+| `translation_user` | `translation_en.user.txt` | `name`, `description`, `category` |
+| `geo_rewrite_system` | `geo_rewrite.system.txt` | — |
+| `geo_rewrite_user` | `geo_rewrite.user.txt` | `name`, `description`, `category`, `issues`, `keywords` |
+
+**Multi-agent system prompts** (not user-editable; defined in `AGENT_SYSTEM_PROMPTS_TR`):
+| Key | Persona | Role |
+|---|---|---|
+| `"seo"` | `AGENT_SEO_EXPERT_PROMPT_TR` | Creative SEO copywriter — rewrites titles, descriptions, meta tags |
+| `"operator"` | `AGENT_STORE_OPERATOR_PROMPT_TR` | Data/operations analyst — uses MCP tools for live store data (stock, orders, prices) |
+| `"general"` | `AGENT_GENERAL_PROMPT_TR` | General assistant — answers product, SEO, inventory, and store management questions |
+
+`ChatService` selects the appropriate agent prompt based on routing logic. Both TR and EN conversations are supported (language is auto-detected).
 
 ### `core/ikas_client.py`
 - OAuth2 token fetch via form-encoded POST to ikas auth endpoint
@@ -336,10 +409,11 @@ Key implementations:
 
 ### `core/chat_service.py` — AI chat with live store data
 - Multi-turn conversation history (max 40 messages)
+- Multi-agent routing: selects SEO Expert, Store Operator, or General agent per conversation
 - Integrates with `IkasMCPClient` for real-time store queries (products, categories, inventory)
 - Max 5 sequential tool-call rounds per user message
 - Turkish/English language detection
-- System prompt with product and score context; uses configurable agent prompt templates
+- System prompt with product and score context; uses configurable agent prompt templates from `prompt_store.py`
 - Per-WebSocket-connection isolation of chat history and MCP state
 
 ### `core/mcp_client.py` — ikas MCP integration
@@ -389,6 +463,7 @@ The FastAPI app (`api/main.py`) exposes the following REST endpoints:
 | `/api/seo/analyze/{id}` | POST | Analyze single product |
 | `/api/seo/scores/{id}` | GET | Get SEO scores for a product |
 | `/api/seo/generate-llms-txt` | GET | Generate `llms.txt` for AI crawlers (GEO) |
+| `/api/seo/geo-audit` | POST | Run full GEO audit for a website URL |
 | `/api/suggestions/generate/{id}` | POST | Generate AI suggestion for a product |
 | `/api/suggestions/generate-field/{id}` | POST | Generate AI suggestion for a single field |
 | `/api/suggestions/{id}` | GET | Get suggestions for a product |
@@ -411,6 +486,32 @@ The FastAPI app (`api/main.py`) exposes the following REST endpoints:
 | `/api/mcp/status` | GET | MCP connection status |
 | `/api/mcp/initialize` | POST | Initialize MCP session |
 | `/api/chat/clear` | POST | Clear chat history |
+
+### GEO Audit endpoint details
+`POST /api/seo/geo-audit`
+
+Request body (`GeoAuditRequest`):
+```json
+{ "url": "https://example.com", "max_pages": 8 }
+```
+
+Response (`GeoAuditResponse`):
+```json
+{
+  "url": "https://example.com",
+  "timestamp": "2026-03-10T12:00:00Z",
+  "discovery": { "business_type": "ecommerce", "sitemap_count": 45, "crawled_pages": [...] },
+  "analysis": {
+    "ai_visibility": { "citability_score": 62, "llms_txt": {...}, "ai_crawler_analysis": {...}, "brand_mentions": {...} },
+    "platform_analysis": { "readiness": { "chatgpt": 67, "perplexity": 55, "google_aio": 72 }, "recommendations": [...] },
+    "technical_seo": { "score": 75, "issues": [...] },
+    "content_quality": { "score": 60, "readability": 18.3, "eeat_signals": 3, "freshness_signal": true },
+    "schema_markup": { "score": 30, "detected": 0, "types": [], "recommendation": "..." }
+  },
+  "synthesis": { "geo_score": 61, "category_scores": {...}, "weights": {...} },
+  "report_markdown": "# GEO Audit Report — ..."
+}
+```
 
 Production builds of the React frontend are served as SPA static files from `web/dist/`.
 
@@ -435,7 +536,7 @@ React/TypeScript SPA built with Vite. Communicates with the FastAPI backend via 
 ### Component groups
 - `components/dashboard/` — Dashboard layout: header, sidebar, detail panel, empty state
 - `components/chat/` — Chat utilities: message rendering, prompt parameters, suggestion creation from chat
-- `components/ChatPanel.tsx` — Full chat UI with WebSocket connection
+- `components/ChatPanel.tsx` — Full chat UI with WebSocket connection and multi-agent awareness
 - `components/ProductTable.tsx` — Product list with pagination and score badges
 - `components/ScoreCard.tsx` — SEO score breakdown display
 
@@ -443,19 +544,21 @@ React/TypeScript SPA built with Vite. Communicates with the FastAPI backend via 
 
 ## Prompt Templates
 
-Prompt files live in `prompts/` and are loaded by `core/prompt_store.py`. They use `{{variable}}` syntax. Users can edit them at runtime via the Settings page in the UI, and changes are saved to disk.
+Prompt files live in `prompts/` and are loaded by `core/prompt_store.py`. They use `{{variable}}` syntax. Users can edit them at runtime via the Settings page in the UI, and changes are saved to disk. Missing files are auto-created from in-code defaults on first access.
 
-Available templates:
-- `description_rewrite.system.txt` / `.user.txt` — rewrites product descriptions
+Available editable templates:
+- `description_rewrite.system.txt` / `.user.txt` — rewrites product descriptions for SEO
 - `translation_en.system.txt` / `.user.txt` — translates Turkish content to English
+- `geo_rewrite.system.txt` / `.user.txt` — rewrites product descriptions in encyclopaedic GEO format for AI bot citability
 
 The prompt system includes:
-- Per-prompt metadata (title, description, variables, height)
-- Agent template support for chat system prompts
-- Validation of placeholder names
-- Fallback to hardcoded defaults if files are missing or empty
+- Per-prompt metadata (title, description, variables, height) in `PROMPT_EDITOR_META`
+- Three editor groups shown in the Settings UI: "Aciklama", "Ceviri", "GEO Yeniden Yazim"
+- Agent template support for chat system prompts (`AGENT_SYSTEM_PROMPTS_TR`)
+- Validation of placeholder names before saving
+- Fallback to hardcoded defaults (`PROMPT_DEFAULTS`) if files are missing or empty
 
-To add a new prompt type, add `.system.txt` + `.user.txt` files and reference them in `PromptStore`.
+To add a new prompt type: add `.system.txt` + `.user.txt` entries to `PROMPT_FILES`, `PROMPT_DEFAULTS`, `PROMPT_EDITOR_GROUPS`, and `PROMPT_EDITOR_META` in `prompt_store.py`.
 
 ---
 
@@ -464,16 +567,17 @@ To add a new prompt type, add `.system.txt` + `.user.txt` files and reference th
 - **Python 3.10+** required (uses `match`/`case`, `|` union types)
 - **Pydantic v2** for all data models — use `model_validate()`, not `parse_obj()`
 - **Type hints** on all public function signatures
-- **Async** for all ikas API calls, MCP operations, and database access (aiosqlite); keep sync wrappers at UI boundary only
+- **Async** for all ikas API calls, MCP operations, GEO audit crawling, and database access (aiosqlite); keep sync wrappers at UI boundary only
 - **No wildcard imports** — always import explicitly
 - **`DRY_RUN=true` is the safe default** — never change this without explicit user intent
 - All user-visible strings are plain strings; formatting belongs in the UI layer
 - Prompts are never hardcoded in Python — always loaded from `prompts/` (with fallback defaults in `prompt_store.py`)
-- New AI providers must subclass `BaseAIClient` and be registered in `create_ai_client()`
+- New AI providers must subclass `BaseAIClient` and implement `rewrite_product()`, `rewrite_field()`, `translate_description_to_en()`, and `rewrite_product_for_geo()`
 - New API endpoints go in `api/routers/` and are registered in `api/main.py`
 - Frontend API client functions go in `web/src/api/client.ts`
 - **`.env` is read-only at runtime** — never write to it; use `save_config_to_db()` to persist settings to `.cache/user_settings.json`
 - `ProductManager` is request-scoped in FastAPI — never store it as a module-level global
+- `GeoAuditor` is stateless and instantiated directly in the route handler — it does not go through `ProductManager`
 
 ---
 
@@ -481,7 +585,7 @@ To add a new prompt type, add `.system.txt` + `.user.txt` files and reference th
 
 ### Add a new AI provider
 1. Create a subclass of `BaseAIClient` in `core/ai_client.py`
-2. Implement `rewrite_product()`, `rewrite_field()`, and `translate_description_to_en()`
+2. Implement `rewrite_product()`, `rewrite_field()`, `translate_description_to_en()`, and `rewrite_product_for_geo()`
 3. Register it in the `create_ai_client()` factory function
 4. Add the provider name to the enum in `core/models.py` (`AppConfig.ai_provider`)
 5. Add provider metadata in `core/provider_service.py`
@@ -491,6 +595,13 @@ To add a new prompt type, add `.system.txt` + `.user.txt` files and reference th
 1. Edit `core/seo_analyzer.py` — add your rule to the relevant field scorer
 2. Update the max points constant if the rule changes the total weight
 3. Add a test case to `tests/test_seo_analyzer.py`
+
+### Add a new GEO audit analysis dimension
+1. Add an `async _analyze_<dimension>()` method to `GeoAuditor` in `core/geo_audit.py`
+2. Add it to the `asyncio.gather()` call in `run_full_audit()`
+3. Add a weight entry to `WEIGHTS` (ensure all weights still sum to 1.0)
+4. Update `_synthesize()` and `_build_report()` to include the new dimension
+5. Add a test case to `tests/test_geo_audit.py`
 
 ### Add a new API endpoint
 1. Add the route function in the appropriate router in `api/routers/`
@@ -507,6 +618,11 @@ To add a new prompt type, add `.system.txt` + `.user.txt` files and reference th
 2. Add the env-var mapping to `KEY_MAP` in `config/settings.py`
 3. Load it in `get_config()` using `_getenv()`
 4. The Settings API router will automatically include it in save/load via the key map
+
+### Add a new chat agent persona
+1. Add a new prompt constant (e.g., `AGENT_MYAGENT_PROMPT_TR`) in `core/prompt_store.py`
+2. Register it in `AGENT_SYSTEM_PROMPTS_TR` under a new key
+3. Update `ChatService` routing logic to select the new key when appropriate
 
 ---
 
@@ -549,3 +665,6 @@ websockets>=12.0
 - Port 8000 is used by default for the backend; `start.py` auto-falls back to next available port if busy
 - `ProductManager` is request-scoped — do not cache it across requests or store it as a module-level global
 - The desktop UI (`ui/` directory) has been removed; the project is now web-only
+- `GeoAuditor` makes real outbound HTTP requests to the target website — tests must mock `httpx.AsyncClient` or the `_fetch()` method
+- GEO audit `geo_rewrite.system.txt` / `geo_rewrite.user.txt` prompt files are auto-created on first use; they will not appear in `prompts/` until the app runs at least once or `ensure_prompt_files()` is called
+- `AGENT_SYSTEM_PROMPTS_TR` agent prompts in `prompt_store.py` are not user-editable via the Settings UI (only the product rewrite and translation prompts are exposed for editing)
