@@ -52,6 +52,15 @@ export async function getProduct(id: string): Promise<ProductWithScore> {
 
 // ── SEO ─────────────────────────────────────────────────────────────────────
 
+export async function generateLlmsTxt(): Promise<string> {
+  const res = await fetch('/api/seo/generate-llms-txt');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(body.detail || `HTTP ${res.status}`);
+  }
+  return res.text();
+}
+
 export async function analyzeAll(): Promise<{ message: string }> {
   return request('/api/seo/analyze', { method: 'POST' });
 }

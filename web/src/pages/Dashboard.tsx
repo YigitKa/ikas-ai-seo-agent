@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchProducts,
+  generateLlmsTxt,
   getProduct,
   getSettings,
   resetLocalProductData,
@@ -59,6 +60,19 @@ export default function Dashboard() {
     },
   });
 
+  const llmsTxtMut = useMutation({
+    mutationFn: generateLlmsTxt,
+    onSuccess: (text) => {
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'llms.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+  });
+
   const totalPages = productsQ.data
     ? Math.ceil(productsQ.data.total_count / productsQ.data.limit)
     : 1;
@@ -92,8 +106,10 @@ export default function Dashboard() {
         totalCount={productsQ.data?.total_count}
         syncPending={syncProductsMut.isPending}
         resetPending={resetLocalDataMut.isPending}
+        llmsTxtPending={llmsTxtMut.isPending}
         onSync={() => syncProductsMut.mutate()}
         onReset={handleResetLocalData}
+        onDownloadLlmsTxt={() => llmsTxtMut.mutate()}
       />
 
       <div className="flex flex-1 overflow-hidden">
