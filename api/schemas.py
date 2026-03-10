@@ -59,6 +59,20 @@ class ScoreResponse(BaseModel):
     score: SeoScore
 
 
+class GeoAuditRequest(BaseModel):
+    url: str
+    max_pages: int = Field(default=8, ge=1, le=30)
+
+
+class GeoAuditResponse(BaseModel):
+    url: str
+    timestamp: str
+    discovery: dict[str, Any]
+    analysis: dict[str, Any]
+    synthesis: dict[str, Any]
+    report_markdown: str
+
+
 # ── Suggestions ──────────────────────────────────────────────────────────────
 
 class GenerateSuggestionRequest(BaseModel):
