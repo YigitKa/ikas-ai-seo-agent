@@ -13,6 +13,8 @@ PROMPT_FILES = {
     "description_user": "description_rewrite.user.txt",
     "translation_system": "translation_en.system.txt",
     "translation_user": "translation_en.user.txt",
+    "geo_rewrite_system": "geo_rewrite.system.txt",
+    "geo_rewrite_user": "geo_rewrite.user.txt",
 }
 
 PROMPT_EDITOR_GROUPS = [
@@ -28,6 +30,13 @@ PROMPT_EDITOR_GROUPS = [
         (
             "translation_system",
             "translation_user",
+        ),
+    ),
+    (
+        "GEO Yeniden Yazim",
+        (
+            "geo_rewrite_system",
+            "geo_rewrite_user",
         ),
     ),
 ]
@@ -77,6 +86,18 @@ Kurallar:
 - Yanit sadece JSON olsun
 
 {"suggested_description_en": "..."}""",
+    "geo_rewrite_system": """Sen bir GEO (Generative Engine Optimization) uzmanisın. Amacın ürün açıklamalarını ChatGPT, Perplexity ve Google AI Overviews gibi botların en iyi anlayacağı ve alıntılayacağı (cite edeceği) formata çevirmek. Kurallar: 1) Asla 'harika, en iyi' gibi pazarlama dili kullanma, tamamen objektif ve ansiklopedik ol. 2) Teknik özellikleri ve sayısal verileri mutlaka madde imleriyle yapılandır. 3) Kısa, net ve bilgi yoğun (information-dense) paragraflar kullan.
+
+SADECE JSON dondur, baska hicbir sey yazma.""",
+    "geo_rewrite_user": """Urun Adi: {{name}}
+Mevcut Aciklama: {{description}}
+Kategori: {{category}}
+Teknik Ozellikler / Mevcut SEO Sorunlari: {{issues}}
+Hedef Keywordler: {{keywords}}
+
+Bu urunu GEO (Generative Engine Optimization) icin yeniden yaz. AI botlarinin kolayca anlayip alintilayabilecegi, objektif ve bilgi yogun bir icerik olustur.
+SADECE JSON dondur:
+{"suggested_description": "..."}""",
 }
 
 PROMPT_EDITOR_META = {
@@ -102,6 +123,18 @@ PROMPT_EDITOR_META = {
         "title": "Ceviri User Prompt",
         "description": "Mevcut Turkce aciklamadan Ingilizce aciklama uretir.",
         "variables": ("name", "description", "category"),
+        "height": 170,
+    },
+    "geo_rewrite_system": {
+        "title": "GEO System Prompt",
+        "description": "GEO yeniden yazim gorevinin rol ve kurallarini belirler.",
+        "variables": (),
+        "height": 120,
+    },
+    "geo_rewrite_user": {
+        "title": "GEO User Prompt",
+        "description": "Urunu AI botlari icin optimize edilmis GEO formatinda yeniden yazar.",
+        "variables": ("name", "description", "category", "issues", "keywords"),
         "height": 170,
     },
 }

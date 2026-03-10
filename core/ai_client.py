@@ -407,6 +407,44 @@ def build_product_rewrite_request(
     }
 
 
+def build_geo_rewrite_request(
+    config: AppConfig,
+    provider: str,
+    product: Product,
+    score: SeoScore,
+    target_keywords: Optional[List[str]] = None,
+) -> dict:
+    keywords = target_keywords or config.seo_target_keywords
+    is_local = provider in ("ollama", "lm-studio")
+    desc_limit = 800 if is_local else 2000
+    raw_desc, _ = _prepare_prompt_descriptions(product, desc_limit)
+
+    system_content = load_prompt_template("geo_rewrite_system")
+    if is_local and not config.ai_thinking_mode:
+        system_content += (
+            "\n\nONEMLI: Dusunme surecini YAZMA. Dogrudan JSON ciktisi ver, "
+            "baska hicbir sey yazma. /no_think"
+        )
+
+    user_template = load_prompt_template("geo_rewrite_user")
+    user_prompt = render_prompt_template(
+        user_template,
+        {
+            "name": product.name,
+            "description": raw_desc or "Belirtilmemis",
+            "category": product.category or "Belirtilmemis",
+            "issues": "; ".join(score.issues[:5]) if score.issues else "Yok",
+            "keywords": ", ".join(keywords) if keywords else "Belirtilmemis",
+        },
+    )
+
+    return {
+        "system_prompt": system_content,
+        "user_prompt": user_prompt,
+        "max_tokens": config.ai_max_tokens,
+    }
+
+
 def build_field_rewrite_request(
     config: AppConfig,
     provider: str,
@@ -492,6 +530,14 @@ class BaseAIClient:
     ) -> str | tuple[str, str]:
         raise NotImplementedError
 
+    def rewrite_product_for_geo(
+        self,
+        product: Product,
+        score: SeoScore,
+        target_keywords: Optional[List[str]] = None,
+    ) -> SeoSuggestion:
+        raise NotImplementedError
+
     def rewrite_products_batch(
         self,
         products: List[tuple[Product, SeoScore]],
@@ -534,6 +580,11 @@ class NoneAIClient(BaseAIClient):
     def translate_description_to_en(self, product):
         raise RuntimeError(
             "AI provider 'none' secildi. Ceviri icin Ayarlar'dan bir provider secin."
+        )
+
+    def rewrite_product_for_geo(self, product, score, target_keywords=None):
+        raise RuntimeError(
+            "AI provider 'none' secildi. GEO yeniden yazma icin Ayarlar'dan bir provider secin."
         )
 
 class AnthropicAIClient(BaseAIClient):
@@ -633,6 +684,34 @@ class AnthropicAIClient(BaseAIClient):
         if thinking_text:
             return value, thinking_text
         return value
+
+    def rewrite_product_for_geo(
+        self,
+        product: Product,
+        score: SeoScore,
+        target_keywords: Optional[List[str]] = None,
+    ) -> SeoSuggestion:
+        request = build_geo_rewrite_request(
+            self._config,
+            "anthropic",
+            product,
+            score,
+            target_keywords,
+        )
+        response = self._client.messages.create(
+            model=self._model,
+            max_tokens=request["max_tokens"],
+            system=request["system_prompt"],
+            messages=[{"role": "user", "content": request["user_prompt"]}],
+        )
+        self._total_input_tokens += response.usage.input_tokens
+        self._total_output_tokens += response.usage.output_tokens
+        logger.info(
+            f"Anthropic GEO API call: {response.usage.input_tokens} input, "
+            f"{response.usage.output_tokens} output tokens"
+        )
+        result, thinking_text = _parse_response_text(response.content[0].text)
+        return _build_suggestion(product, result, thinking_text)
 
     def translate_description_to_en(self, product: Product) -> str | tuple[str, str]:
         request = build_en_translation_request(
@@ -1026,6 +1105,88 @@ class OpenAICompatibleClient(BaseAIClient):
             raise ValueError(f"{self._provider} bos icerik dondu")
 
         logger.debug(f"{self._provider} raw response: {raw_text[:500]}")
+        result, thinking_text = _parse_response_text(raw_text)
+        return _build_suggestion(product, result, thinking_text)
+
+    def rewrite_product_for_geo(
+        self,
+        product: Product,
+        score: SeoScore,
+        target_keywords: Optional[List[str]] = None,
+    ) -> SeoSuggestion:
+        request = build_geo_rewrite_request(
+            self._config,
+            self._provider,
+            product,
+            score,
+            target_keywords,
+        )
+        thinking_mode = self._config.ai_thinking_mode
+        max_tokens = request["max_tokens"]
+        user_prompt = request["user_prompt"]
+        system_content = request["system_prompt"]
+
+        if self._provider == "lm-studio":
+            try:
+                raw_text, native_thinking = self._lm_studio_chat(
+                    system_prompt=system_content,
+                    user_prompt=user_prompt,
+                    max_tokens=max_tokens,
+                    thinking_mode=thinking_mode,
+                )
+                result, parsed_thinking = _parse_response_text(raw_text)
+                return _build_suggestion(
+                    product,
+                    result,
+                    _merge_thinking_text(native_thinking, parsed_thinking),
+                )
+            except _LMStudioNativeUnavailable:
+                logger.warning(
+                    "LM Studio native REST API kullanilamadi; OpenAI-compatible /v1 yoluna geri dusuluyor"
+                )
+
+        create_kwargs = dict(
+            model=self._model,
+            max_tokens=max_tokens,
+            temperature=self._temperature,
+            messages=[
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+
+        try:
+            response = self._client.chat.completions.create(**create_kwargs)
+        except Exception as api_err:
+            logger.error(f"{self._provider} GEO API request failed: {api_err}")
+            raise
+
+        self._track_usage(response)
+        logger.info(
+            f"{self._provider} GEO API call: "
+            f"{self._last_input_tokens} input, {self._last_output_tokens} output tokens"
+        )
+
+        finish_reason = getattr(response.choices[0], "finish_reason", None) if response.choices else None
+        self._last_response_meta["finish_reason"] = finish_reason or ""
+        self._last_response_meta["model"] = self._model
+        if finish_reason == "length":
+            logger.warning(
+                f"{self._provider}: GEO response truncated (max_tokens={max_tokens} reached)."
+            )
+
+        if not response.choices:
+            raise ValueError(f"{self._provider} GEO yanit dondurmedi (choices bos)")
+
+        message = response.choices[0].message
+        if message is None:
+            raise ValueError(f"{self._provider} GEO yanit mesaji bos")
+
+        raw_text = message.content or ""
+        if not raw_text.strip():
+            raise ValueError(f"{self._provider} GEO bos icerik dondu")
+
+        logger.debug(f"{self._provider} GEO raw response: {raw_text[:500]}")
         result, thinking_text = _parse_response_text(raw_text)
         return _build_suggestion(product, result, thinking_text)
 
