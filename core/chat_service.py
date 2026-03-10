@@ -30,6 +30,7 @@ import httpx
 from core.ikas_client import IkasClient
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.mcp_client import IkasMCPClient, MCPError
+from core.prompt_store import AGENT_SYSTEM_PROMPTS_TR
 
 logger = logging.getLogger(__name__)
 
@@ -221,11 +222,11 @@ SUGGESTION_REQUEST_HINT_PATTERN = re.compile(
 )
 SEMANTIC_ROUTING_SYSTEM_PROMPT = (
     "Sen bir niyet tespit (intent detection) asistanisin. "
-    "Kullanicinin mesaji magazanin canli veritabanindan "
-    "(stok, fiyat, siparisler, musteri, varyant) anlik veri cekmeyi "
-    "gerektiriyorsa 'true', sadece SEO metin yazarligi, icerik analizi "
-    "veya genel bir sohbet ise 'false' don. "
-    'SADECE ASAGIDAKI GIBI GECERLI BIR JSON DON: {"needs_mcp": true/false}'
+    "Kullanicinin mesajini 3 ajandan birine yonlendir: seo, operator veya general. "
+    "Eger mesaj stok, fiyat, siparis, musteri, varyant veya canli magaza verisi gerektiriyorsa operator. "
+    "Eger mesaj SEO, metin yazarligi, icerik onerisi veya yeniden yazim ise seo. "
+    "Diger durumlarda general don. "
+    'SADECE ASAGIDAKI GIBI GECERLI BIR JSON DON: {"agent_type": "seo"|"operator"|"general"}'
 )
 SEMANTIC_ROUTING_JSON_PATTERN = re.compile(r"\{.*\}", re.DOTALL)
 
@@ -441,7 +442,7 @@ def _extract_chat_completion_content(data: Any) -> str:
     return ""
 
 
-def _parse_needs_mcp_flag(content: str) -> bool | None:
+def _parse_agent_type(content: str) -> str | None:
     candidate = (content or "").strip()
     if not candidate:
         return None
@@ -461,17 +462,17 @@ def _parse_needs_mcp_flag(content: str) -> bool | None:
     except json.JSONDecodeError:
         return None
 
-    needs_mcp = payload.get("needs_mcp")
-    if isinstance(needs_mcp, bool):
-        return needs_mcp
-    if isinstance(needs_mcp, str):
-        normalized = needs_mcp.strip().lower()
-        if normalized in {"true", "false"}:
-            return normalized == "true"
+    agent_type = payload.get("agent_type")
+    if not isinstance(agent_type, str):
+        return None
+
+    normalized = agent_type.strip().lower()
+    if normalized in {"seo", "operator", "general"}:
+        return normalized
     return None
 
 
-def _build_product_context(product: Product | None, score: SeoScore | None) -> str:
+def _build_product_context(product: Product | None, score: SeoScore | None, agent_type: str = "general") -> str:
     """Build product context string for the system prompt."""
     product_ctx = ""
     score_ctx = ""
@@ -506,7 +507,8 @@ def _build_product_context(product: Product | None, score: SeoScore | None) -> s
             issues="; ".join(score.issues[:5]) if score.issues else "Yok",
         )
 
-    return CHAT_FLOW_SYSTEM_PROMPT_TR.format(
+    template = AGENT_SYSTEM_PROMPTS_TR.get(agent_type, AGENT_SYSTEM_PROMPTS_TR["general"])
+    return template.format(
         product_context=product_ctx,
         score_context=score_ctx,
     ) + "\n\n" + IKAS_OPERATION_GUIDE_TR
@@ -1196,18 +1198,18 @@ class ChatService:
             self._mcp_initialized = False
             return False, f"MCP baglanti hatasi: {exc}"
 
-    async def _get_routing_mode(self, user_message: str) -> bool:
+    async def _route_to_agent(self, user_message: str) -> str:
         has_ikas = bool(IKAS_MENTION_PATTERN.search(user_message))
         has_local = bool(LOCAL_MENTION_PATTERN.search(user_message))
 
         if has_ikas and not has_local:
-            return True
+            return "operator"
         if has_local and not has_ikas:
-            return False
+            return "general"
 
         cleaned_message = _clean_routing_mentions(user_message)
         if not cleaned_message:
-            return False
+            return "general"
 
         base_url = self._get_base_url()
         model = self._config.ai_model_name or self._get_default_model()
@@ -1218,7 +1220,7 @@ class ChatService:
                 {"role": "user", "content": cleaned_message},
             ],
             "temperature": 0.0,
-            "max_tokens": 15,
+            "max_tokens": 20,
             "stream": False,
         }
         timeout = (
@@ -1249,24 +1251,25 @@ class ChatService:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.warning("Semantic routing request failed, defaulting to local mode: %s", exc)
-            return False
+            logger.warning("Semantic routing request failed, defaulting to general agent: %s", exc)
+            return "general"
 
         completion_text = _extract_chat_completion_content(payload)
-        needs_mcp = _parse_needs_mcp_flag(completion_text)
-        if needs_mcp is not None:
-            return needs_mcp
+        agent_type = _parse_agent_type(completion_text)
+        if agent_type is not None:
+            return agent_type
 
-        logger.warning("Semantic routing returned invalid payload, defaulting to local mode: %s", completion_text[:200])
-        return False
+        logger.warning("Semantic routing returned invalid payload, defaulting to general agent: %s", completion_text[:200])
+        return "general"
 
     async def _extract_message_directives(
         self,
         user_message: str,
-    ) -> tuple[str, str | None, bool]:
+    ) -> tuple[str, str | None, str, bool]:
         """Parse routing hints into instructions for the main completion."""
         cleaned_message = _clean_routing_mentions(user_message)
-        allow_tools = await self._get_routing_mode(user_message)
+        agent_type = await self._route_to_agent(user_message)
+        allow_tools = agent_type == "operator"
 
         has_ikas = bool(IKAS_MENTION_PATTERN.search(user_message))
         has_local = bool(LOCAL_MENTION_PATTERN.search(user_message))
@@ -1295,6 +1298,7 @@ class ChatService:
                     "Operasyon onerisi gerekiyorsa once `listProduct`, gerekiyorsa `updateProduct` oner; mutation gerekiyorsa onay iste. "
                     "ONEMLI: Yalnizca MCP araci gercekten cagirilip basarili sonuc dondugunde islemi raporla. Arac cagirmadan 'guncelledim' deme."
                 ),
+                agent_type,
                 True,
             )
 
@@ -1322,6 +1326,7 @@ class ChatService:
                 "`save_seo_suggestion` araciyla pending suggestion kaydi olusturabilirsin. "
                 "Uygun oldugunda chat uzerinde degisiklikleri once goster, secenekli onay al ve sadece secili urune uygula."
             ),
+            agent_type,
             False,
         )
 
@@ -1447,11 +1452,14 @@ class ChatService:
         *,
         allow_mcp_tools: bool,
         guided_context: str,
+        agent_type: str,
     ) -> tuple[list[dict[str, Any]] | None, list[str]]:
-        tools: list[dict[str, Any]] = [_build_save_seo_suggestion_tool()]
+        tools: list[dict[str, Any]] = []
         instructions: list[str] = []
 
-        instructions.append(SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION)
+        if agent_type == "seo":
+            tools.append(_build_save_seo_suggestion_tool())
+            instructions.append(SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION)
 
         if allow_mcp_tools and self._mcp_initialized and self._mcp and not guided_context:
             tools.extend(self._mcp.get_tools_as_openai_functions())
@@ -1887,12 +1895,13 @@ class ChatService:
         self,
         cleaned_message: str,
         routing_instruction: str | None,
+        agent_type: str,
         allow_tools: bool,
         guided_context: str,
         mcp_available: bool,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
         """Build the messages list and tools for the AI completion call."""
-        system_prompt = _build_product_context(self._product, self._score)
+        system_prompt = _build_product_context(self._product, self._score, agent_type)
         if _should_request_structured_suggestion_options(cleaned_message):
             system_prompt = f"{system_prompt}\n\n{STRUCTURED_SUGGESTION_OPTIONS_INSTRUCTION}"
 
@@ -1924,6 +1933,7 @@ class ChatService:
         tools, tool_instructions = self._build_chat_tools(
             allow_mcp_tools=allow_tools,
             guided_context=guided_context,
+            agent_type=agent_type,
         )
         for instruction in tool_instructions:
             messages.append({"role": "system", "content": instruction})
@@ -1947,7 +1957,7 @@ class ChatService:
         event_handler: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> ChatResponse:
         """Run the full chat flow, optionally streaming assistant chunks."""
-        cleaned_message, routing_instruction, allow_tools = await self._extract_message_directives(user_message)
+        cleaned_message, routing_instruction, agent_type, allow_tools = await self._extract_message_directives(user_message)
         explicit_ikas_mode = bool(IKAS_MENTION_PATTERN.search(user_message)) and not bool(
             LOCAL_MENTION_PATTERN.search(user_message)
         )
@@ -2000,7 +2010,7 @@ class ChatService:
                     return response
 
         messages, tools = self._build_completion_messages(
-            cleaned_message, routing_instruction, allow_tools, guided_context, mcp_available,
+            cleaned_message, routing_instruction, agent_type, allow_tools, guided_context, mcp_available,
         )
 
         response_text = ""
@@ -2778,4 +2788,3 @@ class ChatService:
             await self._mcp.close()
             self._mcp = None
             self._mcp_initialized = False
-
