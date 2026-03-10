@@ -2,7 +2,14 @@
 
 `ikas AI SEO Agent`, ikas magazalari icin gelistirilmis web tabanli bir SEO analiz ve AI destekli icerik iyilestirme aracidir. Urunleri ikas API'sinden senkronize eder, yerel SQLite cache icinde saklar, 100 puanlik bir rubric ile skorlar ve secilen AI provider uzerinden rewrite veya TR -> EN ceviri onerileri uretir.
 
-`2026-03-08` itibariyla proje yalnizca web uygulamasi olarak devam eder. Legacy masaustu UI repo'dan kaldirilmistir.
+`2026-03-10` itibariyla proje yalnizca web uygulamasi olarak devam eder. Legacy masaustu UI repo'dan kaldirilmistir.
+
+## Son Guncellemeler (2026-03-10)
+
+- Chat akisi `seo`, `operator` ve `general` ajanlari arasinda niyet tabanli yonlendirme ile calisir; operasyon rehberi ayri modulde (`core/chat_operation_guidance.py`) tutulur.
+- Sohbet guvenilirligi guclendirildi: modelin gercekte yapilmayan degisiklikleri yapildi gibi raporlamasini engelleyen ek dogrulama kontrolleri bulunur.
+- GEO denetimi icin tam website tarama endpoint'i eklendi: `POST /api/seo/geo-audit`.
+- Dokumantasyon ve kod yapisi Claude/Codex agent akislariyla uyumlu hale getirildi.
 
 ## Guncel Durum
 
@@ -250,6 +257,7 @@ TTY ortaminda zorunlu alanlar eksikse uygulama bunlari terminalden isteyebilir. 
 | `POST` | `/api/seo/analyze/{product_id}` | Tek urun skoru uretir |
 | `GET` | `/api/seo/scores/{product_id}` | Son kaydedilen skoru doner |
 | `GET` | `/api/seo/generate-llms-txt` | AI tarayicilari icin `llms.txt` uretir (GEO) |
+| `POST` | `/api/seo/geo-audit` | Verilen URL icin tam GEO audit calistirir |
 
 ### Suggestions
 
