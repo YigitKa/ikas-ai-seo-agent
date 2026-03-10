@@ -11,7 +11,8 @@
 - SQLite tabanli yerel cache, skor ve suggestion kaydi (`data/`)
 - ikas urun senkronizasyonu ve tekil urun fetch destegi
 - Urun filtreleri: `all`, `low_score`, `missing_english`, `pending`, `approved`
-- SEO score breakdown: title, description, EN description, meta, keyword, content quality, technical SEO, readability
+- SEO score breakdown: title, description, EN description, meta, keyword, content quality, technical SEO, readability, AI citability (GEO)
+- GEO (Generative Engine Optimization): AI citability skorlama ve `llms.txt` uretimi
 - Chat-first AI akisi: urun baglami, SEO metrikleri, prompt parametre ekleme, istek iptali, oturum token/context gostergeleri
 - Otomatik urun giris mesaji: urun secildiginde chat paneli SEO analizi ile baslar
 - Gecmis ozetleme: uzun sohbet gecmisi AI ile otomatik olarak ozetlenir
@@ -201,7 +202,7 @@ TTY ortaminda zorunlu alanlar eksikse uygulama bunlari terminalden isteyebilir. 
 | `AI_TEMPERATURE` | `0.7` | Rewrite yaraticiligi |
 | `AI_MAX_TOKENS` | `2000` | Max output token |
 | `AI_THINKING_MODE` | `false` | Destekleyen providerlarda reasoning isteyen mod |
-| `STORE_LANGUAGES` | `tr` | Virgulle ayrilmis dil listesi |
+| `STORE_LANGUAGES` | `tr,en` | Virgulle ayrilmis dil listesi |
 | `STORE_LANGUAGE` | `tr` | Geriye donuk desteklenir |
 | `SEO_TARGET_KEYWORDS` | bos | Virgulle ayrilmis keyword listesi |
 | `SEO_LOW_SCORE_THRESHOLD` | `70` | `low_score` filtresi icin alt esik |
@@ -248,6 +249,7 @@ TTY ortaminda zorunlu alanlar eksikse uygulama bunlari terminalden isteyebilir. 
 | `POST` | `/api/seo/analyze` | Cache'deki tum urunleri skorlar |
 | `POST` | `/api/seo/analyze/{product_id}` | Tek urun skoru uretir |
 | `GET` | `/api/seo/scores/{product_id}` | Son kaydedilen skoru doner |
+| `GET` | `/api/seo/generate-llms-txt` | AI tarayicilari icin `llms.txt` uretir (GEO) |
 
 ### Suggestions
 
@@ -266,7 +268,7 @@ TTY ortaminda zorunlu alanlar eksikse uygulama bunlari terminalden isteyebilir. 
 | Method | Path | Aciklama |
 | --- | --- | --- |
 | `GET` | `/api/settings` | Aktif ayarlar |
-| `PUT` | `/api/settings` | `.env` guncelle ve reload et |
+| `PUT` | `/api/settings` | Ayarlari `.cache/user_settings.json`'a kaydet ve yeniden yukle |
 | `GET` | `/api/settings/prompts` | Prompt editor metadata + icerik |
 | `PUT` | `/api/settings/prompts` | Promptlari kaydet |
 | `POST` | `/api/settings/prompts/reset` | Promptlari varsayilana dondur |
@@ -301,8 +303,11 @@ Toplam skor `100` puandir:
 | Content quality | 10 |
 | Technical SEO | 10 |
 | Readability | 5 |
+| AI Citability (GEO) | 10 |
 
-Varsayilan olarak `70` alti urunler dusuk skor kabul edilir.
+Toplam 100 puan. Varsayilan olarak `70` alti urunler dusuk skor kabul edilir.
+
+GEO skoru; yapilandirilmis urun bilgisi, net urun ozellikleri ve AI-okunabilir formatlama gibi sinyaller uzerinden hesaplanir.
 
 Kontroller arasinda su sinyaller bulunur:
 
@@ -413,6 +418,8 @@ ikas-ai-seo-agent/
 |   |-- translation_en.user.txt
 |   `-- README.txt
 |-- tests/
+|   |-- fixtures/
+|   |   `-- sample_products.json
 |   |-- test_ai_client.py
 |   |-- test_chat_service.py
 |   |-- test_claude_client.py
@@ -437,12 +444,26 @@ ikas-ai-seo-agent/
 |       |-- components/
 |       |   |-- ChatPanel.tsx
 |       |   |-- ProductTable.tsx
-|       |   `-- ScoreCard.tsx
+|       |   |-- ScoreCard.tsx
+|       |   |-- chat/
+|       |   |   |-- ChatMessage.tsx
+|       |   |   |-- chatUtils.ts
+|       |   |   |-- promptParams.ts
+|       |   |   `-- suggestionUtils.ts
+|       |   `-- dashboard/
+|       |       |-- DashboardDetail.tsx
+|       |       |-- DashboardEmptyState.tsx
+|       |       |-- DashboardHeader.tsx
+|       |       |-- DashboardSidebar.tsx
+|       |       |-- constants.ts
+|       |       `-- productUrl.ts
 |       |-- hooks/
 |       |   `-- useChat.ts
-|       `-- pages/
-|           |-- Dashboard.tsx
-|           `-- Settings.tsx
+|       |-- pages/
+|       |   |-- Dashboard.tsx
+|       |   `-- Settings.tsx
+|       `-- types/
+|           `-- index.ts
 |-- .env.example
 |-- main.py
 |-- requirements.txt
