@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 
 from api.dependencies import get_manager
-from api.schemas import MessageResponse, ProductWithScore, ScoreResponse
+from api.schemas import GeoAuditRequest, GeoAuditResponse, MessageResponse, ScoreResponse
 from config.settings import get_config
 from core.html_utils import html_to_plain_text
+from core.geo_audit import GeoAuditor
 from core.product_manager import ProductManager
 from data import db
 
@@ -89,3 +90,14 @@ async def generate_llms_txt() -> str:
             lines.append(entry)
 
     return "\n".join(lines) + "\n"
+
+
+@router.post("/geo-audit", response_model=GeoAuditResponse)
+async def run_geo_audit(payload: GeoAuditRequest) -> GeoAuditResponse:
+    """Run full GEO audit flow for a website URL."""
+    auditor = GeoAuditor()
+    try:
+        result = await auditor.run_full_audit(payload.url, max_pages=payload.max_pages)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"GEO audit failed: {exc}") from exc
+    return GeoAuditResponse(**result)
