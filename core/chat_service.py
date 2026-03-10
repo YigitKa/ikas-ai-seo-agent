@@ -31,6 +31,7 @@ from core.ikas_client import IkasClient
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.mcp_client import IkasMCPClient, MCPError
 from core.prompt_store import AGENT_SYSTEM_PROMPTS_TR
+from core import chat_operation_guidance as op_guidance
 
 logger = logging.getLogger(__name__)
 
@@ -588,29 +589,21 @@ def _compact_preview_text(value: str, *, limit: int = 180) -> str:
 
 
 def _operation_footer_already_present(text: str) -> bool:
-    return "ikas mcp operasyon onerisi" in _normalize_matching_text(text)
+    return op_guidance.operation_footer_already_present(text)
 
 
 def _select_product_operation_suggestion(
     user_message: str,
     response_text: str,
     product: Product | None,
+    agent_type: str,
 ) -> tuple[str, str, bool]:
-    normalized_text = _normalize_matching_text(f"{user_message}\n{response_text}")
-    product_label = (product.name or "").strip() if product else ""
-    subject = product_label or "secili urun"
-
-    if SEO_OPERATION_HINT_PATTERN.search(normalized_text):
-        return (
-            "updateProduct",
-            f"{subject} icin mevcut baslik, aciklama, meta ve diger SEO alanlarini guncellemek icin uygun adim",
-            True,
-        )
-
-    return (
-        "listProduct",
-        f"{subject} kaydini dogrulamak ve eldeki urun alanlarini netlestirmek icin uygun query",
-        False,
+    return op_guidance.select_product_operation_suggestion(
+        user_message,
+        response_text,
+        product.name if product else None,
+        agent_type,
+        save_suggestion_tool_name=SAVE_SEO_SUGGESTION_TOOL_NAME,
     )
 
 
@@ -619,75 +612,28 @@ def _append_operation_suggestion(
     *,
     user_message: str,
     product: Product | None,
+    agent_type: str,
 ) -> str:
-    content = (response_text or "").strip()
-    if not content or _operation_footer_already_present(content):
-        return response_text
-
-    operation_name, reason, requires_confirmation = _select_product_operation_suggestion(
-        user_message,
-        content,
-        product,
+    return op_guidance.append_operation_suggestion(
+        response_text,
+        user_message=user_message,
+        product_name=product.name if product else None,
+        agent_type=agent_type,
+        save_suggestion_tool_name=SAVE_SEO_SUGGESTION_TOOL_NAME,
     )
-
-    lines = [
-        content,
-        "",
-        "**ikas MCP Operasyon Onerisi**",
-        f"- `{operation_name}`: {reason}.",
-    ]
-    if requires_confirmation:
-        lines.append("- Not: Bu bir mutation adimidir; uygulamadan once onayini alirim.")
-    lines.append("- Istersen bir sonraki adimda bunu secili urun icin netlestireyim.")
-    return "\n".join(lines)
 
 
 def _has_mutation_tool_result(tool_results: list[dict[str, Any]]) -> bool:
     """Check if any tool result is from a mutation (write) operation."""
-    mutation_prefixes = ("update", "create", "delete", "save", "add", "remove", "fulfill", "cancel", "refund", "approve")
-    for result in tool_results:
-        tool_name = str(result.get("tool", "")).strip()
-        if any(tool_name.startswith(prefix) for prefix in mutation_prefixes):
-            # Check that the result doesn't contain an error
-            result_text = str(result.get("result", ""))
-            if '"error"' not in result_text:
-                return True
-    return False
+    return op_guidance.has_mutation_tool_result(tool_results)
 
 
 def _append_false_action_disclaimer(
     response_text: str,
     tool_results: list[dict[str, Any]],
 ) -> str:
-    """Append a disclaimer if the LLM claims to have applied changes but no mutation was executed.
-
-    Small local models often hallucinate action confirmations like "Güncellemeler uygulandı!"
-    when they haven't actually called any MCP tool. This function detects such false claims
-    and appends a visible disclaimer to prevent user confusion.
-    """
-    if not response_text:
-        return response_text
-
-    # If a mutation was actually executed successfully, the claim is legitimate
-    if _has_mutation_tool_result(tool_results):
-        return response_text
-
-    normalized_response = _normalize_matching_text(response_text)
-
-    # Check for false action claims in the response
-    has_false_claim = (
-        FALSE_ACTION_CLAIM_NORMALIZED_PATTERN.search(normalized_response)
-        or FALSE_ACTION_CONFIRMATION_NORMALIZED_PATTERN.search(normalized_response)
-    )
-
-    if not has_false_claim:
-        return response_text
-
-    # Already has a disclaimer
-    if "henuz uygulanmadi" in normalized_response:
-        return response_text
-
-    return response_text + FALSE_ACTION_DISCLAIMER_TR
+    """Append a disclaimer if the LLM claims to have applied changes but no mutation was executed."""
+    return op_guidance.append_false_action_disclaimer(response_text, tool_results)
 
 
 def _format_chat_error(exc: Exception) -> str:
@@ -1995,6 +1941,7 @@ class ChatService:
                         guided_fallback,
                         user_message=cleaned_message,
                         product=self._product,
+                        agent_type=agent_type,
                     )
                     self._history.append(ChatMessage(role="assistant", content=guided_content))
                     response = ChatResponse(
@@ -2047,7 +1994,7 @@ class ChatService:
                 self._history.pop()
             if guided_fallback:
                 guided_content = _append_operation_suggestion(
-                    guided_fallback, user_message=cleaned_message, product=self._product,
+                    guided_fallback, user_message=cleaned_message, product=self._product, agent_type=agent_type,
                 )
                 self._history.append(ChatMessage(role="assistant", content=guided_content))
                 response = ChatResponse(
@@ -2061,6 +2008,7 @@ class ChatService:
                 response = ChatResponse(
                     content=_append_operation_suggestion(
                         _format_chat_error(exc), user_message=cleaned_message, product=self._product,
+                        agent_type=agent_type,
                     ),
                     thinking="",
                     tool_results=tool_results,
@@ -2084,7 +2032,7 @@ class ChatService:
 
         if not suggestion_saved:
             response_text = _append_operation_suggestion(
-                response_text, user_message=cleaned_message, product=self._product,
+                response_text, user_message=cleaned_message, product=self._product, agent_type=agent_type,
             )
             response_text = _append_false_action_disclaimer(response_text, tool_results)
 
