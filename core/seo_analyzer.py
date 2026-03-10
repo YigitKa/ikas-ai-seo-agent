@@ -573,6 +573,106 @@ def analyze_readability(product: Product) -> tuple[int, List[str], List[str]]:
 
 
 # ---------------------------------------------------------------------------
+# AI Citability / GEO (max 10 pts)
+# Generative Engine Optimization: measures how likely the description is to
+# be cited as a source by AI search engines (ChatGPT, Perplexity, etc.).
+# Checks: (1) statistics/technical data, (2) absence of fluff/subjective
+# language, (3) structured lists for easy AI parsing.
+# ---------------------------------------------------------------------------
+
+# Patterns that indicate concrete, citable data
+_UNIT_RE = re.compile(
+    r"\d+[\.,]?\d*\s*(%|cm|mm|m²|m2|kg|g|l|ml|watt|w\b|hz|gb|mb|tb|adet|pcs?|piece)",
+    re.IGNORECASE,
+)
+_NUMBERS_RE = re.compile(r"\b\d+[\.,]?\d*\b")
+
+# Subjective/fluff phrases that reduce AI citability
+_FLUFF_TR = [
+    "mukemmel", "muhtesem", "inanilmaz", "harika", "super", "fantastik",
+    "efsane", "muthis", "enfes", "en iyi", "en guzel", "piyasanin en",
+    "benzersiz", "essiz", "basarisiz olmaz", "mutlaka almalisiniz",
+]
+_FLUFF_EN = [
+    "amazing", "incredible", "fantastic", "awesome", "unbelievable",
+    "best ever", "most amazing", "fabulous", "you must buy", "perfect",
+]
+
+
+def analyze_ai_citability(product: Product) -> tuple[int, List[str], List[str]]:
+    """Score how likely the description is to be cited by AI search engines (0-10)."""
+    issues: List[str] = []
+    suggestions: List[str] = []
+
+    raw = product.description or ""
+    text = strip_html(raw)
+
+    if not text.strip():
+        return 0, ["Aciklama bos — AI alintılanabilirlik analizi yapilamadi"], [
+            "Aciklama ekleyin"
+        ]
+
+    score = 10
+    text_lower = text.lower()
+
+    # --- Check 1: Statistics / technical data (max 4 pts) ---
+    has_units = bool(_UNIT_RE.search(text))
+    number_matches = _NUMBERS_RE.findall(text)
+    has_numbers = len(number_matches) >= 3
+
+    if has_units:
+        pass  # concrete measurements present — full credit
+    elif has_numbers:
+        score -= 1  # some numbers but no units
+        suggestions.append(
+            "Birimleriyle birlikte olcumler ekleyin (orn: '2.5 kg', '30 cm', '%15 daha verimli') — "
+            "AI sistemleri birimli verileri daha guvenilir kaynak olarak degerlendiriyor"
+        )
+    else:
+        score -= 4
+        issues.append("Aciklamada istatistik veya teknik veri yok (sayilar, olcumler, %)")
+        suggestions.append(
+            "AI kaynak gostermesi icin somut veriler ekleyin (orn: '2.5 kg', '%15 daha hizli', '30 cm uzunluk')"
+        )
+
+    # --- Check 2: Excessive marketing fluff (max 4 pts) ---
+    fluff_count = sum(1 for fw in _FLUFF_TR + _FLUFF_EN if fw in text_lower)
+
+    if fluff_count >= 3:
+        score -= 4
+        issues.append(
+            f"Asiri pazarlama dili tespit edildi ({fluff_count} subjektif ifade) — "
+            "AI sistemleri objektif, olcumlebilir icerigi kaynak olarak tercih eder"
+        )
+        suggestions.append(
+            "Superlative/subjektif ifadeler yerine teknik ozellikler ve somut faydalar kullanin"
+        )
+    elif fluff_count >= 1:
+        score -= 2
+        issues.append(
+            f"Bazi subjektif ifadeler var ({fluff_count} kelime) — "
+            "daha objektif bir dil AI alintılanabilirligini arttirir"
+        )
+        suggestions.append(
+            "'Muhteşem/inanilmaz' gibi ifadeler yerine olcumlebilir veriler tercih edin"
+        )
+
+    # --- Check 3: Structured lists / bullet points (max 2 pts) ---
+    has_html_list = bool(LIST_RE.search(raw))
+    has_text_bullets = bool(re.search(r"(?m)^[ \t]*[-•*]\s+\w", text))
+
+    if not has_html_list and not has_text_bullets:
+        score -= 2
+        issues.append("Aciklamada liste/madde imi yapisi yok — AI yapisal icerige oncelik verir")
+        suggestions.append(
+            "Urun ozelliklerini <ul>/<li> listeleriyle yapilandirin; "
+            "madde imleri AI tarafindan daha kolay alintılanir"
+        )
+
+    return max(score, 0), issues, suggestions
+
+
+# ---------------------------------------------------------------------------
 # Main analyzer
 # ---------------------------------------------------------------------------
 
@@ -586,19 +686,26 @@ def analyze_product(product: Product, target_keywords: List[str] | None = None) 
     cq_score, cq_issues, cq_suggestions = analyze_content_quality(product)
     tech_score, tech_issues, tech_suggestions = analyze_technical_seo(product)
     read_score, read_issues, read_suggestions = analyze_readability(product)
+    cit_score, cit_issues, cit_suggestions = analyze_ai_citability(product)
 
     all_issues = (
         title_issues + desc_issues + en_desc_issues + meta_issues
-        + md_issues + kw_issues + cq_issues + tech_issues + read_issues
+        + md_issues + kw_issues + cq_issues + tech_issues + read_issues + cit_issues
     )
     all_suggestions = (
         title_suggestions + desc_suggestions + en_desc_suggestions + meta_suggestions
-        + md_suggestions + kw_suggestions + cq_suggestions + tech_suggestions + read_suggestions
+        + md_suggestions + kw_suggestions + cq_suggestions + tech_suggestions
+        + read_suggestions + cit_suggestions
     )
 
+    # ai_citability_score contributes up to 10 pts; total is capped at 100.
+    # The existing rubric sums to 100 at best, so the citability bonus can
+    # lift products that are otherwise strong, or penalise those that rely on
+    # fluff/lack technical data.
     total = min(
         title_score + desc_score + en_desc_score + meta_score
-        + meta_desc_score + kw_score + cq_score + tech_score + read_score,
+        + meta_desc_score + kw_score + cq_score + tech_score + read_score
+        + cit_score,
         100,
     )
 
@@ -614,6 +721,7 @@ def analyze_product(product: Product, target_keywords: List[str] | None = None) 
         content_quality_score=cq_score,
         technical_seo_score=tech_score,
         readability_score=read_score,
+        ai_citability_score=cit_score,
         issues=all_issues,
         suggestions=all_suggestions,
     )
