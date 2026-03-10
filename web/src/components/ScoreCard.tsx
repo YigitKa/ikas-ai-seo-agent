@@ -59,6 +59,12 @@ const FIELDS = [
     max: 5,
     description: 'Cumle akisi, uzunluk dengesi ve gecis kelimeleri.',
   },
+  {
+    key: 'ai_citability_score',
+    label: 'AI Alintılanabilirlik',
+    max: 10,
+    description: 'Aciklamanin ChatGPT/Perplexity gibi yapay zekalar tarafından kaynak gösterilme potansiyeli (istatistik, teknik veri, objektif dil).',
+  },
 ] as const;
 
 function getScoreColor(pct: number): string {

@@ -33,6 +33,7 @@ class SeoScore(BaseModel):
     content_quality_score: int = Field(ge=0, le=10, default=0)
     technical_seo_score: int = Field(ge=0, le=10, default=0)
     readability_score: int = Field(ge=0, le=5, default=0)
+    ai_citability_score: int = Field(ge=0, le=10, default=0)
     issues: List[str] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
 

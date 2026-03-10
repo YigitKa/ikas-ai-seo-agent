@@ -27,6 +27,7 @@ export interface SeoScore {
   content_quality_score: number;
   technical_seo_score: number;
   readability_score: number;
+  ai_citability_score: number;
   issues: string[];
   suggestions: string[];
 }
