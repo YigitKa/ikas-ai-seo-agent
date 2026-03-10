@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  applyApproved,
   fetchProducts,
   getProduct,
   getSettings,
@@ -60,15 +59,6 @@ export default function Dashboard() {
     },
   });
 
-  const applyMut = useMutation({
-    mutationFn: applyApproved,
-    onSuccess: (data) => {
-      alert(`${data.applied}/${data.total} oneri ikas'a uygulandi.`);
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['suggestions'] });
-    },
-  });
-
   const totalPages = productsQ.data
     ? Math.ceil(productsQ.data.total_count / productsQ.data.limit)
     : 1;
@@ -102,10 +92,8 @@ export default function Dashboard() {
         totalCount={productsQ.data?.total_count}
         syncPending={syncProductsMut.isPending}
         resetPending={resetLocalDataMut.isPending}
-        applyPending={applyMut.isPending}
         onSync={() => syncProductsMut.mutate()}
         onReset={handleResetLocalData}
-        onApply={() => applyMut.mutate()}
       />
 
       <div className="flex flex-1 overflow-hidden">

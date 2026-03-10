@@ -1,12 +1,42 @@
-import { useEffect, useState } from 'react';
+import { useState, type CSSProperties, isValidElement } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage } from '../../hooks/useChat';
 import type { ChatResponseMeta, SuggestionSavedInfo, ToolResult } from '../../types';
-import { formatPercent, formatThoughtDuration, getAssistantMetrics, formatCompactNumber, readMetaNumber, resolveContextUsage } from './chatUtils';
+import { formatPercent, formatThoughtDuration, getAssistantMetrics, readMetaNumber, resolveContextUsage } from './chatUtils';
 import { extractSuggestionOptions, getSuggestionCardPalette, type SuggestionOption } from './suggestionUtils';
 
-// ── MarkdownMessage ───────────────────────────────────────────────────────────
+function flattenNodeText(value: unknown): string {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(flattenNodeText).join('');
+  }
+
+  if (isValidElement<{ children?: unknown }>(value)) {
+    return flattenNodeText(value.props.children);
+  }
+
+  return '';
+}
+
+function isNarrativeCodeBlock(raw: string): boolean {
+  const value = raw.trim();
+  if (!value) {
+    return false;
+  }
+
+  const codeIndicators = /[{};=<>]|\[|\]|\b(function|const|let|return|class|import)\b/i;
+  if (codeIndicators.test(value)) {
+    return false;
+  }
+
+  return /(oner|öner|seo|meta|aciklama|açıklama|title|description|✅|➡|→|\*\*)/i.test(value);
+}
+
+// ── MarkdownMessage ────────────────────────────────────────────────────────────
 
 export function MarkdownMessage({ content }: { content: string }) {
   return (
@@ -23,27 +53,66 @@ export function MarkdownMessage({ content }: { content: string }) {
         blockquote: ({ children }) => (
           <blockquote
             className="mb-3 border-l-2 pl-3 italic"
-            style={{ borderColor: 'rgba(99, 102, 241, 0.35)', color: 'var(--color-text-secondary)' }}
+            style={{ borderColor: 'rgba(34, 211, 238, 0.35)', color: 'var(--color-text-secondary)' }}
           >
             {children}
           </blockquote>
         ),
-        pre: ({ children }) => (
-          <pre
-            className="mb-3 overflow-x-auto rounded-lg p-3 text-[12px]"
-            style={{ background: 'rgba(0,0,0,0.18)' }}
-          >
-            {children}
-          </pre>
-        ),
-        code: ({ children }) => (
-          <code
-            className="rounded px-1.5 py-0.5 text-[12px]"
-            style={{ background: 'rgba(255,255,255,0.06)', color: '#c7d2fe' }}
-          >
-            {children}
-          </code>
-        ),
+        pre: ({ children }) => {
+          const rawBlock = flattenNodeText(children);
+          if (isNarrativeCodeBlock(rawBlock)) {
+            return (
+              <div
+                className="mb-3 rounded-lg p-3 text-[12px] leading-relaxed"
+                style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  color: 'var(--color-text-primary)',
+                }}
+              >
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                    ul: ({ children }) => <ul className="mb-2 list-disc space-y-1 pl-5 last:mb-0">{children}</ul>,
+                    ol: ({ children }) => <ol className="mb-2 list-decimal space-y-1 pl-5 last:mb-0">{children}</ol>,
+                    li: ({ children }) => <li>{children}</li>,
+                    strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+                    code: ({ children }) => <code>{children}</code>,
+                  }}
+                >
+                  {rawBlock}
+                </ReactMarkdown>
+              </div>
+            );
+          }
+
+          return (
+            <pre
+              className="mb-3 overflow-x-auto rounded-lg p-3 text-[12px]"
+              style={{ background: 'rgba(0,0,0,0.18)' }}
+            >
+              {children}
+            </pre>
+          );
+        },
+        code: ({ className, children }) => {
+          const value = String(children);
+          const isInline = !className && !value.includes('\n');
+
+          if (!isInline) {
+            return <code className={className}>{children}</code>;
+          }
+
+          return (
+            <code
+              className="rounded px-1.5 py-0.5 text-[12px]"
+              style={{ background: 'rgba(255,255,255,0.06)', color: '#c7d2fe' }}
+            >
+              {children}
+            </code>
+          );
+        },
         table: ({ children }) => (
           <div className="mb-3 overflow-x-auto last:mb-0">
             <table
@@ -118,9 +187,9 @@ function SuggestionCards({
               </span>
             </div>
 
-            <p className="mt-3 flex-1 text-sm leading-relaxed" style={{ color: 'var(--color-text-primary)' }}>
-              {option.value}
-            </p>
+            <div className="mt-3 flex-1 text-sm leading-relaxed" style={{ color: 'var(--color-text-primary)' }}>
+              <MarkdownMessage content={option.value} />
+            </div>
 
             <button
               type="button"
@@ -256,13 +325,40 @@ function SuggestionSavedCard({ info }: { info: SuggestionSavedInfo }) {
         ))}
       </div>
       <div className="mt-2 text-[11px]" style={{ color: 'rgba(34, 197, 94, 0.5)' }}>
-        Oneriler sekmesinden onaylayip ikas'a uygulayabilirsiniz.
+        Chatte onaylayip secili urune ikas uzerinde uygulayabilirsiniz.
       </div>
     </div>
   );
 }
 
 // ── ThinkingBlock ─────────────────────────────────────────────────────────────
+
+function ThinkingStreamText({ text }: { text: string }) {
+  const parts = text.split(/(\s+)/).filter((part) => part.length > 0);
+
+  return (
+    <div className="thinking-stream text-[12px] leading-relaxed">
+      {parts.map((part, index) => {
+        if (/^\s+$/.test(part)) {
+          return <span key={`space-${index}`}>{part}</span>;
+        }
+
+        const animatedWordCount = parts
+          .slice(0, index + 1)
+          .filter((chunk) => !/^\s+$/.test(chunk))
+          .length;
+        const delayStep = Math.min(animatedWordCount * 0.012, 0.42);
+        const style = { '--word-delay': `${delayStep}s` } as CSSProperties;
+
+        return (
+          <span key={`word-${index}`} className="thinking-word" style={style}>
+            {part}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
 
 function ThinkingBlock({
   text,
@@ -274,13 +370,8 @@ function ThinkingBlock({
   durationSeconds?: number;
 }) {
   const isLive = typeof durationSeconds !== 'number' || durationSeconds <= 0;
-  const [expanded, setExpanded] = useState(isLive);
-
-  useEffect(() => {
-    if (isLive && text) {
-      setExpanded(true);
-    }
-  }, [isLive, text]);
+  const [expanded, setExpanded] = useState(true);
+  const isExpanded = isLive ? true : expanded;
 
   const title =
     typeof durationSeconds === 'number' && durationSeconds > 0
@@ -290,24 +381,27 @@ function ThinkingBlock({
   return (
     <div
       className="rounded-lg px-3 py-2 text-xs"
-      style={{ background: 'rgba(139, 92, 246, 0.06)', border: '1px solid rgba(139, 92, 246, 0.15)' }}
+      style={{
+        background: 'linear-gradient(145deg, rgba(34, 211, 238, 0.08), rgba(15, 23, 42, 0.88))',
+        border: '1px solid rgba(34, 211, 238, 0.22)',
+      }}
     >
       <button
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-center gap-1.5 text-left"
-        style={{ color: '#a78bfa' }}
+        style={{ color: '#67e8f9' }}
       >
         <svg className="h-3 w-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
         </svg>
         <span className="font-medium">{title}</span>
-        <span className="ml-auto text-[10px]" style={{ color: 'rgba(139, 92, 246, 0.6)' }}>
-          {expanded ? 'Gizle' : 'Goster'}
+        <span className="ml-auto text-[10px]" style={{ color: 'rgba(103, 232, 249, 0.66)' }}>
+          {isExpanded ? 'Gizle' : 'Goster'}
         </span>
       </button>
-      {expanded && (
-        <div className="mt-2 text-[12px] leading-relaxed" style={{ color: 'rgba(139, 92, 246, 0.78)' }}>
-          <MarkdownMessage content={text} />
+      {isExpanded && (
+        <div className="mt-2 text-[12px] leading-relaxed" style={{ color: 'rgba(224, 242, 254, 0.88)' }}>
+          {isLive ? <ThinkingStreamText text={text} /> : <MarkdownMessage content={text} />}
         </div>
       )}
     </div>
@@ -484,5 +578,3 @@ export function MessageBubble({
 
 // Re-export SuggestionOption so ChatPanel can import from a single place
 export type { SuggestionOption };
-// Re-export formatCompactNumber used in ChatPanel header
-export { formatCompactNumber };

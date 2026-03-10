@@ -27,7 +27,8 @@ ToolHandler = Callable[[dict[str, Any]], Awaitable[tuple[str, "dict[str, Any] | 
 
 import httpx
 
-from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore
+from core.ikas_client import IkasClient
+from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.mcp_client import IkasMCPClient, MCPError
 
 logger = logging.getLogger(__name__)
@@ -79,7 +80,7 @@ Kurallar:
 Yaniti mumkunse su duzende kur:
 1. Durum (mevcut durumu ozetle)
 2. Oneri (somut iyilestirme onerileri sun)
-3. Sonraki adim (kullanicinin ne yapmasi gerektigini acikla — ornegin "Bu onerileri uygulamak icin Oneriler panelini kullanabilirsiniz" veya "@ikas ile MCP uzerinden guncelleyebiliriz")
+3. Sonraki adim (kullanicinin ne yapmasi gerektigini acikla - ornegin "Bu onerileri chatten onaylayarak secili urune uygulayabiliriz" veya "@ikas ile MCP uzerinden guncelleyebiliriz")
 
 Yeniden yazim istenirse:
 - 2 veya 3 alternatif sun
@@ -140,7 +141,7 @@ ONEMLI — Yetenek sinirlarin:
 - @ikas modunda (MCP araclariyla): Yalnizca MCP araci GERCEKTEN cagirilip basarili sonuc dondugunde islem yapilmis sayilir.
 - Bir MCP araci cagirmadan "guncelledim" veya "uyguladim" DEME. Bu kullaniciyi yaniltir.
 - Kullanici degisiklik uygulamak istediginde:
-  * @local modundaysan: "Bu onerileri uygulamak icin soldaki panelden ilgili urunu secip 'Oneriler' sekmesinden onaylayabilirsiniz, veya @ikas ile tekrar yazarsaniz MCP uzerinden guncelleyebiliriz" de.
+  * @local modundaysan: "Bu onerileri chat uzerinden onaylayip secili urune uygulayabiliriz, istersen once degisiklikleri kalem kalem gosterip onay alayim" de.
   * @ikas modundaysan: updateProduct mutasyonunu kullanicinin onayiyla cagir ve SONUCUNU raporla.
 
 Davranis kurallari:
@@ -165,7 +166,7 @@ Kurallar:
 - Markdown formatında yanıt ver (başlıklar, listeler, kalın metin)
 - ASLA yapmadığın bir işlemi yaptığını iddia etme
 - Sen ürünleri doğrudan değiştiremezsin; yalnızca öneri sunabilirsin
-- Değişiklik uygulamak için kullanıcıyı uygulamadaki Öneriler paneline veya @ikas MCP moduna yönlendir
+- Degisiklik uygulamak icin kullaniciyi chat uzerindeki onay akisiyla yonlendir; once degisiklikleri goster, sonra onay al.
 
 {product_context}
 {score_context}"""
@@ -228,22 +229,29 @@ SEMANTIC_ROUTING_SYSTEM_PROMPT = (
 )
 SEMANTIC_ROUTING_JSON_PATTERN = re.compile(r"\{.*\}", re.DOTALL)
 
-# Patterns that detect when the LLM falsely claims to have performed actions
-# These are checked post-response when no MCP mutation was actually executed
-FALSE_ACTION_CLAIM_PATTERN = re.compile(
+# Patterns that detect when the LLM falsely claims to have performed actions.
+# These are matched against normalized (ASCII-like) text.
+FALSE_ACTION_CLAIM_NORMALIZED_PATTERN = re.compile(
     r"\b(?:"
-    r"uygula(?:n)?d[iı]m?|g[uü]ncelle(?:n)?d[iı]m?|de[gğ]i[sş]tird[iı]m?|kaydett[iı]m?|"
-    r"ekled[iı]m?|yazd[iı]m|d[uü]zenled[iı]m?|"
+    r"uygula(?:n)?d(?:im|i)?|"
+    r"guncelle(?:n)?d(?:im|i)?|"
+    r"degistir(?:di|dim)?|"
+    r"kaydet(?:ti|tim)?|"
+    r"ekle(?:di|dim)?|"
+    r"yaz(?:di|dim)?|"
+    r"duzenle(?:di|dim)?|"
     r"applied|updated|saved|changed|modified"
     r")\b",
     re.IGNORECASE,
 )
-# Patterns for common action confirmation phrases LLMs use
-FALSE_ACTION_CONFIRMATION_PATTERN = re.compile(
+FALSE_ACTION_CONFIRMATION_NORMALIZED_PATTERN = re.compile(
     r"(?:"
-    r"uygulama sonras[iı]|ba[sş]ar[iı]yla (?:uygula|g[uü]ncelle|kayded)|"
-    r"i[yı]ile[sş]tirilmi[sş] skor|yeni seo (?:skoru|durumu)|"
-    r"yap[iı]lan de[gğ]i[sş]iklikler|g[uü]ncellemeler uyguland[iı]|"
+    r"uygulama sonrasi|"
+    r"basariyla (?:uygula|guncelle|kaydet)|"
+    r"iyilestirilmis skor|"
+    r"yeni seo (?:skoru|durumu)|"
+    r"yapilan degisiklikler|"
+    r"guncellemeler uygulandi|"
     r"successfully (?:applied|updated|saved)"
     r")",
     re.IGNORECASE,
@@ -252,9 +260,9 @@ FALSE_ACTION_CONFIRMATION_PATTERN = re.compile(
 FALSE_ACTION_DISCLAIMER_TR = (
     "\n\n---\n"
     "⚠️ **Not:** Yukarıdaki öneriler henüz uygulanmadı. "
-    "Değişiklikleri ikas'a kaydetmek için:\n"
-    "- Soldaki panelden ürünü seçip **Öneriler** sekmesinden onaylayın, veya\n"
-    "- Mesajınızı **@ikas** ile yazarak MCP üzerinden güncelleyin."
+    "Degisiklikleri chat uzerinden secili urunde uygulamak icin:\n"
+    "- `@ikas uygula` yazarak onay akisina girin,\n"
+    "- Sohbetteki **Öneriler** kartlarindan birini onaylayin."
 )
 
 SAVE_SEO_SUGGESTION_TOOL_NAME = "save_seo_suggestion"
@@ -263,7 +271,8 @@ SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION = (
     "Kullanici sohbet sirasinda sunulan SEO degisikliklerini onaylayip "
     "'uygula', 'kaydet' veya 'bunu sectim' dediginde "
     "`save_seo_suggestion` aracini cagir. Bu arac degisiklikleri ikas'a "
-    "aninda uygulamaz; sadece pending suggestion olarak kaydeder."
+    "aninda uygulamaz; sadece pending suggestion olarak kaydeder. "
+    "Uygulama adimini chat uzerindeki secenekli onay akisiyla yap."
 )
 STRUCTURED_SUGGESTION_OPTIONS_INSTRUCTION = (
     "Eger birden fazla secenek uretiyorsan, yanitinin sonuna "
@@ -278,6 +287,51 @@ SAVE_SEO_SUGGESTION_FIELD_MAP = {
     "suggested_description": ("desc_tr", "suggested_description"),
     "suggested_description_en": ("desc_en", "suggested_description_en"),
 }
+SUGGESTION_APPLY_FIELD_CONFIG: dict[str, dict[str, str]] = {
+    "suggested_name": {
+        "label": "Urun Adi",
+        "original_attr": "original_name",
+        "update_key": "name",
+    },
+    "suggested_meta_title": {
+        "label": "Meta Title",
+        "original_attr": "original_meta_title",
+        "update_key": "meta_title",
+    },
+    "suggested_meta_description": {
+        "label": "Meta Description",
+        "original_attr": "original_meta_description",
+        "update_key": "meta_description",
+    },
+    "suggested_description": {
+        "label": "Aciklama (TR)",
+        "original_attr": "original_description",
+        "update_key": "description",
+    },
+    "suggested_description_en": {
+        "label": "Aciklama (EN)",
+        "original_attr": "original_description_en",
+        "update_key": "description_en",
+    },
+}
+CHAT_ACTION_PATTERN = re.compile(r"\[\[CHAT_ACTION:([a-z0-9_-]+)\]\]", re.IGNORECASE)
+APPLY_INTENT_PATTERN = re.compile(
+    r"\b(uygula|uygulansin|onayla|ikas'a uygula|ikas a uygula|mcp ile uygula|kaydet)\b",
+    re.IGNORECASE,
+)
+MANUAL_APPLY_ACTION_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\b(vazgec|vazgeciyorum|iptal)\b", re.IGNORECASE), "single_apply_cancel"),
+    (re.compile(r"\b(sadece meta|meta alan)\b", re.IGNORECASE), "single_apply_meta"),
+    (re.compile(r"\b(sadece icerik|sadece aciklama|icerik alan)\b", re.IGNORECASE), "single_apply_content"),
+    (re.compile(r"\b(hepsini|tumunu|tamamini|tum alanlari)\b", re.IGNORECASE), "single_apply_all"),
+]
+SINGLE_PRODUCT_APPLY_ACTIONS = frozenset({
+    "single_apply_meta",
+    "single_apply_content",
+    "single_apply_meta_content",
+    "single_apply_all",
+    "single_apply_cancel",
+})
 
 
 def _build_save_seo_suggestion_tool() -> dict[str, Any]:
@@ -504,6 +558,33 @@ def _should_request_structured_suggestion_options(user_message: str) -> bool:
     )
 
 
+def _extract_chat_action(text: str) -> str | None:
+    match = CHAT_ACTION_PATTERN.search(text or "")
+    if not match:
+        return None
+    action = (match.group(1) or "").strip().lower()
+    return action or None
+
+
+def _detect_manual_apply_action(normalized_text: str) -> str | None:
+    if not normalized_text:
+        return None
+
+    for pattern, action in MANUAL_APPLY_ACTION_PATTERNS:
+        if pattern.search(normalized_text):
+            return action
+    return None
+
+
+def _compact_preview_text(value: str, *, limit: int = 180) -> str:
+    collapsed = re.sub(r"\s+", " ", (value or "").strip())
+    if not collapsed:
+        return "-"
+    if len(collapsed) <= limit:
+        return collapsed
+    return f"{collapsed[:limit - 3]}..."
+
+
 def _operation_footer_already_present(text: str) -> bool:
     return "ikas mcp operasyon onerisi" in _normalize_matching_text(text)
 
@@ -589,17 +670,19 @@ def _append_false_action_disclaimer(
     if _has_mutation_tool_result(tool_results):
         return response_text
 
+    normalized_response = _normalize_matching_text(response_text)
+
     # Check for false action claims in the response
     has_false_claim = (
-        FALSE_ACTION_CLAIM_PATTERN.search(response_text)
-        or FALSE_ACTION_CONFIRMATION_PATTERN.search(response_text)
+        FALSE_ACTION_CLAIM_NORMALIZED_PATTERN.search(normalized_response)
+        or FALSE_ACTION_CONFIRMATION_NORMALIZED_PATTERN.search(normalized_response)
     )
 
     if not has_false_claim:
         return response_text
 
     # Already has a disclaimer
-    if "henüz uygulanmadı" in response_text or "henuz uygulanmadi" in response_text:
+    if "henuz uygulanmadi" in normalized_response:
         return response_text
 
     return response_text + FALSE_ACTION_DISCLAIMER_TR
@@ -1237,7 +1320,7 @@ class ChatService:
                 "Kullanici urun aciklamasi, meta title veya meta description gibi mevcut alanlari yorumlamani isterse bunu local baglamla yap. "
                 "KRITIK: Bu modda ikas'a dogrudan degisiklik uygulayamazsin. Kullanici sohbet sirasinda sunulan SEO onerilerini onaylarsa "
                 "`save_seo_suggestion` araciyla pending suggestion kaydi olusturabilirsin. "
-                "Uygun oldugunda @ikas ile MCP uzerinden veya uygulamadaki Oneriler paneliyle nasil ilerlenebilecegini oner."
+                "Uygun oldugunda chat uzerinde degisiklikleri once goster, secenekli onay al ve sadece secili urune uygula."
             ),
             False,
         )
@@ -1422,6 +1505,297 @@ class ChatService:
             "suggestion_saved": suggestion_saved,
         }, ensure_ascii=False), suggestion_saved
 
+    @staticmethod
+    def _collect_applicable_suggestion_fields(suggestion: SeoSuggestion) -> dict[str, str]:
+        available_fields: dict[str, str] = {}
+        for field_name in SUGGESTION_APPLY_FIELD_CONFIG:
+            value = getattr(suggestion, field_name, None)
+            if isinstance(value, str):
+                cleaned = value.strip()
+            elif value is None:
+                cleaned = ""
+            else:
+                cleaned = str(value).strip()
+            if cleaned:
+                available_fields[field_name] = cleaned
+        return available_fields
+
+    @staticmethod
+    def _resolve_apply_action_fields(action: str, available_fields: dict[str, str]) -> list[str]:
+        all_fields = [field for field in SUGGESTION_APPLY_FIELD_CONFIG if field in available_fields]
+        meta_fields = [field for field in ("suggested_meta_title", "suggested_meta_description") if field in available_fields]
+        content_fields = [
+            field for field in ("suggested_name", "suggested_description", "suggested_description_en")
+            if field in available_fields
+        ]
+
+        if action == "single_apply_meta":
+            return meta_fields
+        if action == "single_apply_content":
+            return content_fields
+        if action == "single_apply_meta_content":
+            return list(dict.fromkeys([*meta_fields, *content_fields]))
+        if action == "single_apply_all":
+            return all_fields
+        return []
+
+    def _build_single_apply_confirmation_response(
+        self,
+        suggestion: SeoSuggestion,
+        available_fields: dict[str, str],
+    ) -> str:
+        product_label = (self._product.name if self._product else suggestion.product_id).strip()
+        lines = [
+            "**Uygulanacak Degisiklikler (Secili Urun)**",
+            f"- Urun: {product_label}",
+            "",
+        ]
+
+        for field_name in SUGGESTION_APPLY_FIELD_CONFIG:
+            if field_name not in available_fields:
+                continue
+
+            config = SUGGESTION_APPLY_FIELD_CONFIG[field_name]
+            original_value = _compact_preview_text(str(getattr(suggestion, config["original_attr"], "") or ""))
+            suggested_value = _compact_preview_text(available_fields[field_name])
+            lines.extend([
+                f"- **{config['label']}**",
+                f"  - Mevcut: `{original_value}`",
+                f"  - Uygulanacak: `{suggested_value}`",
+            ])
+
+        lines.extend([
+            "",
+            "**Onay Adimi**",
+            "Asagidaki seceneklerden birini sec. Onay almadan ikas'a yazmam.",
+        ])
+
+        meta_fields = [field for field in ("suggested_meta_title", "suggested_meta_description") if field in available_fields]
+        content_fields = [
+            field for field in ("suggested_name", "suggested_description", "suggested_description_en")
+            if field in available_fields
+        ]
+        options: list[dict[str, str]] = []
+        if meta_fields:
+            options.append({
+                "tone": "Meta",
+                "value": "Sadece meta alanlarini (Meta Title + Meta Description) uygula.",
+                "action": "single_apply_meta",
+            })
+        if content_fields:
+            options.append({
+                "tone": "Icerik",
+                "value": "Sadece icerik alanlarini (ad/aciklama/ceviri) uygula.",
+                "action": "single_apply_content",
+            })
+        if meta_fields and content_fields:
+            options.append({
+                "tone": "Dengeli",
+                "value": "Meta + icerik alanlarini birlikte uygula.",
+                "action": "single_apply_meta_content",
+            })
+        options.append({
+            "tone": "Tum Alanlar",
+            "value": "Bu urunde bekleyen tum onerileri uygula.",
+            "action": "single_apply_all",
+        })
+        options.append({
+            "tone": "Iptal",
+            "value": "Uygulamayi simdilik iptal et.",
+            "action": "single_apply_cancel",
+        })
+
+        lines.extend([
+            "```json",
+            json.dumps(options, ensure_ascii=False),
+            "```",
+        ])
+        return "\n".join(lines)
+
+    async def _apply_pending_suggestion_action(
+        self,
+        suggestion: SeoSuggestion,
+        action: str,
+    ) -> tuple[str, list[dict[str, Any]]]:
+        from data import db
+
+        available_fields = self._collect_applicable_suggestion_fields(suggestion)
+        if not available_fields:
+            return (
+                "Secili urun icin uygulanabilir pending suggestion alani bulunamadi. "
+                "Once yeni bir SEO onerisi olusturalim.",
+                [],
+            )
+
+        if action == "single_apply_cancel":
+            return "Uygulama adimi iptal edildi. Hazir oldugunda tekrar onay verebilirsin.", []
+
+        selected_fields = self._resolve_apply_action_fields(action, available_fields)
+        if not selected_fields:
+            return (
+                "Bu secenek icin uygun alan bulunamadi. Lutfen asagidaki guncel seceneklerden birini sec.\n\n"
+                + self._build_single_apply_confirmation_response(suggestion, available_fields),
+                [],
+            )
+
+        updates: dict[str, Any] = {}
+        description_translations: dict[str, str] = {}
+        selected_labels: list[str] = []
+
+        for field_name in selected_fields:
+            value = available_fields.get(field_name, "")
+            if not value:
+                continue
+
+            field_config = SUGGESTION_APPLY_FIELD_CONFIG[field_name]
+            selected_labels.append(field_config["label"])
+            update_key = field_config["update_key"]
+
+            if update_key == "name":
+                updates["name"] = value
+            elif update_key == "meta_title":
+                updates["meta_title"] = value
+            elif update_key == "meta_description":
+                updates["meta_description"] = value
+            elif update_key == "description":
+                updates["description"] = value
+                description_translations["tr"] = value
+            elif update_key == "description_en":
+                description_translations["en"] = value
+
+        if description_translations:
+            updates["description_translations"] = description_translations
+
+        if not updates:
+            return (
+                "Secilen alanda gecerli bir icerik bulunamadi. "
+                "Lutfen once guncel bir oneriyi kaydedelim.",
+                [],
+            )
+
+        ikas_client = IkasClient()
+        try:
+            await ikas_client.update_product(suggestion.product_id, updates)
+            await db.log_operation("chat_single_apply", suggestion.product_id, updates, True)
+        except Exception as exc:
+            await db.log_operation(
+                "chat_single_apply",
+                suggestion.product_id,
+                {"error": str(exc), "updates": updates},
+                False,
+            )
+            logger.error("Chat single-product apply failed: %s", exc)
+            return (
+                "ikas uygulama adimi basarisiz oldu. Hata: "
+                f"{exc}\n\nLutfen secenekleri gozden gecirip tekrar dene.\n\n"
+                + self._build_single_apply_confirmation_response(suggestion, available_fields),
+                [],
+            )
+        finally:
+            with contextlib.suppress(Exception):
+                await ikas_client.close()
+
+        for field_name in selected_fields:
+            if field_name == "suggested_name":
+                setattr(suggestion, field_name, None)
+            else:
+                setattr(suggestion, field_name, "")
+
+        remaining_fields = self._collect_applicable_suggestion_fields(suggestion)
+        suggestion.status = "pending" if remaining_fields else "applied"
+        await db.save_or_update_pending_suggestion(suggestion)
+
+        tool_result = {
+            "tool": "chat_single_product_apply",
+            "arguments": {
+                "action": action,
+                "fields": selected_fields,
+            },
+            "result": json.dumps(
+                {"ok": True, "updates": updates, "remaining_fields": list(remaining_fields.keys())},
+                ensure_ascii=False,
+            ),
+        }
+
+        response_lines = [
+            "✅ Degisiklikler secili urun icin ikas'a gonderildi.",
+            f"- Uygulanan alanlar: {', '.join(selected_labels)}",
+        ]
+        if self._config.dry_run:
+            response_lines.append("- Not: DRY_RUN acik. Bu adim simule edildi, ikas'a yazilmadi.")
+
+        if remaining_fields:
+            response_lines.extend([
+                "",
+                f"Kalan taslak alanlar: {', '.join(SUGGESTION_APPLY_FIELD_CONFIG[field]['label'] for field in remaining_fields)}",
+                "Kalanlari da uygulamak istersen asagidaki seceneklerden birini sec.",
+                "",
+                self._build_single_apply_confirmation_response(suggestion, remaining_fields),
+            ])
+        else:
+            response_lines.append("- Bu urun icin bekleyen taslak kalmadi.")
+
+        return "\n".join(response_lines), [tool_result]
+
+    async def _maybe_handle_single_product_apply_flow(
+        self,
+        cleaned_message: str,
+        chunk_handler: Callable[[str], Awaitable[None]] | None = None,
+    ) -> ChatResponse | None:
+        from data import db
+
+        if not self._product:
+            return None
+
+        pending_suggestion = await db.get_latest_suggestion_by_product(
+            self._product.id,
+            statuses=["pending"],
+        )
+        if not pending_suggestion:
+            return None
+
+        available_fields = self._collect_applicable_suggestion_fields(pending_suggestion)
+        if not available_fields:
+            return None
+
+        normalized_text = _normalize_matching_text(cleaned_message)
+        action = _extract_chat_action(cleaned_message) or _detect_manual_apply_action(normalized_text)
+        has_apply_intent = bool(APPLY_INTENT_PATTERN.search(normalized_text))
+
+        if action and action not in SINGLE_PRODUCT_APPLY_ACTIONS:
+            return None
+        if not action and not has_apply_intent:
+            return None
+
+        if action:
+            response_text, tool_results = await self._apply_pending_suggestion_action(
+                pending_suggestion,
+                action,
+            )
+        else:
+            response_text = self._build_single_apply_confirmation_response(
+                pending_suggestion,
+                available_fields,
+            )
+            tool_results = []
+
+        self._history.append(ChatMessage(role="assistant", content=response_text))
+        self._schedule_history_summarization()
+
+        response = ChatResponse(
+            content=response_text,
+            thinking="",
+            tool_results=tool_results,
+            error=False,
+            meta={
+                "model": "ikas-chat-flow",
+                "finish_reason": "single_product_apply_flow",
+            },
+        )
+        if chunk_handler and response.content:
+            await chunk_handler(response.content)
+        return response
+
     async def _execute_chat_tool(
         self,
         tool_name: str,
@@ -1583,6 +1957,13 @@ class ChatService:
         self._history.append(user_msg)
         if len(self._history) > MAX_HISTORY_MESSAGES:
             self._history = self._history[-MAX_HISTORY_MESSAGES:]
+
+        single_apply_response = await self._maybe_handle_single_product_apply_flow(
+            cleaned_message,
+            chunk_handler=chunk_handler,
+        )
+        if single_apply_response is not None:
+            return single_apply_response
 
         # Optionally prefetch guided MCP data for live-data questions
         guided_context = ""

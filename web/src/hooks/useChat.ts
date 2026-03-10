@@ -38,12 +38,23 @@ const BASE_RECONNECT_DELAY_MS = 1000;
 
 type BufferedChunk = { type: 'content' | 'thinking'; text: string };
 
+function estimateChunkTokens(text: string): number {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return 0;
+  }
+
+  // Quick approximation for live UX: ~1 token per 4 chars.
+  return Math.max(1, Math.round(normalized.length / 4));
+}
+
 export function useChat(productContext?: ChatProductContext) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [pendingSince, setPendingSince] = useState<number | null>(null);
   const [liveChunkCount, setLiveChunkCount] = useState(0);
+  const [liveTokenEstimate, setLiveTokenEstimate] = useState(0);
   const [autoIntroProductId, setAutoIntroProductId] = useState<string | null>(null);
   const [mcpState, setMcpState] = useState<MCPState>({
     hasToken: false,
@@ -107,6 +118,7 @@ export function useChat(productContext?: ChatProductContext) {
     pendingSinceRef.current = startedAt;
     setPendingSince(startedAt);
     setLiveChunkCount(0);
+    setLiveTokenEstimate(0);
     setIsLoading(true);
   }, []);
 
@@ -182,12 +194,14 @@ export function useChat(productContext?: ChatProductContext) {
   const appendAssistantChunk = useCallback((chunk: string) => {
     if (!chunk) return;
     chunkBufferRef.current.push({ type: 'content', text: chunk });
+    setLiveTokenEstimate((prev) => prev + estimateChunkTokens(chunk));
     scheduleFlush();
   }, [scheduleFlush]);
 
   const appendThinkingChunk = useCallback((chunk: string) => {
     if (!chunk) return;
     chunkBufferRef.current.push({ type: 'thinking', text: chunk });
+    setLiveTokenEstimate((prev) => prev + estimateChunkTokens(chunk));
     scheduleFlush();
   }, [scheduleFlush]);
 
@@ -512,6 +526,7 @@ export function useChat(productContext?: ChatProductContext) {
     isAutoIntroActive: autoIntroProductId === productContext?.id,
     pendingSince,
     liveChunkCount,
+    liveTokenEstimate,
     mcpState,
     sendMessage,
     cancelMessage,

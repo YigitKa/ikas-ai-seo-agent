@@ -99,6 +99,7 @@ export default function ChatPanel({
     isAutoIntroActive,
     pendingSince,
     liveChunkCount,
+    liveTokenEstimate,
     mcpState,
     sendMessage,
     cancelMessage,
@@ -176,6 +177,11 @@ export default function ChatPanel({
     typeof latestAssistant?.meta?.model === 'string'
       ? String(latestAssistant.meta.model)
       : configuredAssistantLabel;
+  const liveRateBase = liveTokenEstimate > 0 ? liveTokenEstimate : liveChunkCount;
+  const liveTokensPerSecond =
+    liveElapsedSeconds > 0 && liveRateBase > 0 ? liveRateBase / liveElapsedSeconds : 0;
+  const formattedLiveTokensPerSecond =
+    liveTokensPerSecond >= 20 ? liveTokensPerSecond.toFixed(0) : liveTokensPerSecond.toFixed(1);
 
   const starterPrompts: StarterPrompt[] = [
     {
@@ -243,6 +249,10 @@ export default function ChatPanel({
   const handleSend = () => submitPrompt(input);
   const handleStarterPrompt = (prompt: StarterPrompt) => submitPrompt(prompt.template);
   const handleApplySuggestionOption = (option: SuggestionOption, index: number) => {
+    if (option.action) {
+      sendMessage(`[[CHAT_ACTION:${option.action}]]`, { hidden: true });
+      return;
+    }
     sendMessage(
       `${index + 1}. secenegi uygula.\nTon: ${option.tone}\nSecilen icerik: ${option.value}`,
       { hidden: true },
@@ -315,10 +325,10 @@ export default function ChatPanel({
           {isLoading && (
             <StatusPill label="Sure" value={formatDuration(liveElapsedSeconds)} tone="warn" />
           )}
-          {isLoading && liveElapsedSeconds > 0 && (
+          {isLoading && liveElapsedSeconds > 0 && liveRateBase > 0 && (
             <StatusPill
               label="Canli Hiz"
-              value={`${Math.round(liveChunkCount / liveElapsedSeconds)} tok/sn`}
+              value={`${formattedLiveTokensPerSecond} tok/sn`}
               tone="success"
             />
           )}

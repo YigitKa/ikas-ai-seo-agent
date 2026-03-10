@@ -122,6 +122,31 @@ body {
 .typing-dot:nth-child(2) { animation: typing-bounce 1.4s infinite 0.2s; }
 .typing-dot:nth-child(3) { animation: typing-bounce 1.4s infinite 0.4s; }
 
+/* â”€â”€ Thinking stream animation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+@keyframes thinking-word-fade {
+  0% {
+    opacity: 0;
+    filter: blur(2px);
+    transform: translateY(3px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+.thinking-stream {
+  white-space: pre-wrap;
+}
+
+.thinking-word {
+  display: inline-block;
+  opacity: 0;
+  animation: thinking-word-fade 260ms ease-out forwards;
+  animation-delay: var(--word-delay, 0s);
+}
+
 /* ── HTML content styling inside diff viewer ─────────────────────────────── */
 .html-content h1, .html-content h2, .html-content h3, .html-content h4 {
   font-weight: 600;

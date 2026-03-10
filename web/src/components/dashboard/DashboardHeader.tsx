@@ -35,20 +35,16 @@ interface DashboardHeaderProps {
   totalCount?: number;
   syncPending: boolean;
   resetPending: boolean;
-  applyPending: boolean;
   onSync: () => void;
   onReset: () => void;
-  onApply: () => void;
 }
 
 export default function DashboardHeader({
   totalCount,
   syncPending,
   resetPending,
-  applyPending,
   onSync,
   onReset,
-  onApply,
 }: DashboardHeaderProps) {
   return (
     <header
@@ -101,17 +97,6 @@ export default function DashboardHeader({
           </svg>
         </ActionButton>
 
-        <ActionButton
-          label="Uygula"
-          pendingLabel="Uygulaniyor..."
-          pending={applyPending}
-          gradient="linear-gradient(135deg, #10b981, #06b6d4)"
-          onClick={onApply}
-        >
-          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
-        </ActionButton>
       </div>
 
       <div className="flex items-center gap-3">

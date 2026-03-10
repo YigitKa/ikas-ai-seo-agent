@@ -3,9 +3,33 @@
 export interface SuggestionOption {
   tone: string;
   value: string;
+  action?: string;
 }
 
 // ── Parsing ───────────────────────────────────────────────────────────────────
+
+function normalizeSuggestionValue(value: string): string {
+  let normalized = value.trim().replace(/\r\n/g, '\n').replace(/\\n/g, '\n');
+
+  const hasWrappingDoubleQuotes =
+    normalized.length > 1 && normalized.startsWith('"') && normalized.endsWith('"');
+  const hasWrappingSingleQuotes =
+    normalized.length > 1 && normalized.startsWith("'") && normalized.endsWith("'");
+
+  if (hasWrappingDoubleQuotes || hasWrappingSingleQuotes) {
+    normalized = normalized.slice(1, -1).trim();
+  }
+
+  return normalized;
+}
+
+function parseStructuredOptions(value: string): SuggestionOption[] {
+  try {
+    return parseSuggestionOptions(JSON.parse(value));
+  } catch {
+    return [];
+  }
+}
 
 export function parseSuggestionOptions(rawValue: unknown): SuggestionOption[] {
   if (!Array.isArray(rawValue)) {
@@ -17,34 +41,46 @@ export function parseSuggestionOptions(rawValue: unknown): SuggestionOption[] {
       return items;
     }
 
-    const candidate = entry as { tone?: unknown; value?: unknown };
+    const candidate = entry as { tone?: unknown; value?: unknown; action?: unknown };
     const tone = typeof candidate.tone === 'string' ? candidate.tone.trim() : '';
-    const value = typeof candidate.value === 'string' ? candidate.value.trim() : '';
+    const value = typeof candidate.value === 'string' ? normalizeSuggestionValue(candidate.value) : '';
+    const action = typeof candidate.action === 'string' ? candidate.action.trim() : '';
     if (!tone || !value) {
       return items;
     }
 
-    items.push({ tone, value });
+    items.push(action ? { tone, value, action } : { tone, value });
     return items;
   }, []);
 }
 
 export function extractSuggestionOptions(content: string) {
-  const matcher = /```json\s*([\s\S]*?)\s*```/gi;
+  const matcher = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
   let matchedRange: { start: number; end: number } | null = null;
   let parsedOptions: SuggestionOption[] = [];
   let match: RegExpExecArray | null;
 
   while ((match = matcher.exec(content)) !== null) {
-    try {
-      const options = parseSuggestionOptions(JSON.parse(match[1]));
-      if (!options.length) {
-        continue;
-      }
-      matchedRange = { start: match.index, end: match.index + match[0].length };
-      parsedOptions = options;
-    } catch {
+    const options = parseStructuredOptions(match[1]);
+    if (!options.length) {
       continue;
+    }
+    matchedRange = { start: match.index, end: match.index + match[0].length };
+    parsedOptions = options;
+  }
+
+  if (!parsedOptions.length) {
+    const trailingArrayMatch = content.match(/(\[[\s\S]*\])\s*$/);
+    if (trailingArrayMatch?.[1]) {
+      const options = parseStructuredOptions(trailingArrayMatch[1]);
+      if (options.length) {
+        const rawArray = trailingArrayMatch[1];
+        const start = content.lastIndexOf(rawArray);
+        if (start !== -1) {
+          matchedRange = { start, end: start + rawArray.length };
+        }
+        parsedOptions = options;
+      }
     }
   }
 
