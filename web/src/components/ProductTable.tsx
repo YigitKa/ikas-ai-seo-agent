@@ -46,7 +46,10 @@ function scoreBadge(score: number | undefined | null) {
 export default function ProductTable({ items, selectedId, onSelect }: Props) {
   if (items.length === 0) {
     return (
-      <div className="flex h-40 items-center justify-center px-4 text-center text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
+      <div
+        className="flex h-40 items-center justify-center px-4 text-center text-[13px]"
+        style={{ color: 'var(--color-text-muted)' }}
+      >
         Urun bulunamadi. ikas'tan urunleri cekmek icin "Urunleri Cek" butonuna basin.
       </div>
     );
@@ -62,23 +65,16 @@ export default function ProductTable({ items, selectedId, onSelect }: Props) {
           <button
             key={product.id}
             onClick={() => onSelect(product.id)}
-            className="flex w-full items-center gap-3 px-3 py-2 text-left transition-all"
+            className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
+              isSelected ? '' : 'hover:bg-[var(--color-bg-hover)]'
+            }`}
             style={{
               background: isSelected ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
               borderLeft: isSelected
                 ? '2px solid var(--color-primary)'
                 : '2px solid transparent',
             }}
-            onMouseEnter={(e) => {
-              if (!isSelected)
-                e.currentTarget.style.background = 'var(--color-bg-hover)';
-            }}
-            onMouseLeave={(e) => {
-              if (!isSelected)
-                e.currentTarget.style.background = 'transparent';
-            }}
           >
-            {/* Thumbnail */}
             {thumb ? (
               <img
                 src={thumb}
@@ -92,13 +88,19 @@ export default function ProductTable({ items, selectedId, onSelect }: Props) {
                 className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg"
                 style={{ background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)' }}
               >
-                <svg className="h-4 w-4" style={{ color: 'var(--color-text-muted)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <svg
+                  className="h-4 w-4"
+                  style={{ color: 'var(--color-text-muted)' }}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
               </div>
             )}
 
-            {/* Name & Category */}
             <div className="min-w-0 flex-1">
               <p
                 className="truncate text-[13px] font-medium leading-tight"
@@ -113,7 +115,6 @@ export default function ProductTable({ items, selectedId, onSelect }: Props) {
               )}
             </div>
 
-            {/* Score */}
             {scoreBadge(score?.total_score)}
           </button>
         );
