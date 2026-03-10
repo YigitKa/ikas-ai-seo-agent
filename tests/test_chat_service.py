@@ -10,6 +10,7 @@ from core.chat_service import (
     _StreamingVisibleTextFilter,
     _LMStudioNativeUnavailable,
     _append_false_action_disclaimer,
+    _append_operation_suggestion,
     _build_completion_meta,
     _build_product_context,
     _has_mutation_tool_result,
@@ -455,7 +456,7 @@ async def test_send_message_local_passes_only_save_suggestion_tool_even_if_mcp_r
 
     assert response.error is False
     assert "ikas MCP Operasyon Onerisi" in response.content
-    assert "`updateProduct`" in response.content
+    assert "`save_seo_suggestion`" in response.content
     tools = captured["tools"]
     assert isinstance(tools, list)
     assert [tool["function"]["name"] for tool in tools] == [SAVE_SEO_SUGGESTION_TOOL_NAME]
@@ -506,8 +507,8 @@ async def test_send_message_appends_seo_operation_suggestion_for_existing_produc
 
     assert response.error is False
     assert "ikas MCP Operasyon Onerisi" in response.content
-    assert "`updateProduct`" in response.content
-    assert "mutation" in response.content.lower()
+    assert "`save_seo_suggestion`" in response.content
+    assert "pending" in response.content.lower()
 
 
 @pytest.mark.anyio
@@ -530,6 +531,32 @@ async def test_send_message_timeout_returns_clear_error_and_drops_failed_user():
 
 
 # ── False action disclaimer tests ────────────────────────────────────────
+
+
+
+
+def test_append_operation_suggestion_local_seo_uses_save_tool():
+    content = _append_operation_suggestion(
+        "Mevcut aciklamayi iyilestirebiliriz.",
+        user_message="@local seo aciklamasini iyilestir",
+        product=_make_product(name="Demo Product"),
+        agent_type="seo",
+    )
+
+    assert "`save_seo_suggestion`" in content
+    assert "pending" in content.lower()
+
+
+def test_append_operation_suggestion_operator_apply_uses_update_product():
+    content = _append_operation_suggestion(
+        "Onay verdiysen bir sonraki adima gecebilirim.",
+        user_message="@ikas bunu uygula",
+        product=_make_product(name="Demo Product"),
+        agent_type="operator",
+    )
+
+    assert "`updateProduct`" in content
+    assert "mutation" in content.lower()
 
 
 def test_false_action_disclaimer_appended_when_llm_claims_update():
