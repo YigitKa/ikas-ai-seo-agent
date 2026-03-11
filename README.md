@@ -4,8 +4,12 @@
 
 `2026-03-10` itibariyla proje yalnizca web uygulamasi olarak devam eder. Legacy masaustu UI repo'dan kaldirilmistir.
 
-## Son Guncellemeler (2026-03-10)
+## Son Guncellemeler (2026-03-11)
 
+- **Agentic tool mimarisi:** AI artik tek seferlik istek/cevap yerine iteratif tool-calling agent olarak calisir. Urun SEO'sunu otomatik skorlar, zayif alanlari tespit eder, tek tek yeniden yazar, dogrular ve kaydeder.
+- Yeni modüller: `core/agent_tools.py` (AgentTool, AgentToolkit, built-in tool'lar), `core/agent_orchestrator.py` (generic agent loop)
+- SSE streaming endpoint: `POST /api/suggestions/generate/{id}/stream` — agent adimlari gercek zamanli izlenebilir
+- Tool-calling tum aktif provider'larda desteklenir (Ollama, LM Studio, OpenAI, Anthropic, Gemini, OpenRouter, custom). Yalnizca `none` provider tek-seferlik (fallback) modda kalir.
 - Chat akisi `seo`, `operator` ve `general` ajanlari arasinda niyet tabanli yonlendirme ile calisir; operasyon rehberi ayri modulde (`core/chat_operation_guidance.py`) tutulur.
 - Sohbet guvenilirligi guclendirildi: modelin gercekte yapilmayan degisiklikleri yapildi gibi raporlamasini engelleyen ek dogrulama kontrolleri bulunur.
 - GEO denetimi icin tam website tarama endpoint'i eklendi: `POST /api/seo/geo-audit`.
@@ -17,6 +21,7 @@
 - FastAPI backend + WebSocket chat (`api/`)
 - SQLite tabanli yerel cache, skor ve suggestion kaydi (`data/`)
 - ikas urun senkronizasyonu ve tekil urun fetch destegi
+- **Agentic SEO optimizasyonu**: AI otonom olarak skorlar, zayif alanlari belirler, iteratif yeniden yazar, dogrular ve kaydeder (tool-calling ile)
 - Urun filtreleri: `all`, `low_score`, `missing_english`, `pending`, `approved`
 - SEO score breakdown: title, description, EN description, meta, keyword, content quality, technical SEO, readability, AI citability (GEO)
 - GEO (Generative Engine Optimization): AI citability skorlama ve `llms.txt` uretimi
@@ -52,11 +57,13 @@
 +---+-----------+-----------+---+
     |           |           |
     v           v           v
-  ikas API    SEO        AI / Chat
+  ikas API    SEO        AI / Chat / Agent
   GraphQL     Rules      Providers + MCP
-    |
-    v
- SQLite cache, scores, suggestions, logs
+    |                      |
+    v                      v
+ SQLite cache          AgentOrchestrator
+ scores, suggestions   + AgentToolkit
+ logs                  (iteratif tool-calling)
 ```
 
 Production modunda FastAPI, build edilmis SPA'yi `web/dist` altindan servis eder.
@@ -263,7 +270,8 @@ TTY ortaminda zorunlu alanlar eksikse uygulama bunlari terminalden isteyebilir. 
 
 | Method | Path | Aciklama |
 | --- | --- | --- |
-| `POST` | `/api/suggestions/generate/{product_id}` | Tam rewrite suggestion uretir |
+| `POST` | `/api/suggestions/generate/{product_id}` | Tam rewrite suggestion uretir (agentic mod) |
+| `POST` | `/api/suggestions/generate/{product_id}/stream` | SSE streaming ile agent adimlarini gercek zamanli izler |
 | `POST` | `/api/suggestions/generate-field/{product_id}` | Tek alan rewrite veya EN ceviri uretir |
 | `GET` | `/api/suggestions/{product_id}` | Urunun suggestion gecmisi |
 | `PATCH` | `/api/suggestions/{product_id}/approve` | Son pending suggestion'i onaylar |
@@ -337,6 +345,8 @@ Aktif prompt dosyalari:
 - `description_rewrite.user.txt`
 - `translation_en.system.txt`
 - `translation_en.user.txt`
+- `geo_rewrite.system.txt`
+- `geo_rewrite.user.txt`
 
 Promptlar Settings ekranindan duzenlenebilir. Gecerli degiskenler:
 
@@ -346,6 +356,40 @@ Promptlar Settings ekranindan duzenlenebilir. Gecerli degiskenler:
 - `{{keywords}}`
 
 Translation prompt'larinda `{{keywords}}` yoktur; yalnizca ilgili ceviri degiskenleri kullanilir.
+
+## Agentic Tool Mimarisi
+
+AI rewrite pipeline artik iteratif, tool-calling tabanli bir agent olarak calisir. Provider tool calling destekliyorsa (Ollama, LM Studio, OpenAI, Anthropic, Gemini, OpenRouter, custom) otomatik olarak agentic moda gecer. `none` provider tek-seferlik (fallback) modda kalir.
+
+### Is akisi
+
+1. `ProductManager.rewrite_product()` provider'in tool-calling destegini kontrol eder
+2. Agentic mod: `AgentOrchestrator` + `AgentToolkit` olusturulur
+3. Agent otonom olarak:
+   - `seo_score_product` ile urunu skorlar
+   - En dusuk alandan baslayarak `rewrite_field` ile optimize eder
+   - `validate_rewrite` ile iyilesmeyi dogrular
+   - Skor iyileşmediyse farkli strateji dener (max 2 retry/alan)
+   - `save_suggestion` ile oneriyi kaydeder
+4. Maks 8 iterasyon guvenligi vardir
+5. SSE streaming: `POST /api/suggestions/generate/{id}/stream` ile agent adimlari gercek zamanli izlenebilir
+
+### Built-in tool'lar
+
+| Tool | Aciklama |
+| --- | --- |
+| `seo_score_product` | Urunu skorla, issues/suggestions JSON dondur |
+| `get_product_details` | Urun bilgilerini getir |
+| `search_products` | Urunleri filtrele (dusuk skorlular vb.) |
+| `validate_rewrite` | Yeni degerle skoru hesapla, iyilesme goster |
+| `save_suggestion` | Oneriyi DB'ye kaydet |
+| `get_seo_guidelines` | SEO rubrik kurallarini dondur |
+
+### Toolkit fabrikalar
+
+- `create_seo_rewrite_toolkit()` — Rewrite pipeline (5 tool)
+- `create_chat_toolkit()` — Chat (6 tool, MCP tool'lari dinamik eklenir)
+- `create_batch_toolkit()` — Toplu operasyonlar (5 tool)
 
 ## MCP ve AI Chat
 
@@ -401,6 +445,8 @@ ikas-ai-seo-agent/
 |-- config/
 |   `-- settings.py
 |-- core/
+|   |-- agent_orchestrator.py  # Generic agent loop (run + stream)
+|   |-- agent_tools.py         # AgentTool, AgentToolkit, built-in tool'lar, toolkit fabrikalar
 |   |-- ai_client.py
 |   |-- chat_service.py
 |   |-- claude_client.py       # legacy, geriye donuk uyumluluk
@@ -442,7 +488,9 @@ ikas-ai-seo-agent/
 |   |-- test_seo_analyzer.py
 |   |-- test_settings.py
 |   |-- test_settings_service.py
-|   `-- test_suggestion_service.py
+|   |-- test_suggestion_service.py
+|   |-- test_agent_tools.py
+|   `-- test_agent_orchestrator.py
 |-- web/
 |   |-- package.json
 |   |-- vite.config.ts
