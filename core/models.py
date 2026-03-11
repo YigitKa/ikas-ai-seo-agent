@@ -116,6 +116,7 @@ class ChatResponse(BaseModel):
     error: bool = False
     meta: dict[str, Any] = Field(default_factory=dict)
     suggestion_saved: dict[str, Any] | None = None
+    pending_suggestion: SeoSuggestion | None = None
 
 
 class AppConfig(BaseModel):

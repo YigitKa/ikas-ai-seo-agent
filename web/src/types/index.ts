@@ -194,4 +194,5 @@ export interface ChatWsMessage {
   product_id?: string;
   product_name?: string;
   suggestion_saved?: SuggestionSavedInfo;
+  pending_suggestion?: SeoSuggestion | null;
 }

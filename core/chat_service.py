@@ -65,7 +65,7 @@ KRITIK DÜRÜSTLÜK KURALLARI (ASLA IHLAL ETME):
 - ASLA yapmedigin bir islemi yaptigini iddia etme
 - ASLA "guncelledim", "uyguladim", "degistirdim", "kaydettim" gibi ifadeler kullanma
 - Sen urunleri DOGRUDAN degistiremezsin. Sen yalnizca oneri ve analiz sunabilirsin
-- Kullanici sohbet sirasinda sunulan SEO onerilerini onaylayip "uygula", "kaydet", "bunu sectim" dediginde uygun alanlarla `save_seo_suggestion` aracini cagir. Bu kayit ikas'a aninda uygulama degildir
+- Kullanici sohbet sirasinda sunulan SEO onerilerini onaylayip "uygula", "kaydet", "bunu sectim" dediginde uygun alanlarla `save_seo_suggestion` aracini cagir. Bu adim ikas'a aninda uygulama degildir; yalnizca chat oturumunda bekleyen taslak olusturur
 - Bir MCP araci GERCEKTEN cagirip basarili sonuc aldiysan, yalnizca o zaman sonucu raporla
 - Emin olmadigin bilgiyi uydurma; bilmiyorsan "bilmiyorum" de
 
@@ -146,7 +146,7 @@ ONEMLI — Yetenek sinirlarin:
 - Bir MCP araci cagirmadan "guncelledim" veya "uyguladim" DEME. Bu kullaniciyi yaniltir.
 - Kullanici degisiklik uygulamak istediginde:
   * @local modundaysan: "Bu onerileri chat uzerinden onaylayip secili urune uygulayabiliriz, istersen once degisiklikleri kalem kalem gosterip onay alayim" de.
-  * @ikas modundaysan: Eger secili urun icin pending suggestion varsa once chat icinde alan bazli onay secenekleri sun; pending suggestion yoksa `save_seo_suggestion` ile taslagi kaydet, sonra onay seceneklerini sun. Onaydan sonra updateProduct veya ikas uygulama adimini cagir ve SONUCUNU raporla.
+  * @ikas modundaysan: Eger secili urun icin bu chat oturumunda bekleyen taslak varsa once chat icinde alan bazli onay secenekleri sun; taslak yoksa `save_seo_suggestion` ile olustur, sonra onay seceneklerini sun. Onaydan sonra updateProduct veya ikas uygulama adimini cagir ve SONUCUNU raporla.
 
 Davranis kurallari:
 - Bu chat ekraninda varsayilan tavsiyeleri yalnizca mevcut SEO metrikleri ve secili urunun eldeki alanlariyla sinirla.
@@ -275,7 +275,7 @@ SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION = (
     "Kullanici sohbet sirasinda sunulan SEO degisikliklerini onaylayip "
     "'uygula', 'kaydet' veya 'bunu sectim' dediginde "
     "`save_seo_suggestion` aracini cagir. Bu arac degisiklikleri ikas'a "
-    "aninda uygulamaz; sadece pending suggestion olarak kaydeder. "
+    "aninda uygulamaz; sadece bu chat oturumunda bekleyen taslak olarak tutar. "
     "Uygulama adimini chat uzerindeki secenekli onay akisiyla yap."
 )
 APPLY_INTENT_EXTRACTION_SYSTEM_PROMPT = (
@@ -330,7 +330,19 @@ SUGGESTION_APPLY_FIELD_CONFIG: dict[str, dict[str, str]] = {
 }
 CHAT_ACTION_PATTERN = re.compile(r"\[\[CHAT_ACTION:([a-z0-9_-]+)\]\]", re.IGNORECASE)
 APPLY_INTENT_PATTERN = re.compile(
-    r"\b(uygula|uygulansin|onayla|ikas'a uygula|ikas a uygula|mcp ile uygula|kaydet)\b",
+    r"\b(uygula|uygulansin|onayla|ikas'a uygula|ikas a uygula|mcp ile uygula)\b",
+    re.IGNORECASE,
+)
+SAVE_INTENT_PATTERN = re.compile(
+    r"\b(kaydet|taslak olarak kaydet|pending olarak kaydet|listeye kaydet)\b",
+    re.IGNORECASE,
+)
+NON_FINAL_SUGGESTION_VALUE_PATTERN = re.compile(
+    r"\b("
+    r"gerekli|ekle|eklenmeli|ekleyin|yeniden yaz(?:im)?|"
+    r"civari|karakter|ozet|özet|anahtar kelime odakli|"
+    r"guncelle|duzelt|iyilestir|gelistir|geliştir"
+    r")\b",
     re.IGNORECASE,
 )
 MANUAL_APPLY_ACTION_PATTERNS: list[tuple[re.Pattern[str], str]] = [
@@ -593,6 +605,11 @@ def _message_has_apply_intent(text: str) -> bool:
     return bool(normalized_text and APPLY_INTENT_PATTERN.search(normalized_text))
 
 
+def _message_has_save_intent(text: str) -> bool:
+    normalized_text = _normalize_matching_text(text)
+    return bool(normalized_text and SAVE_INTENT_PATTERN.search(normalized_text))
+
+
 def _detect_manual_apply_action(normalized_text: str) -> str | None:
     if not normalized_text:
         return None
@@ -601,6 +618,121 @@ def _detect_manual_apply_action(normalized_text: str) -> str | None:
         if pattern.search(normalized_text):
             return action
     return None
+
+
+def _looks_like_final_suggestion_value(value: str) -> bool:
+    cleaned = re.sub(r"\s+", " ", (value or "").strip(" `\"'"))
+    if len(cleaned) < 4:
+        return False
+    if NON_FINAL_SUGGESTION_VALUE_PATTERN.search(cleaned):
+        return False
+    return True
+
+
+def _decode_json_string_fragment(value: str) -> str:
+    candidate = (value or "").strip()
+    if not candidate:
+        return ""
+    try:
+        return json.loads(f'"{candidate}"')
+    except Exception:
+        return candidate.replace('\\"', '"').replace("\\n", "\n")
+
+
+def _detect_suggestion_field_heading(line: str) -> str | None:
+    normalized = _normalize_matching_text(re.sub(r"^\d+\.\s*", "", line or "").strip())
+    if not normalized:
+        return None
+    if "meta title" in normalized:
+        return "suggested_meta_title"
+    if "meta description" in normalized:
+        return "suggested_meta_description"
+    if "ingilizce aciklama" in normalized or "english description" in normalized or "aciklama (en" in normalized:
+        return "suggested_description_en"
+    if "urun adi" in normalized or "urun adı" in normalized or normalized.startswith("baslik"):
+        return "suggested_name"
+    if "aciklama" in normalized and "meta" not in normalized:
+        return "suggested_description"
+    return None
+
+
+def _extract_suggestion_fields_from_text(content: str) -> dict[str, str]:
+    extracted: dict[str, str] = {}
+    if not content.strip():
+        return extracted
+
+    json_field_patterns = {
+        "suggested_name": [
+            r'"suggested_name"\s*:\s*"((?:[^"\\]|\\.)*)"',
+            r'"product_name"\s*:\s*"((?:[^"\\]|\\.)*)"',
+        ],
+        "suggested_meta_title": [
+            r'"suggested_meta_title"\s*:\s*"((?:[^"\\]|\\.)*)"',
+            r'"meta_title"\s*:\s*"((?:[^"\\]|\\.)*)"',
+        ],
+        "suggested_meta_description": [
+            r'"suggested_meta_description"\s*:\s*"((?:[^"\\]|\\.)*)"',
+            r'"meta_description"\s*:\s*"((?:[^"\\]|\\.)*)"',
+        ],
+        "suggested_description": [
+            r'"suggested_description"\s*:\s*"((?:[^"\\]|\\.)*)"',
+            r'"turkish"\s*:\s*"((?:[^"\\]|\\.)*)"',
+        ],
+        "suggested_description_en": [
+            r'"suggested_description_en"\s*:\s*"((?:[^"\\]|\\.)*)"',
+            r'"english"\s*:\s*"((?:[^"\\]|\\.)*)"',
+        ],
+    }
+    for field_name, patterns in json_field_patterns.items():
+        for pattern in patterns:
+            match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
+            if not match:
+                continue
+            candidate = _decode_json_string_fragment(match.group(1))
+            if _looks_like_final_suggestion_value(candidate):
+                extracted[field_name] = candidate.strip()
+                break
+
+    lines = [line.rstrip() for line in content.splitlines()]
+    current_field: str | None = None
+
+    direct_patterns: list[tuple[str, re.Pattern[str]]] = [
+        ("suggested_name", re.compile(r"^(?:[-*]\s*)?(?:urun adi|urun adı|product name)\s*(?:onerisi|önerisi)?\s*:\s*(.+)$", re.IGNORECASE)),
+        ("suggested_meta_title", re.compile(r"^(?:[-*]\s*)?meta title\s*(?:onerisi|önerisi)?\s*:\s*(.+)$", re.IGNORECASE)),
+        ("suggested_meta_description", re.compile(r"^(?:[-*]\s*)?meta description\s*(?:onerisi|önerisi)?\s*:\s*(.+)$", re.IGNORECASE)),
+        ("suggested_description", re.compile(r"^(?:[-*]\s*)?(?:turkce aciklama|turkçe aciklama|aciklama \(tr\)|aciklama)\s*(?:onerisi|önerisi)?\s*:\s*(.+)$", re.IGNORECASE)),
+        ("suggested_description_en", re.compile(r"^(?:[-*]\s*)?(?:ingilizce aciklama|english description|aciklama \(en\))\s*(?:onerisi|önerisi)?\s*:\s*(.+)$", re.IGNORECASE)),
+    ]
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        heading_field = _detect_suggestion_field_heading(stripped)
+        if heading_field and ":" not in stripped:
+            current_field = heading_field
+            continue
+
+        if stripped.lower().startswith("mevcut:"):
+            continue
+
+        value_match = re.match(r"^(?:oneri|öneri|uygulanacak)\s*:\s*(.+)$", stripped, re.IGNORECASE)
+        if value_match and current_field:
+            candidate = value_match.group(1).strip()
+            if _looks_like_final_suggestion_value(candidate):
+                extracted.setdefault(current_field, candidate)
+            continue
+
+        for field_name, pattern in direct_patterns:
+            direct_match = pattern.match(stripped)
+            if not direct_match:
+                continue
+            candidate = direct_match.group(1).strip()
+            if _looks_like_final_suggestion_value(candidate):
+                extracted.setdefault(field_name, candidate)
+            break
+
+    return extracted
 
 
 def _compact_preview_text(value: str, *, limit: int = 180) -> str:
@@ -1017,6 +1149,7 @@ class ChatService:
         self._history_summary_lock = asyncio.Lock()
         self._product: Product | None = None
         self._score: SeoScore | None = None
+        self._session_pending_suggestions: dict[str, SeoSuggestion] = {}
         self._total_tokens = {"input": 0, "output": 0}
         self._active_request_lock = threading.Lock()
         self._active_http_client: httpx.AsyncClient | None = None
@@ -1062,6 +1195,25 @@ class ChatService:
     def clear_history(self) -> None:
         """Clear conversation history."""
         self._history.clear()
+        self._session_pending_suggestions.clear()
+
+    def _get_session_pending_suggestion(
+        self,
+        product_id: str | None = None,
+    ) -> SeoSuggestion | None:
+        product_key = product_id or (self._product.id if self._product else "")
+        if not product_key:
+            return None
+        suggestion = self._session_pending_suggestions.get(product_key)
+        return suggestion.model_copy(deep=True) if suggestion else None
+
+    def _set_session_pending_suggestion(self, suggestion: SeoSuggestion) -> None:
+        self._session_pending_suggestions[suggestion.product_id] = suggestion.model_copy(deep=True)
+
+    def _clear_session_pending_suggestion(self, product_id: str | None = None) -> None:
+        product_key = product_id or (self._product.id if self._product else "")
+        if product_key:
+            self._session_pending_suggestions.pop(product_key, None)
 
     async def _summarize_and_compress_history(self) -> None:
         async with self._history_summary_lock:
@@ -1269,7 +1421,7 @@ class ChatService:
                     "Canli veri cekemiyorsan bunu acikca belirt. "
                     "Yanitta tavsiyeyi yine mevcut SEO problemi ve secili urun baglami etrafinda tut. "
                     "Operasyon onerisi gerekiyorsa once `listProduct`, gerekiyorsa `updateProduct` oner; mutation gerekiyorsa onay iste. "
-                    "Kullanici sohbette onaylanmis SEO degisikliklerini 'uygula' veya 'kaydet' diyorsa ve secili urun icin pending suggestion yoksa "
+                    "Kullanici sohbette onaylanmis SEO degisikliklerini 'uygula' veya 'kaydet' diyorsa ve secili urun icin chat oturumunda bekleyen taslak yoksa "
                     "`save_seo_suggestion` araciyla taslagi kaydet; sonra alan bazli chat onayi sun. "
                     "ONEMLI: Yalnizca MCP araci gercekten cagirilip basarili sonuc dondugunde islemi raporla. Arac cagirmadan 'guncelledim' deme."
                 ),
@@ -1298,7 +1450,7 @@ class ChatService:
                 "Stok, fiyat, siparis, kampanya veya musteri verisi uydurma. "
                 "Kullanici urun aciklamasi, meta title veya meta description gibi mevcut alanlari yorumlamani isterse bunu local baglamla yap. "
                 "KRITIK: Bu modda ikas'a dogrudan degisiklik uygulayamazsin. Kullanici sohbet sirasinda sunulan SEO onerilerini onaylarsa "
-                "`save_seo_suggestion` araciyla pending suggestion kaydi olusturabilirsin. "
+                "`save_seo_suggestion` araciyla chat oturumunda bekleyen taslak olusturabilirsin. "
                 "Uygun oldugunda chat uzerinde degisiklikleri once goster, secenekli onay al ve sadece secili urune uygula."
             ),
             agent_type,
@@ -1453,7 +1605,6 @@ class ChatService:
         args: dict[str, Any],
     ) -> tuple[str, dict[str, Any] | None]:
         from core.suggestion_service import apply_suggestion_field, create_pending_suggestion
-        from data import db
 
         if not self._product:
             return json.dumps({
@@ -1461,7 +1612,7 @@ class ChatService:
                 "error": "Secili urun olmadan oneri kaydedilemez.",
             }, ensure_ascii=False), None
 
-        suggestion = create_pending_suggestion(self._product)
+        suggestion = self._get_session_pending_suggestion(self._product.id) or create_pending_suggestion(self._product)
         saved_fields: dict[str, str] = {}
 
         for arg_key, (field_name, attr_name) in SAVE_SEO_SUGGESTION_FIELD_MAP.items():
@@ -1480,7 +1631,7 @@ class ChatService:
                 "error": "Kaydedilecek gecerli bir SEO onerisi bulunamadi.",
             }, ensure_ascii=False), None
 
-        await db.save_or_update_pending_suggestion(suggestion)
+        self._set_session_pending_suggestion(suggestion)
         suggestion_saved = {
             "product_id": self._product.id,
             "product_name": self._product.name,
@@ -1505,6 +1656,19 @@ class ChatService:
         ][-8:]
         if not recent_history:
             return None, ""
+
+        deterministic_fields: dict[str, str] = {}
+        for msg in reversed(recent_history):
+            if msg.role != "assistant":
+                continue
+            extracted_fields = _extract_suggestion_fields_from_text(msg.content)
+            for field_name, value in extracted_fields.items():
+                deterministic_fields.setdefault(field_name, value)
+
+        if deterministic_fields:
+            _, suggestion_saved = await self._save_suggestion_from_tool_args(deterministic_fields)
+            if suggestion_saved:
+                return suggestion_saved, ""
 
         messages: list[dict[str, Any]] = [{
             "role": "system",
@@ -1638,23 +1802,109 @@ class ChatService:
         ])
         return "\n".join(lines)
 
+    def _build_suggestion_saved_response(
+        self,
+        suggestion_saved: dict[str, Any],
+    ) -> str:
+        saved_fields = suggestion_saved.get("fields", {})
+        field_labels = [
+            SUGGESTION_APPLY_FIELD_CONFIG[field_name]["label"]
+            for field_name in saved_fields
+            if field_name in SUGGESTION_APPLY_FIELD_CONFIG
+        ]
+        lines = ["Bekleyen SEO degisiklikleri kaydedildi."]
+        if field_labels:
+            lines.append(f"- Kaydedilen alanlar: {', '.join(field_labels)}")
+        lines.extend([
+            "- Sonraki adim: `@ikas uygula` yazarak onay adimini ac.",
+            "- Bu taslak sadece mevcut chat oturumunda tutulur.",
+        ])
+        return "\n".join(lines)
+
+    async def _maybe_handle_single_product_save_flow(
+        self,
+        cleaned_message: str,
+        chunk_handler: Callable[[str], Awaitable[None]] | None = None,
+    ) -> ChatResponse | None:
+        if not self._product:
+            return None
+
+        has_save_intent = _message_has_save_intent(cleaned_message)
+        has_apply_intent = _message_has_apply_intent(cleaned_message)
+        if not has_save_intent or has_apply_intent:
+            return None
+
+        suggestion_saved, extraction_note = await self._extract_pending_suggestion_from_history(cleaned_message)
+        if suggestion_saved:
+            response_text = self._build_suggestion_saved_response(suggestion_saved)
+            self._history.append(ChatMessage(role="assistant", content=response_text))
+            self._schedule_history_summarization()
+            response = ChatResponse(
+                content=response_text,
+                thinking="",
+                tool_results=[],
+                error=False,
+                meta={
+                    "model": "ikas-chat-flow",
+                    "finish_reason": "single_product_save_flow",
+                },
+                suggestion_saved=suggestion_saved,
+                pending_suggestion=self._get_session_pending_suggestion(),
+            )
+            if chunk_handler and response.content:
+                await chunk_handler(response.content)
+            return response
+
+        pending_suggestion = self._get_session_pending_suggestion()
+        if pending_suggestion and self._collect_applicable_suggestion_fields(pending_suggestion):
+            response_text = (
+                "Bu urun icin zaten bekleyen bir SEO taslagi var. "
+                "`@ikas uygula` yazarak onay adimindan devam edebilirsin."
+            )
+        else:
+            response_text = (
+                extraction_note
+                or "Sohbet gecmisinde kaydedilecek net bir SEO taslagi bulamadim. "
+                "Once urun adi, meta title veya meta description icin net nihai oneriyi olusturalim."
+            )
+
+        self._history.append(ChatMessage(role="assistant", content=response_text))
+        self._schedule_history_summarization()
+        response = ChatResponse(
+            content=response_text,
+            thinking="",
+            tool_results=[],
+            error=False,
+            meta={
+                "model": "ikas-chat-flow",
+                "finish_reason": "single_product_save_flow_no_suggestion",
+            },
+            pending_suggestion=pending_suggestion,
+        )
+        if chunk_handler and response.content:
+            await chunk_handler(response.content)
+        return response
+
     async def _apply_pending_suggestion_action(
         self,
         suggestion: SeoSuggestion,
         action: str,
-    ) -> tuple[str, list[dict[str, Any]]]:
-        from data import db
-
+    ) -> tuple[str, list[dict[str, Any]], SeoSuggestion | None]:
         available_fields = self._collect_applicable_suggestion_fields(suggestion)
         if not available_fields:
             return (
-                "Secili urun icin uygulanabilir pending suggestion alani bulunamadi. "
+                "Secili urun icin uygulanabilir bekleyen taslak alani bulunamadi. "
                 "Once yeni bir SEO onerisi olusturalim.",
                 [],
+                None,
             )
 
         if action == "single_apply_cancel":
-            return "Uygulama adimi iptal edildi. Hazir oldugunda tekrar onay verebilirsin.", []
+            return (
+                "Uygulama adimi iptal edildi. Hazir oldugunda tekrar onay verebilirsin.",
+                [],
+                self._get_session_pending_suggestion(suggestion.product_id),
+            )
 
         selected_fields = self._resolve_apply_action_fields(action, available_fields)
         if not selected_fields:
@@ -1662,6 +1912,7 @@ class ChatService:
                 "Bu secenek icin uygun alan bulunamadi. Lutfen asagidaki guncel seceneklerden birini sec.\n\n"
                 + self._build_single_apply_confirmation_response(suggestion, available_fields),
                 [],
+                self._get_session_pending_suggestion(suggestion.product_id),
             )
 
         updates: dict[str, Any] = {}
@@ -1697,25 +1948,20 @@ class ChatService:
                 "Secilen alanda gecerli bir icerik bulunamadi. "
                 "Lutfen once guncel bir oneriyi kaydedelim.",
                 [],
+                self._get_session_pending_suggestion(suggestion.product_id),
             )
 
         ikas_client = IkasClient()
         try:
             await ikas_client.update_product(suggestion.product_id, updates)
-            await db.log_operation("chat_single_apply", suggestion.product_id, updates, True)
         except Exception as exc:
-            await db.log_operation(
-                "chat_single_apply",
-                suggestion.product_id,
-                {"error": str(exc), "updates": updates},
-                False,
-            )
             logger.error("Chat single-product apply failed: %s", exc)
             return (
                 "ikas uygulama adimi basarisiz oldu. Hata: "
                 f"{exc}\n\nLutfen secenekleri gozden gecirip tekrar dene.\n\n"
                 + self._build_single_apply_confirmation_response(suggestion, available_fields),
                 [],
+                self._get_session_pending_suggestion(suggestion.product_id),
             )
         finally:
             with contextlib.suppress(Exception):
@@ -1729,7 +1975,10 @@ class ChatService:
 
         remaining_fields = self._collect_applicable_suggestion_fields(suggestion)
         suggestion.status = "pending" if remaining_fields else "applied"
-        await db.save_or_update_pending_suggestion(suggestion)
+        if remaining_fields:
+            self._set_session_pending_suggestion(suggestion)
+        else:
+            self._clear_session_pending_suggestion(suggestion.product_id)
 
         tool_result = {
             "tool": "chat_single_product_apply",
@@ -1761,33 +2010,29 @@ class ChatService:
         else:
             response_lines.append("- Bu urun icin bekleyen taslak kalmadi.")
 
-        return "\n".join(response_lines), [tool_result]
+        return (
+            "\n".join(response_lines),
+            [tool_result],
+            self._get_session_pending_suggestion(suggestion.product_id),
+        )
 
     async def _maybe_handle_single_product_apply_flow(
         self,
         cleaned_message: str,
         chunk_handler: Callable[[str], Awaitable[None]] | None = None,
     ) -> ChatResponse | None:
-        from data import db
-
         if not self._product:
             return None
 
         normalized_text = _normalize_matching_text(cleaned_message)
         action = _extract_chat_action(cleaned_message) or _detect_manual_apply_action(normalized_text)
-        has_apply_intent = bool(APPLY_INTENT_PATTERN.search(normalized_text))
+        has_apply_intent = _message_has_apply_intent(cleaned_message)
 
-        pending_suggestion = await db.get_latest_suggestion_by_product(
-            self._product.id,
-            statuses=["pending"],
-        )
+        pending_suggestion = self._get_session_pending_suggestion()
         if not pending_suggestion and has_apply_intent:
             suggestion_saved, extraction_note = await self._extract_pending_suggestion_from_history(cleaned_message)
             if suggestion_saved:
-                pending_suggestion = await db.get_latest_suggestion_by_product(
-                    self._product.id,
-                    statuses=["pending"],
-                )
+                pending_suggestion = self._get_session_pending_suggestion()
             else:
                 response_text = (
                     extraction_note
@@ -1805,6 +2050,7 @@ class ChatService:
                         "model": "ikas-chat-flow",
                         "finish_reason": "apply_intent_missing_suggestion",
                     },
+                    pending_suggestion=None,
                 )
                 if chunk_handler and response.content:
                     await chunk_handler(response.content)
@@ -1822,7 +2068,7 @@ class ChatService:
             return None
 
         if action:
-            response_text, tool_results = await self._apply_pending_suggestion_action(
+            response_text, tool_results, pending_suggestion = await self._apply_pending_suggestion_action(
                 pending_suggestion,
                 action,
             )
@@ -1845,6 +2091,7 @@ class ChatService:
                 "model": "ikas-chat-flow",
                 "finish_reason": "single_product_apply_flow",
             },
+            pending_suggestion=pending_suggestion,
         )
         if chunk_handler and response.content:
             await chunk_handler(response.content)
@@ -2023,6 +2270,13 @@ class ChatService:
         if len(self._history) > MAX_HISTORY_MESSAGES:
             self._history = self._history[-MAX_HISTORY_MESSAGES:]
 
+        single_save_response = await self._maybe_handle_single_product_save_flow(
+            cleaned_message,
+            chunk_handler=chunk_handler,
+        )
+        if single_save_response is not None:
+            return single_save_response
+
         single_apply_response = await self._maybe_handle_single_product_apply_flow(
             cleaned_message,
             chunk_handler=chunk_handler,
@@ -2059,6 +2313,7 @@ class ChatService:
                         tool_results=guided_tool_results,
                         error=False,
                         meta={"model": "ikas MCP", "finish_reason": "guided_mcp", "source": "ikas_mcp"},
+                        pending_suggestion=self._get_session_pending_suggestion(),
                     )
                     if chunk_handler and response.content:
                         await chunk_handler(response.content)
@@ -2080,6 +2335,7 @@ class ChatService:
         tool_results: list[dict[str, Any]] = list(guided_tool_results)
         meta: dict[str, Any] = {}
         suggestion_saved: dict[str, Any] | None = None
+        pending_suggestion = self._get_session_pending_suggestion()
 
         try:
             if chunk_handler is None:
@@ -2118,6 +2374,7 @@ class ChatService:
                     tool_results=tool_results,
                     error=False,
                     meta={"model": "ikas MCP", "finish_reason": "guided_mcp_fallback", "source": "ikas_mcp"},
+                    pending_suggestion=pending_suggestion,
                 )
             else:
                 response = ChatResponse(
@@ -2129,6 +2386,7 @@ class ChatService:
                     tool_results=tool_results,
                     error=True,
                     meta={},
+                    pending_suggestion=pending_suggestion,
                 )
             if chunk_handler and response.content:
                 await chunk_handler(response.content)
@@ -2136,14 +2394,9 @@ class ChatService:
             return response
 
         if suggestion_saved:
-            response_text = SUGGESTION_SAVE_SUCCESS_MESSAGE
+            pending_suggestion = self._get_session_pending_suggestion()
+            response_text = self._build_suggestion_saved_response(suggestion_saved)
             if explicit_ikas_mode and has_apply_intent and self._product:
-                from data import db
-
-                pending_suggestion = await db.get_latest_suggestion_by_product(
-                    self._product.id,
-                    statuses=["pending"],
-                )
                 if pending_suggestion:
                     pending_fields = self._collect_applicable_suggestion_fields(pending_suggestion)
                     if pending_fields:
@@ -2178,6 +2431,7 @@ class ChatService:
             error=False,
             meta=meta,
             suggestion_saved=suggestion_saved,
+            pending_suggestion=pending_suggestion,
         )
 
     async def _chat_completion_stream(
@@ -2227,6 +2481,11 @@ class ChatService:
             "tool_results": response.tool_results,
             "error": response.error,
             "meta": response.meta,
+            "pending_suggestion": (
+                response.pending_suggestion.model_dump(mode="json")
+                if response.pending_suggestion
+                else None
+            ),
         }
         if response.suggestion_saved:
             payload["suggestion_saved"] = response.suggestion_saved

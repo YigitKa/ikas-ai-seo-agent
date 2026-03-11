@@ -32,7 +32,7 @@ SEO_OPERATION_HINT_PATTERN = re.compile(
 )
 
 APPLY_INTENT_PATTERN = re.compile(
-    r"\b(uygula|uygulansin|onayla|ikas'a uygula|ikas a uygula|mcp ile uygula|kaydet)\b",
+    r"\b(uygula|uygulansin|onayla|ikas'a uygula|ikas a uygula|mcp ile uygula)\b",
     re.IGNORECASE,
 )
 
@@ -106,7 +106,7 @@ def select_product_operation_suggestion(
             )
         return (
             save_suggestion_tool_name,
-            f"{subject} icin onaylanan SEO degisikliklerini pending suggestion olarak kaydetmek icin uygun chat araci",
+            f"{subject} icin onaylanan SEO degisikliklerini chat oturumunda bekleyen taslak olarak tutmak icin uygun chat araci",
             False,
         )
 
@@ -146,7 +146,7 @@ def append_operation_suggestion(
     if requires_confirmation:
         lines.append("- Not: Bu bir mutation adimidir; uygulamadan once onayini alirim.")
     elif operation_name == save_suggestion_tool_name:
-        lines.append("- Not: Bu adim ikas'ta anlik guncelleme yapmaz; sadece onayli oneriyi pending olarak kaydeder.")
+        lines.append("- Not: Bu adim ikas'ta anlik guncelleme yapmaz; sadece bu chat oturumunda bekleyen taslak olusturur.")
     lines.append("- Istersen bir sonraki adimda bunu secili urun icin netlestireyim.")
     return "\n".join(lines)
 

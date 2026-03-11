@@ -1,7 +1,7 @@
 import pytest
 
 from core.chat_service import ChatService, SAVE_SEO_SUGGESTION_TOOL_NAME
-from core.models import AppConfig, ChatMessage, Product, SeoScore, SeoSuggestion
+from core.models import AppConfig, ChatMessage, Product, SeoScore
 
 
 def _make_config(**overrides) -> AppConfig:
@@ -58,45 +58,22 @@ async def test_explicit_ikas_apply_uses_save_flow_then_returns_confirmation_opti
     service._schedule_history_summarization = lambda: None  # type: ignore[method-assign]
 
     captured_tools: dict[str, list[str]] = {}
-    service._history.append(ChatMessage(role="assistant", content="Meta Title onerisi: Yeni Meta Title"))
+    service._history.append(ChatMessage(role="assistant", content="Meta title icin net bir final onerim hazir."))
 
     async def fake_chat_completion(messages, tools):
         captured_tools["names"] = [tool["function"]["name"] for tool in (tools or [])]
+        _, suggestion_saved = await service._save_suggestion_from_tool_args(
+            {"suggested_meta_title": "Yeni Meta Title"}
+        )
         return (
             "",
             "",
             [],
             {"model": "qwen-test"},
-            {
-                "product_id": product.id,
-                "product_name": product.name,
-                "fields": {"suggested_meta_title": "Yeni Meta Title"},
-            },
+            suggestion_saved,
         )
 
-    pending_suggestion = SeoSuggestion(
-        product_id=product.id,
-        original_name=product.name,
-        original_description=product.description,
-        original_description_en="",
-        original_meta_title=product.meta_title,
-        original_meta_description=product.meta_description,
-        suggested_meta_title="Yeni Meta Title",
-        status="pending",
-    )
-    lookup_calls = {"count": 0}
-
-    async def fake_get_latest_suggestion_by_product(product_id, statuses=None):
-        lookup_calls["count"] += 1
-        if lookup_calls["count"] == 1:
-            return None
-        return pending_suggestion
-
     monkeypatch.setattr(service, "_chat_completion", fake_chat_completion)
-
-    import data.db as _db
-
-    monkeypatch.setattr(_db, "get_latest_suggestion_by_product", fake_get_latest_suggestion_by_product)
 
     response = await service.send_message("@ikas uygula")
 
@@ -104,3 +81,75 @@ async def test_explicit_ikas_apply_uses_save_flow_then_returns_confirmation_opti
     assert "Onay Adimi" in response.content
     assert "single_apply_all" in response.content
     assert response.tool_results == []
+    assert response.pending_suggestion is not None
+    assert response.pending_suggestion.suggested_meta_title == "Yeni Meta Title"
+
+
+@pytest.mark.anyio
+async def test_save_intent_uses_deterministic_history_extraction_and_populates_panel(monkeypatch):
+    service = ChatService(_make_config(ai_thinking_mode=False))
+    product = _make_product(name="60X Mikroskop", meta_title="60X Mikroskop")
+    service.set_product_context(product, _make_score())
+    service._schedule_history_summarization = lambda: None  # type: ignore[method-assign]
+    service._history.append(
+        ChatMessage(
+            role="assistant",
+            content=(
+                "1. Urun Adi\n"
+                "Mevcut: 60X Mikroskop\n"
+                "Oneri: Airontek 60X Mini-Mikroskop - Tasinabilir ve Mavi Isikli\n\n"
+                "2. Meta Title\n"
+                "Mevcut: 60X Mikroskop\n"
+                "Oneri: Airontek 60X Mini-Mikroskop | Tasinabilir Inceleme\n\n"
+                "3. Meta Description\n"
+                "Mevcut: 320 karakter\n"
+                "Oneri: Airontek 60X mini mikroskop, tasinabilir govdesi ve mavi isik destegiyle detayli inceleme sunar."
+            ),
+        )
+    )
+
+    async def fail_chat_completion(messages, tools):
+        raise AssertionError("Deterministic history extraction should avoid LLM fallback")
+
+    monkeypatch.setattr(service, "_chat_completion", fail_chat_completion)
+
+    response = await service.send_message("kaydet")
+
+    assert response.error is False
+    assert response.suggestion_saved is not None
+    assert "Bekleyen SEO degisiklikleri kaydedildi." in response.content
+    assert "@ikas uygula" in response.content
+    assert response.suggestion_saved["fields"]["suggested_name"].startswith("Airontek 60X Mini-Mikroskop")
+    assert response.pending_suggestion is not None
+    assert response.pending_suggestion.suggested_meta_title == "Airontek 60X Mini-Mikroskop | Tasinabilir Inceleme"
+
+
+@pytest.mark.anyio
+async def test_explicit_ikas_apply_uses_deterministic_parser_when_llm_extractor_fails(monkeypatch):
+    service = ChatService(_make_config(ai_thinking_mode=False))
+    product = _make_product(name="60X Mikroskop", meta_title="60X Mikroskop")
+    service.set_product_context(product, _make_score())
+    service._schedule_history_summarization = lambda: None  # type: ignore[method-assign]
+    service._history.append(
+        ChatMessage(
+            role="assistant",
+            content=(
+                "2. Meta Title\n"
+                "Mevcut: 60X Mikroskop\n"
+                "Oneri: Airontek 60X Mini-Mikroskop | Tasinabilir Inceleme"
+            ),
+        )
+    )
+
+    async def fail_chat_completion(messages, tools):
+        raise AssertionError("Deterministic parser should avoid LLM extractor fallback")
+
+    monkeypatch.setattr(service, "_chat_completion", fail_chat_completion)
+
+    response = await service.send_message("@ikas uygula")
+
+    assert response.error is False
+    assert "Onay Adimi" in response.content
+    assert "single_apply_all" in response.content
+    assert response.pending_suggestion is not None
+    assert response.pending_suggestion.suggested_meta_title == "Airontek 60X Mini-Mikroskop | Tasinabilir Inceleme"

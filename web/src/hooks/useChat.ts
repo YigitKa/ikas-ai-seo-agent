@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChatResponseMeta, ChatWsMessage, MCPToolInfo, SuggestionSavedInfo, ToolResult } from '../types';
+import type { ChatResponseMeta, ChatWsMessage, MCPToolInfo, SeoSuggestion, SuggestionSavedInfo, ToolResult } from '../types';
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -8,6 +8,7 @@ export interface ChatMessage {
   toolResults?: ToolResult[];
   meta?: ChatResponseMeta;
   suggestionSaved?: SuggestionSavedInfo;
+  pendingSuggestion?: SeoSuggestion | null;
 }
 
 export interface MCPState {
@@ -63,6 +64,7 @@ export function useChat(productContext?: ChatProductContext) {
     tools: [],
     message: '',
   });
+  const [pendingSuggestion, setPendingSuggestion] = useState<SeoSuggestion | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const productContextRef = useRef(productContext);
@@ -136,6 +138,7 @@ export function useChat(productContext?: ChatProductContext) {
   const resetToContextIntro = useCallback(
     () => {
       setMessages([]);
+      setPendingSuggestion(null);
     },
     [],
   );
@@ -218,6 +221,7 @@ export function useChat(productContext?: ChatProductContext) {
       ...(data.meta ?? {}),
       ...(typeof elapsedSeconds === 'number' ? { elapsed_seconds: elapsedSeconds } : {}),
     };
+    setPendingSuggestion(data.pending_suggestion ?? null);
 
     setMessages((prev) => {
       const next = [...prev];
@@ -228,6 +232,7 @@ export function useChat(productContext?: ChatProductContext) {
         toolResults: data.tool_results,
         meta,
         suggestionSaved: data.suggestion_saved,
+        pendingSuggestion: data.pending_suggestion,
       };
       const lastMessage = next[next.length - 1];
 
@@ -379,6 +384,7 @@ export function useChat(productContext?: ChatProductContext) {
           break;
 
         case 'context_set':
+          setPendingSuggestion(data.pending_suggestion ?? null);
           if (data.product_id) {
             sendHiddenAutoIntro(data.product_id);
           }
@@ -428,6 +434,7 @@ export function useChat(productContext?: ChatProductContext) {
       activeProductIdRef.current = undefined;
       clearAutoIntro();
       setMessages([]);
+      setPendingSuggestion(null);
       return;
     }
 
@@ -527,6 +534,7 @@ export function useChat(productContext?: ChatProductContext) {
     pendingSince,
     liveChunkCount,
     liveTokenEstimate,
+    pendingSuggestion,
     mcpState,
     sendMessage,
     cancelMessage,
