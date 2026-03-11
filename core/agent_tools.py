@@ -240,6 +240,16 @@ def build_validate_rewrite_tool() -> AgentTool:
             "original_score": original_score.total_score,
             "new_score": new_score.total_score,
             "improvement": new_score.total_score - original_score.total_score,
+            "original_summary_scores": {
+                "seo": original_score.seo_score,
+                "geo": original_score.geo_score,
+                "aeo": original_score.aeo_score,
+            },
+            "new_summary_scores": {
+                "seo": new_score.seo_score,
+                "geo": new_score.geo_score,
+                "aeo": new_score.aeo_score,
+            },
             "original_breakdown": {
                 "title": original_score.title_score,
                 "description": original_score.description_score,

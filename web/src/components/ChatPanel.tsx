@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getLmStudioLiveStatus, getSettings } from "../api/client";
+import {
+  getLmStudioLiveStatus,
+  getSettings,
+  getSuggestions,
+} from "../api/client";
 import { useChat } from "../hooks/useChat";
 import type { Product, SeoScore } from "../types";
 import {
@@ -9,6 +13,7 @@ import {
   readMetaNumber,
 } from "./chat/chatUtils";
 import { MessageBubble, type SuggestionOption } from "./chat/ChatMessage";
+import PendingSuggestionPanel from "./chat/PendingSuggestionPanel";
 import { extractSuggestionOptions } from "./chat/suggestionUtils";
 import {
   buildPromptParamOptions,
@@ -91,6 +96,14 @@ export default function ChatPanel({
     staleTime: 2_000,
     refetchInterval: configuredProvider === "lm-studio" ? 5_000 : false,
   });
+  const suggestionsQ = useQuery({
+    queryKey: ["suggestions", productId],
+    queryFn: () => getSuggestions(productId!),
+    enabled: !!productId,
+    staleTime: 5_000,
+    refetchOnWindowFocus: false,
+  });
+  const refetchSuggestions = suggestionsQ.refetch;
 
   const configuredAssistantLabel =
     configuredModel || configuredProvider || "AI modeli";
@@ -249,6 +262,9 @@ export default function ChatPanel({
       : { markdownContent: "", options: [] as SuggestionOption[] };
   const hasPendingInteraction =
     !isLoading && latestAssistantInteraction.options.length > 0;
+  const latestPendingSuggestion =
+    suggestionsQ.data?.find((suggestion) => suggestion.status === "pending") ??
+    null;
 
   // Handlers
   const syncParamTrigger = (value: string, caretPosition: number | null) => {
@@ -324,6 +340,23 @@ export default function ChatPanel({
     );
     setInteractionInput("");
   };
+
+  const handlePendingSuggestionAction = (
+    action:
+      | "single_apply_meta"
+      | "single_apply_content"
+      | "single_apply_meta_content"
+      | "single_apply_all",
+  ) => {
+    sendMessage(`[[CHAT_ACTION:${action}]]`, { hidden: true });
+  };
+
+  useEffect(() => {
+    if (!productId || messages.length === 0) {
+      return;
+    }
+    void refetchSuggestions();
+  }, [messages.length, productId, refetchSuggestions]);
 
   return (
     <div
@@ -611,6 +644,12 @@ export default function ChatPanel({
       </div>
 
       {/* ── Input ── */}
+      <PendingSuggestionPanel
+        suggestion={latestPendingSuggestion}
+        isLoading={isLoading}
+        onAction={handlePendingSuggestionAction}
+      />
+
       <div
         className="p-3"
         style={{ borderTop: "1px solid var(--color-border)" }}

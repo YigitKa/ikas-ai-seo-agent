@@ -277,13 +277,58 @@ def test_new_score_fields_exist():
         price=99.90,
     )
     score = analyze_product(product)
+    assert hasattr(score, "seo_score")
+    assert hasattr(score, "geo_score")
+    assert hasattr(score, "aeo_score")
     assert hasattr(score, "content_quality_score")
     assert hasattr(score, "technical_seo_score")
     assert hasattr(score, "readability_score")
+    assert 0 <= score.seo_score <= 100
+    assert 0 <= score.geo_score <= 100
+    assert 0 <= score.aeo_score <= 100
     assert 0 <= score.content_quality_score <= 10
     assert 0 <= score.technical_seo_score <= 10
     assert 0 <= score.readability_score <= 5
     assert score.total_score <= 100
+
+
+def test_summary_scores_are_derived_from_backend_breakdown():
+    product = Product(
+        id="summary",
+        name="Kushie Kush 1 Litre",
+        description=(
+            "<p>Bitki gelisimi icin bilgi yogun aciklama metni. Ayrica kullanim adimlari net sekilde verilir.</p>"
+            "<ul><li>1 litre</li><li>Mikrobiyal icerik</li><li>Kullanim dozu 2 ml</li></ul>"
+        ),
+        description_translations={"en": "Detailed usage information for plants. " * 30},
+        meta_title="Kushie Kush 1 Litre | Marka",
+        meta_description="Kushie Kush 1 Litre urununu inceleyin ve kullanim detaylarini gorun.",
+        tags=["bitki", "besin", "mikrobiyal"],
+        category="Bitki Besini",
+        price=2880.0,
+        image_urls=["1.jpg", "2.jpg", "3.jpg"],
+    )
+
+    score = analyze_product(product, target_keywords=["kushie", "mikrobiyal"])
+
+    expected_seo = round((
+        score.title_score
+        + score.meta_score
+        + score.meta_desc_score
+        + score.keyword_score
+        + score.technical_seo_score
+    ) / 60 * 100)
+    expected_aeo = round((
+        score.description_score
+        + score.english_description_score
+        + score.content_quality_score
+        + score.readability_score
+    ) / 40 * 100)
+    expected_geo = round((score.ai_citability_score / 10) * 100)
+
+    assert score.seo_score == expected_seo
+    assert score.aeo_score == expected_aeo
+    assert score.geo_score == expected_geo
 
 
 def test_total_score_max_100():

@@ -598,6 +598,17 @@ _FLUFF_EN = [
     "best ever", "most amazing", "fabulous", "you must buy", "perfect",
 ]
 
+SEO_BUCKET_MAX = 60
+AEO_BUCKET_MAX = 40
+GEO_BUCKET_MAX = 10
+
+
+def _normalize_bucket_score(raw_score: int, max_score: int) -> int:
+    if max_score <= 0:
+        return 0
+    normalized = round((max(0, raw_score) / max_score) * 100)
+    return max(0, min(100, normalized))
+
 
 def analyze_ai_citability(product: Product) -> tuple[int, List[str], List[str]]:
     """Score how likely the description is to be cited by AI search engines (0-10)."""
@@ -709,9 +720,25 @@ def analyze_product(product: Product, target_keywords: List[str] | None = None) 
         100,
     )
 
+    seo_bucket_score = _normalize_bucket_score(
+        title_score + meta_score + meta_desc_score + kw_score + tech_score,
+        SEO_BUCKET_MAX,
+    )
+    aeo_bucket_score = _normalize_bucket_score(
+        desc_score + en_desc_score + cq_score + read_score,
+        AEO_BUCKET_MAX,
+    )
+    geo_bucket_score = _normalize_bucket_score(
+        cit_score,
+        GEO_BUCKET_MAX,
+    )
+
     return SeoScore(
         product_id=product.id,
         total_score=total,
+        seo_score=seo_bucket_score,
+        geo_score=geo_bucket_score,
+        aeo_score=aeo_bucket_score,
         title_score=title_score,
         description_score=desc_score,
         meta_score=meta_score,

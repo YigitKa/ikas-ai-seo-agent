@@ -107,7 +107,14 @@ async def _load_suggestions(query: str, params: Sequence[object] = ()) -> List[S
     async with connection() as conn:
         async with conn.execute(query, tuple(params)) as cursor:
             rows = await cursor.fetchall()
-    return [SeoSuggestion.model_validate_json(row["suggestion_data"]) for row in rows]
+    suggestions: list[SeoSuggestion] = []
+    for row in rows:
+        suggestion = SeoSuggestion.model_validate_json(row["suggestion_data"])
+        status = row["status"] if "status" in row.keys() else None
+        if isinstance(status, str) and status:
+            suggestion = suggestion.model_copy(update={"status": status})
+        suggestions.append(suggestion)
+    return suggestions
 
 
 async def init_db() -> None:
@@ -308,14 +315,14 @@ async def get_approved_suggestions() -> List[SeoSuggestion]:
 
 async def get_suggestions_by_status(status: str) -> List[SeoSuggestion]:
     return await _load_suggestions(
-        "SELECT suggestion_data FROM suggestions WHERE status = ? ORDER BY created_at DESC",
+        "SELECT suggestion_data, status FROM suggestions WHERE status = ? ORDER BY created_at DESC",
         (status,),
     )
 
 
 async def get_suggestions_by_product(product_id: str) -> List[SeoSuggestion]:
     return await _load_suggestions(
-        "SELECT suggestion_data FROM suggestions WHERE product_id = ? ORDER BY created_at DESC",
+        "SELECT suggestion_data, status FROM suggestions WHERE product_id = ? ORDER BY created_at DESC",
         (product_id,),
     )
 
@@ -324,7 +331,7 @@ async def get_latest_suggestion_by_product(
     product_id: str,
     statuses: Sequence[str] | None = None,
 ) -> Optional[SeoSuggestion]:
-    query = "SELECT suggestion_data FROM suggestions WHERE product_id = ?"
+    query = "SELECT suggestion_data, status FROM suggestions WHERE product_id = ?"
     params: list[object] = [product_id]
 
     if statuses:
@@ -339,7 +346,11 @@ async def get_latest_suggestion_by_product(
             row = await cursor.fetchone()
 
     if row:
-        return SeoSuggestion.model_validate_json(row["suggestion_data"])
+        suggestion = SeoSuggestion.model_validate_json(row["suggestion_data"])
+        status = row["status"] if "status" in row.keys() else None
+        if isinstance(status, str) and status:
+            suggestion = suggestion.model_copy(update={"status": status})
+        return suggestion
     return None
 
 

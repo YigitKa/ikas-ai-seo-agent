@@ -46,3 +46,26 @@ def test_seo_score_needs_optimization():
         suggestions=[],
     )
     assert good_score.needs_optimization is False
+
+
+def test_seo_score_backfills_summary_scores_from_breakdown():
+    score = SeoScore(
+        product_id="legacy",
+        total_score=72,
+        title_score=8,
+        description_score=20,
+        english_description_score=0,
+        meta_score=4,
+        meta_desc_score=5,
+        keyword_score=7,
+        content_quality_score=8,
+        technical_seo_score=7,
+        readability_score=4,
+        ai_citability_score=6,
+        issues=[],
+        suggestions=[],
+    )
+
+    assert score.seo_score == round((8 + 4 + 5 + 7 + 7) / 60 * 100)
+    assert score.aeo_score == round((20 + 0 + 8 + 4) / 40 * 100)
+    assert score.geo_score == 60

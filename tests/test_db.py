@@ -27,8 +27,14 @@ def test_suggestion_status_helpers(monkeypatch, tmp_path):
     assert asyncio.run(db.count_suggestions("approved")) == 1
     assert asyncio.run(db.get_suggestion_product_ids("pending")) == {"prod_pending"}
     assert asyncio.run(db.get_suggestion_product_ids("approved")) == {"prod_approved"}
-    assert asyncio.run(db.get_latest_suggestion_by_product("prod_approved")).product_id == "prod_approved"
-    assert asyncio.run(db.get_approved_suggestions())[0].product_id == "prod_approved"
+    latest_approved = asyncio.run(db.get_latest_suggestion_by_product("prod_approved"))
+    approved_items = asyncio.run(db.get_approved_suggestions())
+
+    assert latest_approved is not None
+    assert latest_approved.product_id == "prod_approved"
+    assert latest_approved.status == "approved"
+    assert approved_items[0].product_id == "prod_approved"
+    assert approved_items[0].status == "approved"
 
 
 def test_update_latest_pending_suggestion(monkeypatch, tmp_path):

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class Product(BaseModel):
@@ -24,6 +24,9 @@ class Product(BaseModel):
 class SeoScore(BaseModel):
     product_id: str
     total_score: int = Field(ge=0, le=100)
+    seo_score: int = Field(ge=0, le=100, default=0)
+    geo_score: int = Field(ge=0, le=100, default=0)
+    aeo_score: int = Field(ge=0, le=100, default=0)
     title_score: int = Field(ge=0, le=15)
     description_score: int = Field(ge=0, le=20)
     english_description_score: int = Field(ge=0, le=5, default=0)
@@ -36,6 +39,42 @@ class SeoScore(BaseModel):
     ai_citability_score: int = Field(ge=0, le=10, default=0)
     issues: List[str] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _populate_summary_scores(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        def _normalize(raw_score: int | float, max_score: int) -> int:
+            if max_score <= 0:
+                return 0
+            normalized = round((max(0, raw_score) / max_score) * 100)
+            return max(0, min(100, normalized))
+
+        if "seo_score" not in value:
+            value["seo_score"] = _normalize(
+                int(value.get("title_score", 0))
+                + int(value.get("meta_score", 0))
+                + int(value.get("meta_desc_score", 0))
+                + int(value.get("keyword_score", 0))
+                + int(value.get("technical_seo_score", 0)),
+                60,
+            )
+
+        if "aeo_score" not in value:
+            value["aeo_score"] = _normalize(
+                int(value.get("description_score", 0))
+                + int(value.get("english_description_score", 0))
+                + int(value.get("content_quality_score", 0))
+                + int(value.get("readability_score", 0)),
+                40,
+            )
+
+        if "geo_score" not in value:
+            value["geo_score"] = _normalize(int(value.get("ai_citability_score", 0)), 10)
+
+        return value
 
     @property
     def needs_optimization(self) -> bool:

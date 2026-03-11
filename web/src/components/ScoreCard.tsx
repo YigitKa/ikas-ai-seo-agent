@@ -4,6 +4,24 @@ interface Props {
   score: SeoScore;
 }
 
+const SUMMARY_FIELDS = [
+  {
+    key: 'seo_score',
+    label: 'SEO',
+    description: 'Arama motoru gorunurlugu, meta sinyalleri ve teknik uygunluk.',
+  },
+  {
+    key: 'geo_score',
+    label: 'GEO',
+    description: 'AI alintilanabilirlik ve generative engine uygunlugu.',
+  },
+  {
+    key: 'aeo_score',
+    label: 'AEO',
+    description: 'Yanitlanabilirlik, icerik netligi ve answer-engine uyumu.',
+  },
+] as const;
+
 const FIELDS = [
   {
     key: 'title_score',
@@ -198,6 +216,46 @@ export default function ScoreCard({ score }: Props) {
             Asagidaki her satir, SEO puaninin hangi alandan geldigini ve o alanin neyi olctugunu aciklar.
           </p>
         </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {SUMMARY_FIELDS.map(({ key, label, description }) => {
+          const value = score[key];
+          const color = getScoreColor(value);
+
+          return (
+            <div
+              key={key}
+              className="rounded-xl px-4 py-3"
+              style={{
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.06)',
+              }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div
+                    className="text-[11px] font-semibold uppercase tracking-[0.16em]"
+                    style={{ color }}
+                  >
+                    {label}
+                  </div>
+                  <p className="mt-1 text-[12px] leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                    {description}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <div className="text-[22px] font-semibold" style={{ color }}>
+                    {value}
+                  </div>
+                  <div className="text-[10px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                    /100
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div className="mt-4 space-y-3">

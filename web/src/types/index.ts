@@ -18,6 +18,9 @@ export interface Product {
 export interface SeoScore {
   product_id: string;
   total_score: number;
+  seo_score: number;
+  geo_score: number;
+  aeo_score: number;
   title_score: number;
   description_score: number;
   english_description_score: number;
