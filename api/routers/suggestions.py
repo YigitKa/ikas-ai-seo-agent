@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
 from api.dependencies import get_manager
 from api.schemas import (
@@ -40,6 +41,19 @@ async def generate_suggestion(
         suggestion=suggestion,
         thinking_text=suggestion.thinking_text,
     )
+
+
+@router.post("/generate/{product_id}/stream")
+async def generate_suggestion_stream(
+    product_id: str,
+    manager: ProductManager = Depends(get_manager),
+) -> StreamingResponse:
+    """Stream the agentic rewrite pipeline via SSE."""
+    async def event_generator():
+        async for event in manager.stream_rewrite_product(product_id):
+            yield f"data: {event.model_dump_json()}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.post("/generate-field/{product_id}", response_model=RewriteResponse)

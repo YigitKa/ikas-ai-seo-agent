@@ -1,5 +1,6 @@
 import logging
-from typing import List, Optional, TypeVar
+from collections.abc import AsyncIterator
+from typing import Any, List, Optional, TypeVar
 
 from config.settings import get_config, save_config_to_db
 from core.ai_client import (
@@ -9,11 +10,14 @@ from core.ai_client import (
     build_product_rewrite_request,
     create_ai_client,
 )
+from core.agent_orchestrator import AgentOrchestrator, supports_tool_calling
+from core.agent_tools import create_seo_rewrite_toolkit, create_batch_toolkit
 from core.html_utils import html_to_plain_text
 from core.chat_service import ChatService
 from core.ikas_client import IkasClient
-from core.models import AppConfig, ChatResponse, Product, SeoScore, SeoSuggestion
+from core.models import AgentEvent, AppConfig, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.presentation import format_prompt_display, get_en_description_value, get_tr_description_value
+from core.prompt_store import REWRITE_AGENT_SYSTEM_PROMPT, BATCH_AGENT_SYSTEM_PROMPT, ensure_prompt_files
 from core.provider_service import (
     discover_provider_models,
     get_lm_studio_live_status,
@@ -22,7 +26,6 @@ from core.provider_service import (
 )
 from core.seo_analyzer import analyze_product
 from data import db
-from core.prompt_store import ensure_prompt_files
 
 logger = logging.getLogger(__name__)
 
@@ -154,9 +157,55 @@ class ProductManager:
         return self._config.ai_model_name or self._config.ai_provider
 
     async def rewrite_product(self, product: Product, score: SeoScore) -> SeoSuggestion:
+        if supports_tool_calling(self._config) and self._config.ai_provider != "none":
+            return await self._agentic_rewrite_product(product, score)
+        # Fallback: single-shot rewrite
         suggestion = self._ai.rewrite_product(product, score)
         await db.save_suggestion(suggestion)
         return suggestion
+
+    async def _agentic_rewrite_product(self, product: Product, score: SeoScore) -> SeoSuggestion:
+        """Run the agentic rewrite pipeline with tool calling."""
+        toolkit = create_seo_rewrite_toolkit()
+        orchestrator = AgentOrchestrator(
+            config=self._config,
+            toolkit=toolkit,
+            system_prompt=REWRITE_AGENT_SYSTEM_PROMPT,
+            max_iterations=8,
+        )
+        result = await orchestrator.run(
+            user_message=f"Bu urunun SEO'sunu optimize et: {product.name} (ID: {product.id})",
+            context={"product_id": product.id, "current_score": score.model_dump()},
+        )
+        # Agent should have called save_suggestion — fetch the latest
+        suggestion = await db.get_latest_suggestion_by_product(product.id)
+        if suggestion is None:
+            # Agent didn't save; fall back to single-shot
+            logger.warning("Agentic rewrite did not save a suggestion; falling back to single-shot")
+            suggestion = self._ai.rewrite_product(product, score)
+            await db.save_suggestion(suggestion)
+        return suggestion
+
+    async def stream_rewrite_product(self, product_id: str) -> AsyncIterator[AgentEvent]:
+        """Stream the agentic rewrite pipeline for a product."""
+        product = await db.get_product(product_id)
+        if product is None:
+            yield AgentEvent(type="error", content=f"Product '{product_id}' not found.")
+            return
+        score = analyze_product(product, self._config.seo_target_keywords)
+
+        toolkit = create_seo_rewrite_toolkit()
+        orchestrator = AgentOrchestrator(
+            config=self._config,
+            toolkit=toolkit,
+            system_prompt=REWRITE_AGENT_SYSTEM_PROMPT,
+            max_iterations=8,
+        )
+        async for event in orchestrator.stream(
+            user_message=f"Bu urunun SEO'sunu optimize et: {product.name} (ID: {product.id})",
+            context={"product_id": product.id, "current_score": score.model_dump()},
+        ):
+            yield event
 
     def rewrite_field(self, field: str, product: Product, score: SeoScore) -> tuple[str, str]:
         result = self._ai.rewrite_field(field, product, score)

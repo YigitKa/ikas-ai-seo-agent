@@ -27,6 +27,7 @@ ToolHandler = Callable[[dict[str, Any]], Awaitable[tuple[str, "dict[str, Any] | 
 
 import httpx
 
+from core.agent_tools import AgentToolkit, create_chat_toolkit
 from core.ikas_client import IkasClient
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.mcp_client import IkasMCPClient, MCPError
@@ -1001,6 +1002,9 @@ class ChatService:
         self._tool_registry = ToolRegistry()
         self._tool_registry.register(SAVE_SEO_SUGGESTION_TOOL_NAME, self._save_suggestion_from_tool_args)
 
+        # Agent toolkit — provides additional local tools (SEO scoring, validation, etc.)
+        self._agent_toolkit: AgentToolkit = create_chat_toolkit()
+
     @property
     def has_mcp(self) -> bool:
         return bool(self._config.ikas_mcp_token)
@@ -1407,6 +1411,9 @@ class ChatService:
             tools.append(_build_save_seo_suggestion_tool())
             instructions.append(SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION)
 
+        # Add agent toolkit tools (SEO scoring, product details, validation, etc.)
+        tools.extend(self._agent_toolkit.get_openai_functions())
+
         if allow_mcp_tools and self._mcp_initialized and self._mcp and not guided_context:
             tools.extend(self._mcp.get_tools_as_openai_functions())
             tool_catalog_instruction = _build_tool_catalog_instruction(self.mcp_tools)
@@ -1760,6 +1767,11 @@ class ChatService:
         if handler:
             return await handler(args)
 
+        # Check the agent toolkit (SEO scoring, validation, product details, etc.)
+        if tool_name in self._agent_toolkit:
+            result = await self._agent_toolkit.execute(tool_name, args)
+            return result, None
+
         # Fall through to MCP for all dynamically-discovered ikas tools
         if self._mcp and self._mcp_initialized:
             try:
@@ -1771,9 +1783,10 @@ class ChatService:
                     "available_tools": self._mcp.get_tool_names(),
                 }, ensure_ascii=False), None
 
+        available = self._tool_registry.local_tool_names + self._agent_toolkit.tool_names
         return json.dumps({
             "error": f"Tool '{tool_name}' is not available.",
-            "available_tools": self._tool_registry.local_tool_names,
+            "available_tools": available,
         }, ensure_ascii=False), None
 
     async def send_message(self, user_message: str) -> ChatResponse:
