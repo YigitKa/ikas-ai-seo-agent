@@ -102,3 +102,34 @@ class AppConfig(BaseModel):
     ai_max_tokens: int = 2000
     ai_thinking_mode: bool = False
     seo_low_score_threshold: int = 70
+
+
+# ── Agent Architecture Models ────────────────────────────────────────────
+
+
+class AgentToolCall(BaseModel):
+    """Record of a single tool invocation during an agent run."""
+    name: str
+    args: dict[str, Any] = Field(default_factory=dict)
+    result: str = ""
+    duration_ms: int = 0
+
+
+class AgentEvent(BaseModel):
+    """Streaming event emitted by AgentOrchestrator."""
+    type: str  # thinking | tool_call | tool_result | response_chunk | completed | error
+    content: str = ""
+    tool_name: str = ""
+    tool_args: dict[str, Any] = Field(default_factory=dict)
+    tool_result: str = ""
+    meta: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentResult(BaseModel):
+    """Final result of an agent run."""
+    content: str
+    thinking: str = ""
+    tool_calls_made: List[AgentToolCall] = Field(default_factory=list)
+    iterations: int = 0
+    meta: dict[str, Any] = Field(default_factory=dict)
+    suggestion_saved: dict[str, Any] | None = None
