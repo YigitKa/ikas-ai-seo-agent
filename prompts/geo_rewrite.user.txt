@@ -1,0 +1,9 @@
+Urun Adi: {{name}}
+Mevcut Aciklama: {{description}}
+Kategori: {{category}}
+Teknik Ozellikler / Mevcut SEO Sorunlari: {{issues}}
+Hedef Keywordler: {{keywords}}
+
+Bu urunu GEO (Generative Engine Optimization) icin yeniden yaz. AI botlarinin kolayca anlayip alintilayabilecegi, objektif ve bilgi yogun bir icerik olustur.
+SADECE JSON dondur:
+{"suggested_description": "..."}
