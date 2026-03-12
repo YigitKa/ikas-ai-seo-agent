@@ -73,7 +73,7 @@ def test_toolkit_get_openai_functions():
     assert funcs[1]["function"]["name"] == "b"
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_toolkit_execute_calls_handler():
     async def handler(args):
         return json.dumps({"result": args.get("x", 0) * 2})
@@ -85,7 +85,7 @@ async def test_toolkit_execute_calls_handler():
     assert json.loads(result) == {"result": 10}
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_toolkit_execute_unknown_tool():
     toolkit = AgentToolkit()
     result = await toolkit.execute("nonexistent", {})
@@ -94,7 +94,7 @@ async def test_toolkit_execute_unknown_tool():
     assert "nonexistent" in parsed["error"]
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_toolkit_execute_handler_error():
     async def handler(args):
         raise ValueError("boom")
@@ -143,7 +143,7 @@ def test_save_suggestion_tool_schema():
     assert "product_id" in tool.parameters["properties"]
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_seo_guidelines_returns_rubric():
     tool = build_get_seo_guidelines_tool()
     result = await tool.handler({})
@@ -154,7 +154,7 @@ async def test_get_seo_guidelines_returns_rubric():
     assert "description_tr" in parsed["rubric"]
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_seo_score_product_tool_missing_product(monkeypatch):
     """Tool should return error when product not found."""
     from data import db as db_module
@@ -170,7 +170,7 @@ async def test_seo_score_product_tool_missing_product(monkeypatch):
     assert "error" in parsed
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_seo_score_product_tool_scores_product(monkeypatch):
     """Tool should return a valid score for an existing product."""
     from data import db as db_module
@@ -196,7 +196,7 @@ async def test_seo_score_product_tool_scores_product(monkeypatch):
     assert isinstance(parsed["total_score"], int)
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_validate_rewrite_tool_compares_scores(monkeypatch):
     """Tool should return before/after score comparison."""
     from data import db as db_module

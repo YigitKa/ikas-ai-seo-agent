@@ -66,7 +66,7 @@ FALSE_ACTION_DISCLAIMER_TR = (
     "\n\n---\n"
     "⚠️ **Not:** Yukarıdaki öneriler henüz uygulanmadı. "
     "Degisiklikleri chat uzerinden secili urunde uygulamak icin:\n"
-    "- `@ikas uygula` yazarak onay akisina girin,\n"
+    "- 'Uygula' veya 'kaydet' diyerek onay akisina girin,\n"
     "- Sohbetteki **Öneriler** kartlarindan birini onaylayin."
 )
 
@@ -125,30 +125,9 @@ def append_operation_suggestion(
     agent_type: str,
     save_suggestion_tool_name: str = DEFAULT_SAVE_SEO_SUGGESTION_TOOL_NAME,
 ) -> str:
-    content = (response_text or "").strip()
-    if not content or operation_footer_already_present(content):
-        return response_text
-
-    operation_name, reason, requires_confirmation = select_product_operation_suggestion(
-        user_message,
-        content,
-        product_name,
-        agent_type,
-        save_suggestion_tool_name=save_suggestion_tool_name,
-    )
-
-    lines = [
-        content,
-        "",
-        "**ikas MCP Operasyon Onerisi**",
-        f"- `{operation_name}`: {reason}.",
-    ]
-    if requires_confirmation:
-        lines.append("- Not: Bu bir mutation adimidir; uygulamadan once onayini alirim.")
-    elif operation_name == save_suggestion_tool_name:
-        lines.append("- Not: Bu adim ikas'ta anlik guncelleme yapmaz; sadece bu chat oturumunda bekleyen taslak olusturur.")
-    lines.append("- Istersen bir sonraki adimda bunu secili urun icin netlestireyim.")
-    return "\n".join(lines)
+    # Operation suggestion footer disabled — quick-fix cards and action buttons
+    # now surface next-step options directly in the chat flow.
+    return response_text
 
 
 def has_mutation_tool_result(tool_results: list[dict[str, Any]]) -> bool:

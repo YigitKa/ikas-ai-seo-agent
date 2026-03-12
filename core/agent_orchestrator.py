@@ -39,6 +39,7 @@ _PROVIDER_BASE_URLS: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
     "openrouter": "https://openrouter.ai/api/v1",
     "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "anthropic": "https://api.anthropic.com/v1",
 }
 
 _PROVIDER_DEFAULT_MODELS: dict[str, str] = {
@@ -75,7 +76,9 @@ def _resolve_model(config: AppConfig) -> str:
 def _build_headers(config: AppConfig) -> dict[str, str]:
     headers: dict[str, str] = {"Content-Type": "application/json"}
     api_key = config.ai_api_key
-    if api_key:
+    if config.ai_provider == "anthropic" and api_key:
+        headers["x-api-key"] = api_key
+    elif api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     elif config.ai_provider in ("ollama", "lm-studio"):
         headers["Authorization"] = "Bearer ollama"

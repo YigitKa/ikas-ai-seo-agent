@@ -153,7 +153,7 @@ def _mock_response(content: str, tool_calls=None, finish_reason="stop"):
     }
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_orchestrator_run_simple_response():
     """Agent returns a direct response without tool calls."""
     config = _make_config()
@@ -181,7 +181,7 @@ async def test_orchestrator_run_simple_response():
     assert len(result.tool_calls_made) == 0
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_orchestrator_run_with_tool_calls():
     """Agent makes a tool call, gets result, then responds."""
     call_log = []
@@ -242,7 +242,7 @@ async def test_orchestrator_run_with_tool_calls():
     assert len(call_log) == 1
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_orchestrator_stream_yields_events():
     """Stream should yield tool_call, tool_result, and completed events."""
     async def mock_handler(args):
@@ -294,7 +294,7 @@ async def test_orchestrator_stream_yields_events():
     assert completed.content == "Done!"
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_orchestrator_max_iterations():
     """Agent should stop after max_iterations even if model keeps calling tools."""
     async def mock_handler(args):
@@ -334,7 +334,7 @@ async def test_orchestrator_max_iterations():
     assert result.meta.get("max_iterations_reached") is True
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_orchestrator_thinking_extraction():
     """Thinking blocks should be extracted and removed from content."""
     config = _make_config()

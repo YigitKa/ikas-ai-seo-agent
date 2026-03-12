@@ -147,6 +147,45 @@ body {
   animation-delay: var(--word-delay, 0s);
 }
 
+/* ── Score Chat Message Animations ───────────────────────────────────────── */
+@keyframes score-section-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes score-field-enter {
+  0% {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.score-section-enter {
+  opacity: 0;
+  animation: score-section-enter 500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: var(--delay, 0ms);
+}
+
+.score-field-enter {
+  opacity: 0;
+  animation: score-field-enter 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: var(--delay, 0ms);
+}
+
+.score-chat-message {
+  animation: score-section-enter 600ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 /* ── HTML content styling inside diff viewer ─────────────────────────────── */
 .html-content h1, .html-content h2, .html-content h3, .html-content h4 {
   font-weight: 600;

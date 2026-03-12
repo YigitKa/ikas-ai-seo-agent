@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getLmStudioLiveStatus, getSettings } from "../api/client";
 import { useChat } from "../hooks/useChat";
-import type { Product, SeoScore } from "../types";
+import type { Product, SeoScore, SeoSuggestion } from "../types";
 import {
   formatCompactNumber,
   formatDuration,
   readMetaNumber,
 } from "./chat/chatUtils";
 import { MessageBubble, type SuggestionOption } from "./chat/ChatMessage";
-import { extractSuggestionOptions } from "./chat/suggestionUtils";
+import SeoScoreChatMessage from "./chat/SeoScoreChatMessage";
+import SuggestionDiffModal from "./chat/SuggestionDiffModal";
 import {
   buildPromptParamOptions,
   getParamTriggerState,
@@ -25,6 +26,7 @@ interface Props {
   seoScore?: number | null;
   product?: Product | null;
   score?: SeoScore | null;
+  productDetailUrl?: string;
 }
 
 // ── StatusPill ────────────────────────────────────────────────────────────────
@@ -76,6 +78,7 @@ export default function ChatPanel({
   seoScore,
   product,
   score,
+  productDetailUrl,
 }: Props) {
   const settingsQ = useQuery({
     queryKey: ["settings"],
@@ -106,8 +109,10 @@ export default function ChatPanel({
     pendingSince,
     liveChunkCount,
     liveTokenEstimate,
+    pendingSuggestion,
     mcpState,
     sendMessage,
+    addLocalMessage,
     cancelMessage,
     clearHistory,
     connect,
@@ -126,7 +131,9 @@ export default function ChatPanel({
     null,
   );
   const [activeParamIndex, setActiveParamIndex] = useState(0);
-  const [interactionInput, setInteractionInput] = useState("");
+  const [diffModalSuggestion, setDiffModalSuggestion] = useState<SeoSuggestion | null>(null);
+  const [diffModalAction, setDiffModalAction] = useState<string>("");
+  const prevPendingSuggestionRef = useRef<SeoSuggestion | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const promptParamOptions = buildPromptParamOptions(product, score);
@@ -171,7 +178,6 @@ export default function ChatPanel({
     setInput("");
     setParamTrigger(null);
     setActiveParamIndex(0);
-    setInteractionInput("");
   }, [productId]);
 
   // Derived state
@@ -210,22 +216,22 @@ export default function ChatPanel({
     {
       label: "SEO metriklerini yorumla",
       template:
-        "@local Bu mevcut SEO metriklerini alan bazinda yorumla ve sadece bu skorlara gore 3 oncelikli tavsiye ver.\n\n{seoMetricsSummary}",
+        "Bu mevcut SEO metriklerini alan bazinda yorumla ve sadece bu skorlara gore 3 oncelikli tavsiye ver.\n\n{seoMetricsSummary}",
     },
     {
       label: "Urun aciklamasini yorumla",
       template:
-        "@local Bu urunun mevcut aciklamasini yorumla. Yalnizca eldeki metni kullan.\n\n{productDescription}",
+        "Bu urunun mevcut aciklamasini yorumla. Yalnizca eldeki metni kullan.\n\n{productDescription}",
     },
     {
       label: "Meta titlei yorumla",
       template:
-        "@local Bu mevcut meta titlei SEO acisindan yorumla.\n\n{productMetaTitle}",
+        "Bu mevcut meta titlei SEO acisindan yorumla.\n\n{productMetaTitle}",
     },
     {
       label: "Meta descriptioni yorumla",
       template:
-        "@local Bu mevcut meta descriptioni SEO acisindan yorumla.\n\n{productMetaDescription}",
+        "Bu mevcut meta descriptioni SEO acisindan yorumla.\n\n{productMetaDescription}",
     },
   ];
 
@@ -242,13 +248,7 @@ export default function ChatPanel({
       )
     : [];
   const showParamMenu = !isAutoIntroActive && filteredParamOptions.length > 0;
-  const lastMessage = messages[messages.length - 1];
-  const latestAssistantInteraction =
-    lastMessage?.role === "assistant"
-      ? extractSuggestionOptions(lastMessage.content)
-      : { markdownContent: "", options: [] as SuggestionOption[] };
-  const hasPendingInteraction =
-    !isLoading && latestAssistantInteraction.options.length > 0;
+
   // Handlers
   const syncParamTrigger = (value: string, caretPosition: number | null) => {
     setParamTrigger(getParamTriggerState(value, caretPosition));
@@ -287,42 +287,77 @@ export default function ChatPanel({
   const handleSend = () => submitPrompt(input);
   const handleStarterPrompt = (prompt: StarterPrompt) =>
     submitPrompt(prompt.template);
+  const ACTION_LABELS: Record<string, string> = {
+    single_apply_meta: "\u{1F527} Meta alanlarini duzelt",
+    single_apply_content: "\u{1F4DD} Icerik alanlarini duzelt",
+    single_apply_all: "\u{1F680} Tum alanlari duzelt",
+    single_apply_cancel: "\u{274C} Iptal",
+    single_apply_confirm: "\u{2705} Onayla",
+  };
+
   const handleApplySuggestionOption = (
     option: SuggestionOption,
     index: number,
   ) => {
     if (option.action) {
+      const label = ACTION_LABELS[option.action] || option.value;
+      addLocalMessage({ role: "user", content: label });
       sendMessage(`[[CHAT_ACTION:${option.action}]]`, { hidden: true });
       return;
     }
+    const label = `${index + 1}. secenegi sec: ${option.tone}`;
+    addLocalMessage({ role: "user", content: label });
     sendMessage(
-      `${index + 1}. secenegi uygula.\nTon: ${option.tone}\nSecilen icerik: ${option.value}`,
+      `${index + 1}. secenegi sectim.\nTon: ${option.tone}\nIcerik: ${option.value}\nBu secenek dogrultusunda urun icin somut SEO degerleri olustur ve save_seo_suggestion araci ile kaydet.`,
       { hidden: true },
     );
   };
 
-  const handleInteractionOptionSelect = (
-    option: SuggestionOption,
-    index: number,
-  ) => {
-    handleApplySuggestionOption(option, index);
-    setInteractionInput("");
+  // Open diff modal when backend returns a pending suggestion for review
+  const openDiffModalForAction = useCallback(
+    (suggestion: SeoSuggestion, action: string) => {
+      setDiffModalSuggestion(suggestion);
+      setDiffModalAction(action);
+    },
+    [],
+  );
+
+  // When pendingSuggestion changes (from backend response), open the diff modal
+  useEffect(() => {
+    if (
+      pendingSuggestion &&
+      pendingSuggestion !== prevPendingSuggestionRef.current &&
+      pendingSuggestion.status === "pending_review"
+    ) {
+      openDiffModalForAction(pendingSuggestion, diffModalAction || "single_apply_all");
+    }
+    prevPendingSuggestionRef.current = pendingSuggestion;
+  }, [pendingSuggestion, openDiffModalForAction, diffModalAction]);
+
+  const handleDiffApprove = (editedSuggestion: SeoSuggestion) => {
+    setDiffModalSuggestion(null);
+    // Send edited values back for apply
+    const payload = JSON.stringify({
+      action: diffModalAction,
+      edits: {
+        suggested_name: editedSuggestion.suggested_name,
+        suggested_meta_title: editedSuggestion.suggested_meta_title,
+        suggested_meta_description: editedSuggestion.suggested_meta_description,
+        suggested_description: editedSuggestion.suggested_description,
+        suggested_description_en: editedSuggestion.suggested_description_en,
+      },
+    });
+    addLocalMessage({ role: "user", content: "\u{2705} Degisiklikleri onayliyorum" });
+    sendMessage(`[[CHAT_ACTION:single_apply_execute:${payload}]]`, { hidden: true });
   };
 
-  const handleInteractionSend = () => {
-    const message = interactionInput.trim();
-    if (!message) return;
-    sendMessage(message);
-    setInteractionInput("");
+  const handleDiffReject = () => {
+    setDiffModalSuggestion(null);
+    addLocalMessage({ role: "user", content: "\u{274C} Iptal ettim" });
+    sendMessage("[[CHAT_ACTION:single_apply_cancel]]", { hidden: true });
   };
 
-  const handleInteractionSkip = () => {
-    sendMessage(
-      "Bu secenekleri simdilik pas geciyorum, baska bir yonden devam edelim.",
-      { hidden: true },
-    );
-    setInteractionInput("");
-  };
+
 
   return (
     <div
@@ -370,8 +405,26 @@ export default function ChatPanel({
 
             {displayProductName && (
               <div className="mt-2 min-w-0">
-                <div className="truncate text-[18px] font-semibold text-white">
-                  {displayProductName}
+                <div className="flex items-center gap-2">
+                  <div className="truncate text-[18px] font-semibold text-white">
+                    {displayProductName}
+                  </div>
+                  {productDetailUrl && (
+                    <a
+                      href={productDetailUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex-shrink-0 rounded-md px-2 py-1 text-[10px] font-medium transition-opacity hover:opacity-80"
+                      style={{
+                        background: 'rgba(99, 102, 241, 0.12)',
+                        color: '#c7d2fe',
+                        border: '1px solid rgba(99, 102, 241, 0.2)',
+                      }}
+                      title="ikas urun detayina git"
+                    >
+                      ikas ↗
+                    </a>
+                  )}
                 </div>
                 <div
                   className="mt-1 text-[11px]"
@@ -489,6 +542,11 @@ export default function ChatPanel({
 
       {/* ── Messages ── */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
+        {/* Score analysis — shown as the app's first message before LLM */}
+        {score && productId && (
+          <SeoScoreChatMessage key={`score-${productId}`} score={score} />
+        )}
+
         {showStarterState && (
           <div
             className="rounded-2xl p-4 text-center"
@@ -530,7 +588,7 @@ export default function ChatPanel({
               className="mt-1 text-xs"
               style={{ color: "var(--color-text-muted)" }}
             >
-              `@local` ile mevcut baglami yorumlat. {"{"} yazarak
+              Mesaj yaz veya {"{"}  ile
               `productDescription` veya `seoMetricsSummary` gibi alanlari mesaja
               ekleyebilirsin.
             </p>
@@ -684,83 +742,24 @@ export default function ChatPanel({
               </div>
             )}
 
-            {hasPendingInteraction && (
-              <div
-                className="mb-2 rounded-xl p-3"
-                style={{
-                  background:
-                    "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                }}
-              >
-                <p
-                  className="text-[13px] font-semibold"
-                  style={{ color: "var(--color-text-primary)" }}
-                >
-                  {latestAssistantInteraction.markdownContent ||
-                    "Bu adimda bir secim yapman gerekiyor. Hangi secenekle devam edelim?"}
-                </p>
-                <div className="mt-3 space-y-1.5">
-                  {latestAssistantInteraction.options.map((option, index) => (
-                    <button
-                      key={`${option.tone}-${index}`}
-                      type="button"
-                      disabled={isLoading}
-                      onClick={() =>
-                        handleInteractionOptionSelect(option, index)
-                      }
-                      className="flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left transition-all hover:opacity-95 disabled:opacity-50"
-                      style={{
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        background: "rgba(17, 24, 39, 0.5)",
-                        color: "var(--color-text-primary)",
-                      }}
-                    >
-                      <span className="mt-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded bg-black/40 px-1.5 text-[10px] font-semibold">
-                        {index + 1}
-                      </span>
-                      <span className="text-[12px]">{option.value}</span>
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={handleInteractionSkip}
-                  disabled={isLoading}
-                  className="mt-3 rounded-lg px-3 py-1.5 text-xs font-medium transition-all disabled:opacity-50"
-                  style={{
-                    border: "1px solid var(--color-border-light)",
-                    color: "var(--color-text-secondary)",
-                  }}
-                >
-                  Skip
-                </button>
-              </div>
-            )}
-
             <textarea
               ref={textareaRef}
-              value={hasPendingInteraction ? interactionInput : input}
+              value={input}
               disabled={isAutoIntroActive}
               rows={1}
               onChange={(e) => {
                 const nextValue = e.target.value;
-                if (hasPendingInteraction) {
-                  setInteractionInput(nextValue);
-                  return;
-                }
                 setInput(nextValue);
                 syncParamTrigger(nextValue, e.target.selectionStart);
               }}
               onSelect={(e) => {
-                if (hasPendingInteraction) return;
                 syncParamTrigger(
                   e.currentTarget.value,
                   e.currentTarget.selectionStart,
                 );
               }}
               onKeyDown={(e) => {
-                if (!hasPendingInteraction && showParamMenu) {
+                if (showParamMenu) {
                   if (e.key === "ArrowDown") {
                     e.preventDefault();
                     setActiveParamIndex(
@@ -788,19 +787,13 @@ export default function ChatPanel({
                   }
                   if (e.key === "Escape") {
                     e.preventDefault();
-                    if (!hasPendingInteraction) {
-                      setParamTrigger(null);
-                    }
+                    setParamTrigger(null);
                     return;
                   }
                 }
 
                 if (e.key === "Enter" && !e.shiftKey && !isLoading) {
                   e.preventDefault();
-                  if (hasPendingInteraction) {
-                    handleInteractionSend();
-                    return;
-                  }
                   handleSend();
                 }
               }}
@@ -808,12 +801,8 @@ export default function ChatPanel({
                 isAutoIntroActive
                   ? "Asistan urunu inceliyor..."
                   : displayProductName
-                    ? hasPendingInteraction
-                      ? `${displayProductName} icin seceneklerden birini secin veya farkli talimat yazin...`
-                      : `${displayProductName} icin soru sorun. { ile hazir alan ekleyin...`
-                    : hasPendingInteraction
-                      ? "Seceneklerden birini secin veya farkli talimat yazin..."
-                      : "Mesaj yazin... { ile parametre ekleyin."
+                    ? `${displayProductName} icin soru sorun. { ile hazir alan ekleyin...`
+                    : "Mesaj yazin... { ile parametre ekleyin."
               }
               className="min-h-[44px] w-full resize-none rounded-lg px-3 py-2 text-[13px] outline-none transition-all"
               style={{
@@ -828,29 +817,20 @@ export default function ChatPanel({
               }
               onBlur={(e) => {
                 e.currentTarget.style.borderColor = "var(--color-border-light)";
-                if (!hasPendingInteraction) {
-                  setParamTrigger(null);
-                }
+                setParamTrigger(null);
               }}
             />
             <div
               className="mt-1 px-1 text-[11px]"
               style={{ color: "var(--color-text-muted)" }}
             >
-              {isAutoIntroActive ? (
-                "Ilk proaktif SEO analizi hazirlaniyor."
-              ) : (
-                <>
-                  {hasPendingInteraction ? (
-                    "Seceneklerden birine tiklayabilir veya metin kutusuna kendi yonlendirmeni yazabilirsin."
-                  ) : (
-                    <>
-                      {"{"} ile `productDescription`, `productMetaTitle` veya
-                      `seoMetricsSummary` gibi alanlari hizlica ekle.
-                    </>
-                  )}
-                </>
-              )}
+              {isAutoIntroActive
+                ? "Ilk proaktif SEO analizi hazirlaniyor."
+                : <>
+                    {"{}"} ile `productDescription`, `productMetaTitle` veya
+                    `seoMetricsSummary` gibi alanlari hizlica ekle.
+                  </>
+              }
             </div>
           </div>
 
@@ -858,15 +838,10 @@ export default function ChatPanel({
             onClick={
               isLoading
                 ? cancelMessage
-                : hasPendingInteraction
-                  ? handleInteractionSend
-                  : handleSend
+                : handleSend
             }
             disabled={
-              (!isLoading &&
-                !(hasPendingInteraction
-                  ? interactionInput.trim()
-                  : input.trim())) ||
+              (!isLoading && !input.trim()) ||
               (isAutoIntroActive && !isLoading)
             }
             className={`flex min-h-[44px] flex-shrink-0 items-center justify-center rounded-lg px-3 text-white transition-all hover:opacity-90 disabled:opacity-30 ${isLoading ? "min-w-[64px]" : "w-11"}`}
@@ -899,6 +874,15 @@ export default function ChatPanel({
           </button>
         </div>
       </div>
+
+      {diffModalSuggestion && (
+        <SuggestionDiffModal
+          suggestion={diffModalSuggestion}
+          product={product ?? undefined}
+          onApprove={handleDiffApprove}
+          onReject={handleDiffReject}
+        />
+      )}
     </div>
   );
 }

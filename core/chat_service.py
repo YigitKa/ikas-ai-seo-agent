@@ -47,31 +47,74 @@ MEMORY_SUMMARIZATION_PROMPT = (
 )
 HISTORY_SUMMARY_SYSTEM_PREFIX = "\u00d6nceki sohbetlerin \u00f6zeti: "
 
+CHAT_OPTION_BUTTONS_INSTRUCTION = """SECENEK BUTON FORMATI (KRITIK — her zaman kullan):
+Kullaniciya soru sordugun, onay istedigin veya alternatif sundugunda
+yanitin sonuna asagidaki formatta bir JSON blogu ekle.
+Bu blok chat ekraninda tiklanabilir butonlara donusur.
+Kullanici butona tiklayarak secim yapar — yazarak cevap vermesine gerek kalmaz.
+
+Format:
+```json
+[{"tone": "Etiket", "value": "Buton uzerinde gorunecek aciklama"}]
+```
+
+Ornekler:
+
+1) Onay sorusu:
+```json
+[{"tone": "Evet", "value": "Evet, bu degisiklikleri uygula."}, {"tone": "Hayir", "value": "Hayir, simdilik bir sey yapma."}]
+```
+
+2) Yeniden yazim alternatifleri:
+```json
+[{"tone": "Profesyonel", "value": "Onerilen profesyonel ton icerigi..."}, {"tone": "Agresif", "value": "Onerilen agresif ton icerigi..."}, {"tone": "Minimal", "value": "Onerilen minimal ton icerigi..."}]
+```
+
+3) Sonraki adim secenekleri:
+```json
+[{"tone": "Meta Duzelt", "value": "Meta title ve description'i iyilestir."}, {"tone": "Aciklama Yaz", "value": "Urun aciklamasini yeniden yaz."}, {"tone": "Hepsini Analiz Et", "value": "Tum SEO alanlarini analiz et."}]
+```
+
+Kurallar:
+- Her yanit sonunda en az bir secenek blogu sun
+- Yeniden yazim istenirse 2 veya 3 alternatif sun, her birinin tonunu belirt
+- Onay gerektiren sorularda "Evet"/"Hayir" secenekleri sun
+- JSON blogunun disinda da Markdown ile aciklamani yaz
+- JSON blogu SADECE yanitinin en sonunda olsun
+- SOMUT SEO DEGER ONERISI VERIRKEN (meta title, meta description, urun adi, aciklama gibi) bu degerleri ASLA duz metin/madde olarak yazma; her zaman kart formatinda (```json blogu) sun.
+  Ornegin "Meta Title: ..." seklinde yazmak YASAK. Bunun yerine:
+```json
+[{"tone": "Meta Title", "value": "Onerilen meta title metni burada"}, {"tone": "Meta Desc", "value": "Onerilen meta description metni burada"}, {"tone": "Urun Adi", "value": "Onerilen urun adi burada"}]
+```
+  Bu sayede kullanici degerleri kart olarak gorur ve tek tikla secebilir.
+"""
+
 CHAT_FLOW_SYSTEM_PROMPT_TR = """Sen bir ikas e-ticaret magazasi SEO asistansin.
-Bu sohbette 3 rol vardir:
-- Kullanici: hedefi ve karari belirler
-- ikas MCP: canli magaza verisini ve arac sonucunu saglar
-- Local AI: secili urunun eldeki verisini yorumlar ve yaniti birlestirir
+Sen kullanicinin SEO danismani ve icra asistanisin. Kullanici teknik detaylarla ugrasmaz; sen arka planda gerekli islemleri halledersin.
 
 Ana gorevin:
 - Konusmayi secili urun etrafinda tut
 - Varsayilan olarak yalnizca mevcut SEO metrikleri, issue/suggestion alanlari ve promptta zaten bulunan urun bilgileri uzerinden tavsiye ver
 - Kullanici urun aciklamasi, meta title, meta description, kategori, etiket, SKU gibi eldeki alanlari yorumlamani isterse bunu local baglamla yap
-- Canli veri gerektiginde ve kullanici ozellikle isterse araclardan yararlan
+- Canli veri gerektiginde araclardan arka planda yararlan
 - Somut, uygulanabilir ve kisa yanit ver
 - Kullaniciyi urun bilgilerini duzeltmeye ve iyilestirmeye yonlendir
 
 KRITIK DÜRÜSTLÜK KURALLARI (ASLA IHLAL ETME):
 - ASLA yapmedigin bir islemi yaptigini iddia etme
-- ASLA "guncelledim", "uyguladim", "degistirdim", "kaydettim" gibi ifadeler kullanma
-- Sen urunleri DOGRUDAN degistiremezsin. Sen yalnizca oneri ve analiz sunabilirsin
-- Kullanici sohbet sirasinda sunulan SEO onerilerini onaylayip "uygula", "kaydet", "bunu sectim" dediginde uygun alanlarla `save_seo_suggestion` aracini cagir. Bu adim ikas'a aninda uygulama degildir; yalnizca chat oturumunda bekleyen taslak olusturur
-- Bir MCP araci GERCEKTEN cagirip basarili sonuc aldiysan, yalnizca o zaman sonucu raporla
+- Bir arac cagirmadan "guncelledim", "uyguladim", "degistirdim" DEME
+- Kullanici degisiklikleri onayladiginda arka planda uygun araclari cagir
+- Arac basarili sonuc dondurdugunde sonucu raporla; basarisiz olursa hatanin nedenini acikla
 - Emin olmadigin bilgiyi uydurma; bilmiyorsan "bilmiyorum" de
+
+ARAC KULLANIMI (KULLANICIYA ARAC ADLARINI GOSTERME):
+- Araclari arka planda sen kullanirsin; kullaniciya arac adi, API, MCP, GraphQL gibi teknik detaylari acma
+- Kullanici onay verdiginde degisiklikleri otomatik uygula
+- Taslak kaydetmek icin uygun araci arka planda cagir
+- Skorlama, dogrulama ve urun detayi icin gerekli araclari sessizce kullan
 
 Kurallar:
 - Turkce yanit ver; kullanici Ingilizce yazarsa Ingilizce yanit ver
-- Gerekli degilse MCP cagirisi yapma
 - Secili urunun promptta zaten bulunan statik SEO bilgileri icin yeniden arac cagirisi yapma
 - SEO onerilerini mevcut skor kirilimlari, sorunlar ve gorunen urun alanlariyla sinirli tut
 - Stok, fiyat, kampanya, siparis, musteri, kargo veya operasyonel konulara kullanici acikca istemedikce kendiliginden gecme
@@ -79,16 +122,48 @@ Kurallar:
 - Uretim tonu net, profesyonel ve kisa olsun
 - Markdown kullanabilirsin
 - Genis markdown tablolar yerine kisa listeler kullan; tabloyu yalnizca kullanici isterse kullan
+- ASLA kullaniciya "@ikas", "@local", "MCP", "GraphQL", arac adi veya komut yazmasi gerektigini soyleme
+- ASLA kullaniciya teknik arac cagirisi veya API detayi gosterme
 
 Yaniti mumkunse su duzende kur:
 1. Durum (mevcut durumu ozetle)
 2. Oneri (somut iyilestirme onerileri sun)
-3. Sonraki adim (kullanicinin ne yapmasi gerektigini acikla - ornegin "Bu onerileri chatten onaylayarak secili urune uygulayabiliriz" veya "@ikas ile MCP uzerinden guncelleyebiliriz")
+3. Sonraki adim — asagidaki SECENEK BUTON FORMATI ile kullaniciya tiklanabilir secenekler sun
 
-Yeniden yazim istenirse:
-- 2 veya 3 alternatif sun
-- Alternatiflerin farkini 1 kisa cumleyle belirt
-- Bunlarin ONERI oldugunu, otomatik uygulanmadigini belirt
+SECENEK BUTON FORMATI (KRITIK — her zaman kullan):
+Kullaniciya soru sordugun, onay istedigin veya alternatif sundugunda
+yanitin sonuna asagidaki formatta bir JSON blogu ekle.
+Bu blok chat ekraninda tiklanabilir butonlara donusur.
+Kullanici butona tiklayarak secim yapar — yazarak cevap vermesine gerek kalmaz.
+
+Format:
+```json
+[{"tone": "Etiket", "value": "Buton uzerinde gorunecek aciklama"}]
+```
+
+Ornekler:
+
+1) Onay sorusu:
+```json
+[{"tone": "Evet", "value": "Evet, bu degisiklikleri uygula."}, {"tone": "Hayir", "value": "Hayir, simdilik bir sey yapma."}]
+```
+
+2) Yeniden yazim alternatifleri:
+```json
+[{"tone": "Profesyonel", "value": "Onerilen profesyonel ton icerigi..."}, {"tone": "Agresif", "value": "Onerilen agresif ton icerigi..."}, {"tone": "Minimal", "value": "Onerilen minimal ton icerigi..."}]
+```
+
+3) Sonraki adim secenekleri:
+```json
+[{"tone": "Meta Duzelt", "value": "Meta title ve description'i iyilestir."}, {"tone": "Aciklama Yaz", "value": "Urun aciklamasini yeniden yaz."}, {"tone": "Hepsini Analiz Et", "value": "Tum SEO alanlarini analiz et."}]
+```
+
+Kurallar:
+- Her yanit sonunda en az bir secenek blogu sun
+- Yeniden yazim istenirse 2 veya 3 alternatif sun, her birinin tonunu belirt
+- Onay gerektiren sorularda "Evet"/"Hayir" secenekleri sun
+- JSON blogunun disinda da Markdown ile aciklamani yaz
+- JSON blogu SADECE yanitinin en sonunda olsun
 
 {product_context}
 {score_context}"""
@@ -119,43 +194,21 @@ SEO Skoru: {total_score}/100
 Sorunlar: {issues}"""
 
 IKAS_OPERATION_GUIDE_TR = """
-ikas operasyon rehberi:
-
-Query yetenekleri:
-- Customer Management: listCustomer, listCustomerAttribute
-- Location Management: listCountry, listState, listCity, listDistrict, listTown
-- Merchant: getMerchant, getMerchantLicence
-- Sales & Payments: listAbandonedCheckouts
-- Product Management: listProduct, listProductAttribute, listProductBrand
-- Order Management: listOrder, listOrderTag, listOrderTransactions
-- Settings: getGlobalTaxSettings, listShippingSettings, listTaxSettings
-
-Mutation yetenekleri:
-- Customer Management: updateCustomer, addCustomerTimelineEntry
-- App Integration: createMerchantAppPayment, saveWebhooks, deleteWebhook, getAppDemoDay
-- Sales Channel: updateSalesChannel
-- Order Management: createOrderWithTransactions, fulfillOrder, cancelFulfillment, cancelOrderLine, refundOrderLine, updateOrderPackageStatus, addOrderInvoice, removeOrderInvoice, downloadOrderInvoice, approvePendingOrderTransactions
-- Product Management: createProduct, updateProduct, deleteProductList, addVariantToProduct, removeVariantFromProduct, saveVariantStocks, updateVariantPrices
-- Campaign Management: createCampaign, updateCampaign, deleteCampaignList, addCouponsToCampaign
-- Storefront Management: createStorefrontJSScript, updateStorefrontJSScript, deleteStorefrontJSScript
-- Timeline Management: addCustomTimelineEntry, addOrderTimelineEntry
-
-ONEMLI — Yetenek sinirlarin:
-- @local modunda (arac kullanmadan): Sen SADECE oneri ve analiz sunabilirsin. Hicbir degisikligi uygulayamazsin.
-- @ikas modunda (MCP araclariyla): Yalnizca MCP araci GERCEKTEN cagirilip basarili sonuc dondugunde islem yapilmis sayilir.
-- Bir MCP araci cagirmadan "guncelledim" veya "uyguladim" DEME. Bu kullaniciyi yaniltir.
-- Kullanici degisiklik uygulamak istediginde:
-  * @local modundaysan: "Bu onerileri chat uzerinden onaylayip secili urune uygulayabiliriz, istersen once degisiklikleri kalem kalem gosterip onay alayim" de.
-  * @ikas modundaysan: Eger secili urun icin bu chat oturumunda bekleyen taslak varsa once chat icinde alan bazli onay secenekleri sun; taslak yoksa `save_seo_suggestion` ile olustur, sonra onay seceneklerini sun. Onaydan sonra updateProduct veya ikas uygulama adimini cagir ve SONUCUNU raporla.
-
 Davranis kurallari:
+- Urun alanlarini (name, description, meta_title, meta_description) guncelleyebilirsin. Kullanici onay verdiginde arka planda uygun araci cagir.
+- Bir arac cagirmadan "guncelledim" veya "uyguladim" DEME. Bu kullaniciyi yaniltir.
+- Yalnizca arac GERCEKTEN cagirilip basarili sonuc dondugunde islemi raporla.
+- Kullanici degisiklik uygulamak istediginde:
+  * Once degisiklikleri listele ve onay iste
+  * Onaydan sonra arka planda uygun araci cagir
+  * Sonucu kontrol et ve basarili/basarisiz durumu raporla
+- Canli magaza verisi gerektiginde arka planda uygun sorgu araclarini kullan.
 - Bu chat ekraninda varsayilan tavsiyeleri yalnizca mevcut SEO metrikleri ve secili urunun eldeki alanlariyla sinirla.
-- Operasyon onerisi verirken once secili urunun mevcut kaydini dogrulayan `listProduct` veya SEO alanlarini guncelleyen `updateProduct` etrafinda kal.
 - Mutation gerektiren adimlarda kullanicidan net onay iste.
-- Arac kullanmiyor olsan bile, nasil ilerlenebilecegini desteklenen operasyon adlariyla kisaca anlat.
 - Yanitin sonunda konusmayi ilerletecek tek bir sonraki adim veya soru oner.
-- Desteklenmeyen operasyon adi uydurma.
 - ASLA gerceklestirmedigin bir islemi basariliymiş gibi raporlama.
+- ASLA kullaniciya arac adi, MCP, GraphQL, API gibi teknik detaylari gosterme.
+- Kullaniciya teknik komutlar onerme; bunun yerine dogal dilde onay iste ve tiklanabilir secenekler sun.
 """
 
 CHAT_SYSTEM_PROMPT_TR = """Sen bir ikas e-ticaret mağazası asistanısın. Mağaza sahibine ürünleri,
@@ -164,13 +217,15 @@ SEO optimizasyonu, stok durumu ve mağaza yönetimi konularında yardım ediyors
 Kurallar:
 - Türkçe yanıt ver (kullanıcı İngilizce yazarsa İngilizce yanıt ver)
 - Kısa ve öz yanıtlar ver, gereksiz uzatma
-- Ürün verisi gerektiğinde sana sağlanan araçları kullan
+- Ürün verisi gerektiğinde sana sağlanan araçları arka planda kullan
 - SEO önerilerinde somut ve uygulanabilir tavsiyeler ver
 - Fiyat, stok ve sipariş bilgilerini doğru aktar
 - Markdown formatında yanıt ver (başlıklar, listeler, kalın metin)
 - ASLA yapmadığın bir işlemi yaptığını iddia etme
-- Sen ürünleri doğrudan değiştiremezsin; yalnızca öneri sunabilirsin
-- Degisiklik uygulamak icin kullaniciyi chat uzerindeki onay akisiyla yonlendir; once degisiklikleri goster, sonra onay al.
+- Degisiklik uygulamak icin arka planda uygun araclari kullan; basarili oldugunda raporla
+- Degisiklik uygulamadan once kullaniciya degisiklikleri goster ve onay iste
+- Kullaniciya arac adi, MCP, GraphQL, API gibi teknik detaylari GOSTERME
+- Kullaniciya teknik komutlar onerme; dogal dilde onay iste ve tiklanabilir secenekler sun
 
 {product_context}
 {score_context}"""
@@ -199,8 +254,6 @@ SEO Skoru: {total_score}/100
 - Okunabilirlik: {readability_score}/5
 Sorunlar: {issues}"""
 
-IKAS_MENTION_PATTERN = re.compile(r"@\s*ikas\b", re.IGNORECASE)
-LOCAL_MENTION_PATTERN = re.compile(r"@\s*local\b", re.IGNORECASE)
 MATCH_NORMALIZATION_TABLE = str.maketrans({
     "\u00c7": "c",
     "\u00e7": "c",
@@ -264,19 +317,20 @@ FALSE_ACTION_CONFIRMATION_NORMALIZED_PATTERN = re.compile(
 FALSE_ACTION_DISCLAIMER_TR = (
     "\n\n---\n"
     "⚠️ **Not:** Yukarıdaki öneriler henüz uygulanmadı. "
-    "Degisiklikleri chat uzerinden secili urunde uygulamak icin:\n"
-    "- `@ikas uygula` yazarak onay akisina girin,\n"
-    "- Sohbetteki **Öneriler** kartlarindan birini onaylayin."
+    "Degisiklikleri uygulamak icin:\n"
+    "- 'Uygula' veya 'onayla' diyerek onay verin,\n"
+    "- Sohbetteki secenek kartlarindan birini secin."
 )
 
 SAVE_SEO_SUGGESTION_TOOL_NAME = "save_seo_suggestion"
 SUGGESTION_SAVE_SUCCESS_MESSAGE = "\u00d6neri ba\u015far\u0131yla kaydedildi"
 SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION = (
     "Kullanici sohbet sirasinda sunulan SEO degisikliklerini onaylayip "
-    "'uygula', 'kaydet' veya 'bunu sectim' dediginde "
-    "`save_seo_suggestion` aracini cagir. Bu arac degisiklikleri ikas'a "
+    "'uygula', 'kaydet', 'evet' veya 'bunu sectim' dediginde "
+    "arka planda SEO oneri kaydetme aracini cagir. Bu arac degisiklikleri "
     "aninda uygulamaz; sadece bu chat oturumunda bekleyen taslak olarak tutar. "
-    "Uygulama adimini chat uzerindeki secenekli onay akisiyla yap."
+    "Kullaniciya arac adini, teknik detaylari veya operasyon rehberini GOSTERME; "
+    "onay aldiktan sonra sessizce cagir."
 )
 APPLY_INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "Sen bir SEO suggestion extraction asistansisin. Gorevin, sadece sohbet gecmisindeki "
@@ -328,9 +382,9 @@ SUGGESTION_APPLY_FIELD_CONFIG: dict[str, dict[str, str]] = {
         "update_key": "description_en",
     },
 }
-CHAT_ACTION_PATTERN = re.compile(r"\[\[CHAT_ACTION:([a-z0-9_-]+)\]\]", re.IGNORECASE)
+CHAT_ACTION_PATTERN = re.compile(r"\[\[CHAT_ACTION:([a-z0-9_-]+)(?::(.+?))?\]\]", re.IGNORECASE | re.DOTALL)
 APPLY_INTENT_PATTERN = re.compile(
-    r"\b(uygula|uygulansin|onayla|ikas'a uygula|ikas a uygula|mcp ile uygula)\b",
+    r"\b(uygula|uygulansin|onayla|evet uygula|evet|tamam uygula)\b",
     re.IGNORECASE,
 )
 SAVE_INTENT_PATTERN = re.compile(
@@ -346,10 +400,10 @@ NON_FINAL_SUGGESTION_VALUE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 MANUAL_APPLY_ACTION_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\b(vazgec|vazgeciyorum|iptal)\b", re.IGNORECASE), "single_apply_cancel"),
+    (re.compile(r"\b(vazgec|vazgeciyorum|iptal|hayir)\b", re.IGNORECASE), "single_apply_cancel"),
     (re.compile(r"\b(sadece meta|meta alan)\b", re.IGNORECASE), "single_apply_meta"),
     (re.compile(r"\b(sadece icerik|sadece aciklama|icerik alan)\b", re.IGNORECASE), "single_apply_content"),
-    (re.compile(r"\b(hepsini|tumunu|tamamini|tum alanlari)\b", re.IGNORECASE), "single_apply_all"),
+    (re.compile(r"\b(hepsini|tumunu|tamamini|tum alanlari|evet|tamam)\b", re.IGNORECASE), "single_apply_all"),
 ]
 SINGLE_PRODUCT_APPLY_ACTIONS = frozenset({
     "single_apply_meta",
@@ -357,6 +411,8 @@ SINGLE_PRODUCT_APPLY_ACTIONS = frozenset({
     "single_apply_meta_content",
     "single_apply_all",
     "single_apply_cancel",
+    "single_apply_confirm",
+    "single_apply_execute",
 })
 
 
@@ -400,6 +456,65 @@ def _build_save_seo_suggestion_tool() -> dict[str, Any]:
         },
     }
 
+
+APPLY_SEO_TO_IKAS_TOOL_NAME = "apply_seo_to_ikas"
+
+# GraphQL mutation used by the apply_seo_to_ikas tool when routing through MCP
+_MCP_SAVE_PRODUCT_MUTATION = """mutation SaveProduct($input: ProductInput!) {
+  saveProduct(input: $input) {
+    id
+    name
+    description
+    metaData { pageTitle description }
+  }
+}"""
+
+
+def _build_apply_seo_to_ikas_tool() -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": APPLY_SEO_TO_IKAS_TOOL_NAME,
+            "description": (
+                "Onaylanan SEO degisikliklerini ikas'a uygular. "
+                "Kullanici urun uzerindeki degisiklikleri onayladiginda (orn: 'uygula', 'ikas'a kaydet', 'guncelle') "
+                "bu araci cagir. Alan bos ise o alan guncellenmez."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product_id": {
+                        "type": "string",
+                        "description": "Guncellenecek urunun ID'si.",
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Yeni urun adi (bos birak = degistirme).",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Yeni TR aciklama HTML (bos birak = degistirme).",
+                    },
+                    "description_en": {
+                        "type": "string",
+                        "description": "Yeni EN aciklama (bos birak = degistirme).",
+                    },
+                    "meta_title": {
+                        "type": "string",
+                        "description": "Yeni meta title (bos birak = degistirme).",
+                    },
+                    "meta_description": {
+                        "type": "string",
+                        "description": "Yeni meta description (bos birak = degistirme).",
+                    },
+                },
+                "required": ["product_id"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
 SELECTED_PRODUCT_LIVE_QUERY = """query listProduct($id: StringFilterInput, $pagination: PaginationInput) {
   listProduct(id: $id, pagination: $pagination) {
     count
@@ -431,13 +546,6 @@ SELECTED_PRODUCT_LIVE_QUERY = """query listProduct($id: StringFilterInput, $pagi
     }
   }
 }"""
-
-
-def _clean_routing_mentions(user_message: str) -> str:
-    cleaned = IKAS_MENTION_PATTERN.sub("", user_message)
-    cleaned = LOCAL_MENTION_PATTERN.sub("", cleaned)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    return cleaned or user_message.strip()
 
 
 def _extract_chat_completion_content(data: Any) -> str:
@@ -540,10 +648,17 @@ def _build_product_context(product: Product | None, score: SeoScore | None, agen
         )
 
     template = AGENT_SYSTEM_PROMPTS_TR.get(agent_type, AGENT_SYSTEM_PROMPTS_TR["general"])
-    return template.format(
+    base_prompt = template.format(
         product_context=product_ctx,
         score_context=score_ctx,
-    ) + "\n\n" + IKAS_OPERATION_GUIDE_TR
+    )
+    return (
+        base_prompt
+        + "\n\n"
+        + CHAT_OPTION_BUTTONS_INSTRUCTION
+        + "\n\n"
+        + IKAS_OPERATION_GUIDE_TR
+    )
 
 
 def _build_tool_catalog_instruction(
@@ -598,6 +713,15 @@ def _extract_chat_action(text: str) -> str | None:
         return None
     action = (match.group(1) or "").strip().lower()
     return action or None
+
+
+def _extract_chat_action_payload(text: str) -> str | None:
+    """Extract the optional JSON payload from a CHAT_ACTION directive."""
+    match = CHAT_ACTION_PATTERN.search(text or "")
+    if not match:
+        return None
+    payload = (match.group(2) or "").strip()
+    return payload or None
 
 
 def _message_has_apply_intent(text: str) -> bool:
@@ -1157,9 +1281,22 @@ class ChatService:
         # Local tool registry — add new local tools here without touching _execute_chat_tool
         self._tool_registry = ToolRegistry()
         self._tool_registry.register(SAVE_SEO_SUGGESTION_TOOL_NAME, self._save_suggestion_from_tool_args)
+        self._tool_registry.register("apply_seo_to_ikas", self._apply_seo_to_ikas_handler)
 
         # Agent toolkit — provides additional local tools (SEO scoring, validation, etc.)
         self._agent_toolkit: AgentToolkit = create_chat_toolkit()
+
+    def _build_auth_headers(self) -> dict[str, str]:
+        """Build auth headers for the current AI provider."""
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        api_key = self._config.ai_api_key
+        if self._config.ai_provider == "anthropic" and api_key:
+            headers["x-api-key"] = api_key
+        elif api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        elif self._config.ai_provider in ("ollama", "lm-studio"):
+            headers["Authorization"] = "Bearer ollama"
+        return headers
 
     @property
     def has_mcp(self) -> bool:
@@ -1248,9 +1385,7 @@ class ChatService:
                 if self._config.ai_provider in ("ollama", "lm-studio")
                 else httpx.Timeout(30.0, connect=10.0)
             )
-            headers: dict[str, str] = {"Content-Type": "application/json"}
-            if self._config.ai_api_key:
-                headers["Authorization"] = f"Bearer {self._config.ai_api_key}"
+            headers = self._build_auth_headers()
 
             try:
                 async with httpx.AsyncClient(timeout=timeout) as client:
@@ -1324,15 +1459,7 @@ class ChatService:
             return False, f"MCP baglanti hatasi: {exc}"
 
     async def _route_to_agent(self, user_message: str) -> str:
-        has_ikas = bool(IKAS_MENTION_PATTERN.search(user_message))
-        has_local = bool(LOCAL_MENTION_PATTERN.search(user_message))
-
-        if has_ikas and not has_local:
-            return "operator"
-        if has_local and not has_ikas:
-            return "general"
-
-        cleaned_message = _clean_routing_mentions(user_message)
+        cleaned_message = (user_message or "").strip()
         if not cleaned_message:
             return "general"
 
@@ -1353,9 +1480,7 @@ class ChatService:
             if self._config.ai_provider in ("ollama", "lm-studio")
             else httpx.Timeout(30.0, connect=10.0)
         )
-        headers: dict[str, str] = {"Content-Type": "application/json"}
-        if self._config.ai_api_key:
-            headers["Authorization"] = f"Bearer {self._config.ai_api_key}"
+        headers = self._build_auth_headers()
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
@@ -1391,67 +1516,41 @@ class ChatService:
         self,
         user_message: str,
     ) -> tuple[str, str | None, str, bool]:
-        """Parse routing hints into instructions for the main completion."""
-        cleaned_message = _clean_routing_mentions(user_message)
+        """Route the message to the appropriate agent and build instructions."""
+        cleaned_message = (user_message or "").strip()
         agent_type = await self._route_to_agent(user_message)
         allow_tools = agent_type == "operator"
 
-        has_ikas = bool(IKAS_MENTION_PATTERN.search(user_message))
-        has_local = bool(LOCAL_MENTION_PATTERN.search(user_message))
-
         if allow_tools:
-            if has_ikas and has_local:
-                intro = (
-                    "Bu mesaj hem @ikas hem @local ile etiketlendi; semantic routing "
-                    "canli veri gerektigine karar verdi. "
-                )
-            elif has_ikas:
-                intro = "Bu mesaj @ikas ile etiketlendi. "
-            else:
-                intro = (
-                    "Semantic routing bu mesaj icin canli magaza verisine "
-                    "ihtiyac oldugunu tespit etti. "
-                )
-
             return (
                 cleaned_message,
                 (
-                    f"{intro}"
-                    "Mumkunse uygun bir ikas MCP araci kullanmadan yanit verme. "
+                    "Semantic routing bu mesaj icin canli magaza verisine "
+                    "ihtiyac oldugunu tespit etti. "
+                    "Mumkunse uygun araclarla canli veri cek. "
                     "Canli veri cekemiyorsan bunu acikca belirt. "
                     "Yanitta tavsiyeyi yine mevcut SEO problemi ve secili urun baglami etrafinda tut. "
-                    "Operasyon onerisi gerekiyorsa once `listProduct`, gerekiyorsa `updateProduct` oner; mutation gerekiyorsa onay iste. "
-                    "Kullanici sohbette onaylanmis SEO degisikliklerini 'uygula' veya 'kaydet' diyorsa ve secili urun icin chat oturumunda bekleyen taslak yoksa "
-                    "`save_seo_suggestion` araciyla taslagi kaydet; sonra alan bazli chat onayi sun. "
-                    "ONEMLI: Yalnizca MCP araci gercekten cagirilip basarili sonuc dondugunde islemi raporla. Arac cagirmadan 'guncelledim' deme."
+                    "Kullanici sohbette onaylanmis SEO degisikliklerini 'uygula' veya 'kaydet' diyorsa "
+                    "arka planda uygun araclari kullanarak taslak kaydet; sonra alan bazli onay sun. "
+                    "ONEMLI: Yalnizca arac gercekten cagirilip basarili sonuc dondugunde islemi raporla. Arac cagirmadan 'guncelledim' deme. "
+                    "Kullaniciya arac adi, MCP, GraphQL gibi teknik detaylari gosterme."
                 ),
                 agent_type,
                 True,
             )
 
-        if has_ikas and has_local:
-            intro = (
-                "Bu mesaj hem @ikas hem @local ile etiketlendi; semantic routing "
-                "arac kullanmaya gerek gormedi. "
-            )
-        elif has_local:
-            intro = "Bu mesaj @local ile etiketlendi. "
-        else:
-            intro = (
-                "Semantic routing bu mesajin mevcut baglam ve SEO metin "
-                "yazarligi ile yanitlanabilecegini tespit etti. "
-            )
-
         return (
             cleaned_message,
             (
-                f"{intro}"
-                "ikas MCP araci kullanma; yalnizca mevcut SEO metrikleri, secili urunun promptta bulunan alanlari ve sohbet baglamina gore yanit ver. "
+                "Semantic routing bu mesajin mevcut baglam ve SEO metin "
+                "yazarligi ile yanitlanabilecegini tespit etti. "
+                "Yalnizca mevcut SEO metrikleri, secili urunun promptta bulunan alanlari ve sohbet baglamina gore yanit ver. "
                 "Stok, fiyat, siparis, kampanya veya musteri verisi uydurma. "
                 "Kullanici urun aciklamasi, meta title veya meta description gibi mevcut alanlari yorumlamani isterse bunu local baglamla yap. "
-                "KRITIK: Bu modda ikas'a dogrudan degisiklik uygulayamazsin. Kullanici sohbet sirasinda sunulan SEO onerilerini onaylarsa "
-                "`save_seo_suggestion` araciyla chat oturumunda bekleyen taslak olusturabilirsin. "
-                "Uygun oldugunda chat uzerinde degisiklikleri once goster, secenekli onay al ve sadece secili urune uygula."
+                "Kullanici sohbet sirasinda sunulan SEO onerilerini onaylarsa "
+                "arka planda uygun araclari kullanarak taslak kaydet. "
+                "Uygun oldugunda degisiklikleri once goster, onay al ve sadece secili urune uygula. "
+                "Kullaniciya arac adi, MCP, GraphQL gibi teknik detaylari gosterme."
             ),
             agent_type,
             False,
@@ -1589,6 +1688,15 @@ class ChatService:
             tools.append(_build_save_seo_suggestion_tool())
             instructions.append(SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION)
 
+        # Always include the apply_seo_to_ikas tool — it handles both
+        # native ikas API and MCP routes internally so the LLM never
+        # needs to write raw GraphQL mutations.
+        tools.append(_build_apply_seo_to_ikas_tool())
+        instructions.append(
+            "Kullanici urun degisikliklerini onayladiginda, arka planda uygun araclari cagir. "
+            "Kullaniciya arac adlarini gosterme; onay aldiktan sonra sessizce uygula."
+        )
+
         # Add agent toolkit tools (SEO scoring, product details, validation, etc.)
         tools.extend(self._agent_toolkit.get_openai_functions())
 
@@ -1643,6 +1751,130 @@ class ChatService:
             "suggestion_saved": suggestion_saved,
         }, ensure_ascii=False), suggestion_saved
 
+    async def _apply_seo_to_ikas_handler(
+        self,
+        args: dict[str, Any],
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Apply SEO changes to ikas via IkasClient or MCP.
+
+        This tool gives the LLM a structured way to update product fields
+        without requiring raw GraphQL knowledge.  It tries the native
+        IkasClient first (needs OAuth credentials) and falls back to MCP.
+        """
+        product_id = args.get("product_id", "")
+        if not product_id:
+            if self._product:
+                product_id = self._product.id
+            else:
+                return json.dumps({
+                    "ok": False,
+                    "error": "product_id gerekli ama sağlanmadı ve seçili ürün yok.",
+                }, ensure_ascii=False), None
+
+        # Build the update dict from provided fields
+        updates: dict[str, Any] = {}
+        description_translations: dict[str, str] = {}
+
+        if args.get("name"):
+            updates["name"] = args["name"]
+        if args.get("meta_title"):
+            updates["meta_title"] = args["meta_title"]
+        if args.get("meta_description"):
+            updates["meta_description"] = args["meta_description"]
+        if args.get("description"):
+            updates["description"] = args["description"]
+            description_translations["tr"] = args["description"]
+        if args.get("description_en"):
+            description_translations["en"] = args["description_en"]
+        if description_translations:
+            updates["description_translations"] = description_translations
+
+        if not updates:
+            return json.dumps({
+                "ok": False,
+                "error": "Güncellenecek alan belirtilmedi.",
+            }, ensure_ascii=False), None
+
+        updated_fields = list(updates.keys())
+
+        # Strategy 1: Try IkasClient (needs IKAS_CLIENT_ID + SECRET)
+        ikas_client_available = bool(
+            self._config.ikas_client_id and self._config.ikas_client_secret
+        )
+        if ikas_client_available:
+            ikas_client = IkasClient()
+            try:
+                await ikas_client.update_product(product_id, updates)
+                result = {
+                    "ok": True,
+                    "method": "ikas_api",
+                    "product_id": product_id,
+                    "updated_fields": updated_fields,
+                    "dry_run": self._config.dry_run,
+                    "message": (
+                        f"Ürün başarıyla güncellendi (alanlar: {', '.join(updated_fields)})."
+                        if not self._config.dry_run
+                        else f"DRY_RUN: Güncelleme simüle edildi (alanlar: {', '.join(updated_fields)})."
+                    ),
+                }
+                return json.dumps(result, ensure_ascii=False), None
+            except Exception as exc:
+                logger.warning("IkasClient update failed, trying MCP: %s", exc)
+            finally:
+                with contextlib.suppress(Exception):
+                    await ikas_client.close()
+
+        # Strategy 2: Use MCP updateProduct mutation
+        if self._mcp and self._mcp_initialized:
+            try:
+                input_data: dict[str, Any] = {"id": product_id}
+                if "name" in updates:
+                    input_data["name"] = updates["name"]
+                if "description" in updates:
+                    input_data["description"] = updates["description"]
+                if "meta_title" in updates or "meta_description" in updates:
+                    meta_data: dict[str, Any] = {}
+                    if "meta_title" in updates:
+                        meta_data["pageTitle"] = updates["meta_title"]
+                    if "meta_description" in updates:
+                        meta_data["description"] = updates["meta_description"]
+                    input_data["metaData"] = meta_data
+                if description_translations:
+                    input_data["translations"] = [
+                        {"locale": locale, "description": text}
+                        for locale, text in description_translations.items()
+                        if isinstance(text, str) and text.strip()
+                    ]
+
+                result = await self._mcp.execute_mutation(
+                    "saveProduct",
+                    _MCP_SAVE_PRODUCT_MUTATION,
+                    {"input": input_data},
+                )
+                return json.dumps({
+                    "ok": True,
+                    "method": "mcp",
+                    "product_id": product_id,
+                    "updated_fields": updated_fields,
+                    "result": _extract_mcp_text(result)[:2000] if isinstance(result, dict) else str(result)[:2000],
+                    "message": f"Ürün MCP üzerinden güncellendi (alanlar: {', '.join(updated_fields)}).",
+                }, ensure_ascii=False), None
+            except Exception as exc:
+                logger.error("MCP update also failed: %s", exc)
+                return json.dumps({
+                    "ok": False,
+                    "error": f"Güncelleme başarısız. ikas API hatası: {exc}",
+                    "tried": ["ikas_api", "mcp"] if ikas_client_available else ["mcp"],
+                }, ensure_ascii=False), None
+
+        return json.dumps({
+            "ok": False,
+            "error": (
+                "Ürün güncellemesi yapılamadı. Ne ikas API kimlik bilgileri "
+                "(IKAS_CLIENT_ID/SECRET) ne de MCP bağlantısı mevcut."
+            ),
+        }, ensure_ascii=False), None
+
     async def _extract_pending_suggestion_from_history(
         self,
         cleaned_message: str,
@@ -1693,6 +1925,16 @@ class ChatService:
 
         if suggestion_saved:
             return suggestion_saved, ""
+
+        # Safety net: if the LLM output JSON with suggestion fields as plain
+        # text instead of calling the tool, parse and save programmatically.
+        if response_text:
+            fallback_fields = _extract_suggestion_fields_from_text(response_text)
+            if fallback_fields:
+                _, fallback_saved = await self._save_suggestion_from_tool_args(fallback_fields)
+                if fallback_saved:
+                    return fallback_saved, ""
+
         return None, (response_text or "").strip()
 
     @staticmethod
@@ -1756,8 +1998,7 @@ class ChatService:
 
         lines.extend([
             "",
-            "**Onay Adimi**",
-            "Asagidaki seceneklerden birini sec. Onay almadan ikas'a yazmam.",
+            "**Ne yapmak istersiniz?**",
         ])
 
         meta_fields = [field for field in ("suggested_meta_title", "suggested_meta_description") if field in available_fields]
@@ -1769,29 +2010,29 @@ class ChatService:
         if meta_fields:
             options.append({
                 "tone": "Meta",
-                "value": "Sadece meta alanlarini (Meta Title + Meta Description) uygula.",
+                "value": "Sadece Meta Title ve Meta Description'i guncelle.",
                 "action": "single_apply_meta",
             })
         if content_fields:
             options.append({
                 "tone": "Icerik",
-                "value": "Sadece icerik alanlarini (ad/aciklama/ceviri) uygula.",
+                "value": "Sadece icerik alanlarini (ad, aciklama, ceviri) guncelle.",
                 "action": "single_apply_content",
             })
         if meta_fields and content_fields:
             options.append({
-                "tone": "Dengeli",
-                "value": "Meta + icerik alanlarini birlikte uygula.",
+                "tone": "Hepsini Birlikte",
+                "value": "Meta ve icerik alanlarini birlikte guncelle.",
                 "action": "single_apply_meta_content",
             })
         options.append({
             "tone": "Tum Alanlar",
-            "value": "Bu urunde bekleyen tum onerileri uygula.",
+            "value": "Tum onerilen degisiklikleri uygula.",
             "action": "single_apply_all",
         })
         options.append({
             "tone": "Iptal",
-            "value": "Uygulamayi simdilik iptal et.",
+            "value": "Simdilik bir sey yapma, vazgeciyorum.",
             "action": "single_apply_cancel",
         })
 
@@ -1815,9 +2056,30 @@ class ChatService:
         lines = ["Bekleyen SEO degisiklikleri kaydedildi."]
         if field_labels:
             lines.append(f"- Kaydedilen alanlar: {', '.join(field_labels)}")
+        lines.append("- Bu taslak sadece mevcut chat oturumunda tutulur.")
+
+        options: list[dict[str, str]] = [
+            {
+                "tone": "Uygula",
+                "value": "Bu degisiklikleri ikas'a uygula.",
+                "action": "single_apply_all",
+            },
+            {
+                "tone": "Detayli Sec",
+                "value": "Hangi alanlarin uygulanacagini secelim.",
+                "action": "single_apply_confirm",
+            },
+            {
+                "tone": "Iptal",
+                "value": "Simdilik bir sey yapma.",
+                "action": "single_apply_cancel",
+            },
+        ]
         lines.extend([
-            "- Sonraki adim: `@ikas uygula` yazarak onay adimini ac.",
-            "- Bu taslak sadece mevcut chat oturumunda tutulur.",
+            "",
+            "```json",
+            json.dumps(options, ensure_ascii=False),
+            "```",
         ])
         return "\n".join(lines)
 
@@ -1859,7 +2121,7 @@ class ChatService:
         if pending_suggestion and self._collect_applicable_suggestion_fields(pending_suggestion):
             response_text = (
                 "Bu urun icin zaten bekleyen bir SEO taslagi var. "
-                "`@ikas uygula` yazarak onay adimindan devam edebilirsin."
+                "'Uygula' veya 'kaydet' diyerek onay adimindan devam edebilirsin."
             )
         else:
             response_text = (
@@ -1889,6 +2151,7 @@ class ChatService:
         self,
         suggestion: SeoSuggestion,
         action: str,
+        action_payload: str | None = None,
     ) -> tuple[str, list[dict[str, Any]], SeoSuggestion | None]:
         available_fields = self._collect_applicable_suggestion_fields(suggestion)
         if not available_fields:
@@ -1900,11 +2163,53 @@ class ChatService:
             )
 
         if action == "single_apply_cancel":
+            self._clear_session_pending_suggestion(suggestion.product_id)
             return (
                 "Uygulama adimi iptal edildi. Hazir oldugunda tekrar onay verebilirsin.",
                 [],
+                None,
+            )
+
+        if action == "single_apply_confirm":
+            return (
+                self._build_single_apply_confirmation_response(suggestion, available_fields),
+                [],
                 self._get_session_pending_suggestion(suggestion.product_id),
             )
+
+        # Review step: return suggestion for user review in diff modal
+        if action in ("single_apply_meta", "single_apply_content", "single_apply_meta_content", "single_apply_all"):
+            selected_fields = self._resolve_apply_action_fields(action, available_fields)
+            if not selected_fields:
+                return (
+                    "Bu secenek icin uygun alan bulunamadi. Lutfen asagidaki guncel seceneklerden birini sec.\n\n"
+                    + self._build_single_apply_confirmation_response(suggestion, available_fields),
+                    [],
+                    self._get_session_pending_suggestion(suggestion.product_id),
+                )
+
+            suggestion.status = "pending_review"
+            self._set_session_pending_suggestion(suggestion)
+
+            selected_labels = [
+                SUGGESTION_APPLY_FIELD_CONFIG[f]["label"]
+                for f in selected_fields
+                if f in SUGGESTION_APPLY_FIELD_CONFIG
+            ]
+            response_text = (
+                f"Degisiklik onerisi hazirlandi. Incelemeniz icin {', '.join(selected_labels)} "
+                "alanlarinin eski ve yeni degerlerini gosteriyorum.\n\n"
+                "Onay verdiginizde ikas'a uygulanacak."
+            )
+            return (
+                response_text,
+                [],
+                suggestion,
+            )
+
+        # Execute step: apply with optional edits from the diff modal
+        if action == "single_apply_execute":
+            return await self._execute_apply(suggestion, available_fields, action_payload)
 
         selected_fields = self._resolve_apply_action_fields(action, available_fields)
         if not selected_fields:
@@ -1914,6 +2219,35 @@ class ChatService:
                 [],
                 self._get_session_pending_suggestion(suggestion.product_id),
             )
+
+        return await self._execute_apply(suggestion, available_fields, action_payload, selected_fields)
+
+    async def _execute_apply(
+        self,
+        suggestion: SeoSuggestion,
+        available_fields: dict[str, str],
+        action_payload: str | None = None,
+        selected_fields: list[str] | None = None,
+    ) -> tuple[str, list[dict[str, Any]], SeoSuggestion | None]:
+        """Actually apply the suggestion to ikas, optionally applying user edits first."""
+        # Apply edits from the diff modal if provided
+        if action_payload:
+            try:
+                payload_data = json.loads(action_payload)
+                edits = payload_data.get("edits", {})
+                real_action = payload_data.get("action", "single_apply_all")
+                for field_name, value in edits.items():
+                    if field_name in SUGGESTION_APPLY_FIELD_CONFIG and value is not None:
+                        setattr(suggestion, field_name, value)
+                # Re-collect available fields after edits
+                available_fields = self._collect_applicable_suggestion_fields(suggestion)
+                if selected_fields is None:
+                    selected_fields = self._resolve_apply_action_fields(real_action, available_fields)
+            except (json.JSONDecodeError, KeyError, AttributeError) as exc:
+                logger.warning("Failed to parse apply payload: %s", exc)
+
+        if selected_fields is None:
+            selected_fields = list(available_fields.keys())
 
         updates: dict[str, Any] = {}
         description_translations: dict[str, str] = {}
@@ -1967,6 +2301,32 @@ class ChatService:
             with contextlib.suppress(Exception):
                 await ikas_client.close()
 
+        # Verify by re-reading from ikas
+        verification_note = ""
+        try:
+            ikas_verify = IkasClient()
+            try:
+                products = await ikas_verify.fetch_products()
+                verified_product = next(
+                    (p for p in products if p.id == suggestion.product_id), None
+                )
+                if verified_product:
+                    verification_lines = ["", "**Dogrulama (ikas canli veri):**"]
+                    if "meta_title" in updates and verified_product.meta_title:
+                        verification_lines.append(f"- Meta Title: `{verified_product.meta_title}`")
+                    if "meta_description" in updates and verified_product.meta_description:
+                        verification_lines.append(f"- Meta Desc: `{verified_product.meta_description}`")
+                    if "name" in updates:
+                        verification_lines.append(f"- Urun Adi: `{verified_product.name}`")
+                    if len(verification_lines) > 2:
+                        verification_note = "\n".join(verification_lines)
+            finally:
+                with contextlib.suppress(Exception):
+                    await ikas_verify.close()
+        except Exception as exc:
+            logger.warning("Post-apply verification failed: %s", exc)
+            verification_note = "\n\n⚠️ Dogrulama sirasinda hata olustu, ancak degisiklikler gonderildi."
+
         for field_name in selected_fields:
             if field_name == "suggested_name":
                 setattr(suggestion, field_name, None)
@@ -1983,7 +2343,7 @@ class ChatService:
         tool_result = {
             "tool": "chat_single_product_apply",
             "arguments": {
-                "action": action,
+                "action": "single_apply_execute",
                 "fields": selected_fields,
             },
             "result": json.dumps(
@@ -1999,6 +2359,9 @@ class ChatService:
         if self._config.dry_run:
             response_lines.append("- Not: DRY_RUN acik. Bu adim simule edildi, ikas'a yazilmadi.")
 
+        if verification_note:
+            response_lines.append(verification_note)
+
         if remaining_fields:
             response_lines.extend([
                 "",
@@ -2008,7 +2371,7 @@ class ChatService:
                 self._build_single_apply_confirmation_response(suggestion, remaining_fields),
             ])
         else:
-            response_lines.append("- Bu urun icin bekleyen taslak kalmadi.")
+            response_lines.append("\n- Bu urun icin bekleyen taslak kalmadi.")
 
         return (
             "\n".join(response_lines),
@@ -2068,9 +2431,11 @@ class ChatService:
             return None
 
         if action:
+            action_payload = _extract_chat_action_payload(cleaned_message)
             response_text, tool_results, pending_suggestion = await self._apply_pending_suggestion_action(
                 pending_suggestion,
                 action,
+                action_payload=action_payload,
             )
         else:
             response_text = self._build_single_apply_confirmation_response(
@@ -2259,9 +2624,6 @@ class ChatService:
     ) -> ChatResponse:
         """Run the full chat flow, optionally streaming assistant chunks."""
         cleaned_message, routing_instruction, agent_type, allow_tools = await self._extract_message_directives(user_message)
-        explicit_ikas_mode = bool(IKAS_MENTION_PATTERN.search(user_message)) and not bool(
-            LOCAL_MENTION_PATTERN.search(user_message)
-        )
         has_apply_intent = _message_has_apply_intent(cleaned_message)
 
         # Add user message to history and trim if needed
@@ -2298,7 +2660,7 @@ class ChatService:
 
             if guided_result:
                 guided_context, guided_tool_results, guided_fallback = guided_result
-                if explicit_ikas_mode and not has_apply_intent:
+                if not has_apply_intent:
                     # Return the MCP result directly without a secondary AI call
                     guided_content = _append_operation_suggestion(
                         guided_fallback,
@@ -2393,10 +2755,19 @@ class ChatService:
             self._schedule_history_summarization()
             return response
 
+        # Safety net: if the LLM output suggestion fields as JSON text instead
+        # of calling save_seo_suggestion, parse and save programmatically.
+        if not suggestion_saved and response_text and self._product:
+            inline_fields = _extract_suggestion_fields_from_text(response_text)
+            if inline_fields:
+                _, suggestion_saved = await self._save_suggestion_from_tool_args(inline_fields)
+                if suggestion_saved:
+                    pending_suggestion = self._get_session_pending_suggestion()
+
         if suggestion_saved:
             pending_suggestion = self._get_session_pending_suggestion()
             response_text = self._build_suggestion_saved_response(suggestion_saved)
-            if explicit_ikas_mode and has_apply_intent and self._product:
+            if has_apply_intent and self._product:
                 if pending_suggestion:
                     pending_fields = self._collect_applicable_suggestion_fields(pending_suggestion)
                     if pending_fields:
@@ -2817,7 +3188,7 @@ class ChatService:
                 "stream": True,
             }
 
-            if tools and self._config.ai_provider in ("ollama", "lm-studio", "openai", "openrouter", "custom"):
+            if tools and self._config.ai_provider in ("ollama", "lm-studio", "openai", "openrouter", "custom", "anthropic", "gemini"):
                 request_body["tools"] = tools
 
             timeout = (
@@ -2825,9 +3196,7 @@ class ChatService:
                 if self._config.ai_provider in ("ollama", "lm-studio")
                 else httpx.Timeout(120.0, connect=10.0)
             )
-            headers: dict[str, str] = {"Content-Type": "application/json"}
-            if self._config.ai_api_key:
-                headers["Authorization"] = f"Bearer {self._config.ai_api_key}"
+            headers = self._build_auth_headers()
 
             message_content = ""
             finish_reason = "stop"
@@ -3088,6 +3457,7 @@ class ChatService:
             "openai": "https://api.openai.com/v1",
             "openrouter": "https://openrouter.ai/api/v1",
             "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "anthropic": "https://api.anthropic.com/v1",
         }
         return defaults.get(provider, "http://localhost:11434/v1")
 

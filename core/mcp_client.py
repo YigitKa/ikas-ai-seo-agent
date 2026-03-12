@@ -403,6 +403,52 @@ class IkasMCPClient:
 
         return execute_args
 
+    async def introspect_operation(self, operation_name: str) -> dict[str, Any]:
+        """Introspect a GraphQL operation schema and cache the result."""
+        if not hasattr(self, "_introspect_cache"):
+            self._introspect_cache: dict[str, dict[str, Any]] = {}
+
+        if operation_name in self._introspect_cache:
+            return self._introspect_cache[operation_name]
+
+        if not self._initialized:
+            await self.initialize()
+
+        try:
+            result = await self._send_request("tools/call", {
+                "name": "introspect",
+                "arguments": {"operationName": operation_name},
+            })
+            payload = self._extract_json_text_payload(result) if isinstance(result, dict) else {}
+            self._introspect_cache[operation_name] = payload
+            return payload
+        except Exception as exc:
+            logger.warning("Introspect for '%s' failed: %s", operation_name, exc)
+            return {}
+
+    async def execute_mutation(
+        self,
+        operation_name: str,
+        query: str,
+        variables: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Execute a GraphQL mutation through MCP with proper argument construction."""
+        if not self._initialized:
+            await self.initialize()
+
+        execute_args: dict[str, Any] = {
+            "query": query,
+            "operationName": operation_name,
+        }
+        if variables:
+            execute_args["variables"] = json.dumps(variables, ensure_ascii=False)
+
+        result = await self._send_request("tools/call", {
+            "name": "execute",
+            "arguments": execute_args,
+        })
+        return result or {}
+
     @property
     def is_initialized(self) -> bool:
         return self._initialized

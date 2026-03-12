@@ -17,6 +17,7 @@ This file provides AI assistants with everything needed to understand, navigate,
 - Full **GEO site audit** — crawls a website, runs 5 parallel analysis agents, and produces a composite GEO score with an action plan
 - Shows before/after diffs, allows approval, and applies changes back to ikas
 - Real-time AI chat with **multi-agent architecture** (SEO Expert, Store Operator, General) and MCP tool integration for live store data queries
+- **Structured option buttons** in chat — AI proposals and approval questions render as clickable buttons; no manual typing needed for option selection
 - Supports Turkish and English product content
 - Dry-run mode by default (no writes to ikas unless explicitly enabled)
 
@@ -47,6 +48,7 @@ ikas-ai-seo-agent/
 │   ├── csv_handler.py       # CSV import/export for products and suggestions
 │   ├── prompt_store.py      # Loads and renders prompt templates; multi-agent + agentic system prompts
 │   ├── chat_service.py      # Multi-turn AI chat with MCP tool integration + AgentToolkit
+│   ├── chat_operation_guidance.py # Operation suggestion footer and false-action safety logic
 │   ├── mcp_client.py        # ikas MCP (Model Context Protocol) JSON-RPC client
 │   ├── provider_service.py  # Provider detection, health checks, model discovery
 │   ├── settings_service.py  # Settings management service
@@ -126,6 +128,7 @@ ikas-ai-seo-agent/
     ├── test_settings_service.py
     ├── test_suggestion_service.py
     ├── test_chat_service.py
+    ├── test_chat_apply_flow.py
     ├── test_mcp_client.py
     ├── test_product_manager.py
     ├── test_products_api.py
@@ -314,6 +317,9 @@ ProductManager (core/product_manager.py)  [request-scoped — fresh per HTTP req
 - **Repository** — `data/db.py` abstracts all async SQLite reads/writes behind plain functions
 - **Dependency Injection** — `api/dependencies.py` yields a fresh `ProductManager` per FastAPI request (request-scoped, not a global singleton)
 - **Multi-agent routing** — `chat_service.py` selects one of three agent personas (SEO Expert, Store Operator, General) based on the conversation context; prompts are defined in `prompt_store.py` as `AGENT_SYSTEM_PROMPTS_TR`
+- **Registry** — `ToolRegistry` in `chat_service.py` decouples tool dispatch from implementation; tools register without modifying the dispatcher
+- **Strategy** — `apply_seo_to_ikas` uses IkasClient (OAuth/GraphQL) first, with MCP mutation as fallback
+- **Structured Options** — AI responses and programmatic builders (e.g. `_build_suggestion_saved_response`) embed JSON option arrays that the frontend parses into clickable buttons, ensuring deterministic user input without free-text ambiguity
 
 ### Async usage
 `IkasClient`, `IkasMCPClient`, `GeoAuditor`, and `data/db.py` use async I/O (`httpx.AsyncClient`, `aiosqlite`). The FastAPI backend handles async natively. All database access is async — do not call `db.*` functions from synchronous code.
@@ -452,18 +458,36 @@ Key implementations:
 
 ### `core/chat_service.py` — AI chat with live store data
 - Multi-turn conversation history (max 40 messages)
-- Multi-agent routing: selects SEO Expert, Store Operator, or General agent per conversation
-- Integrates with `IkasMCPClient` for real-time store queries (products, categories, inventory)
+- Multi-agent routing via `_route_to_agent()`: selects `"seo"`, `"operator"`, or `"general"` agent per message using semantic LLM routing (no explicit tags needed)
+- **Structured option buttons** — AI responses that contain a trailing JSON block (`[{"tone":"...","value":"..."}]`) are parsed by the frontend into clickable buttons; users select options by clicking instead of typing
+- `_build_single_apply_confirmation_response()` — builds field-level apply options (Meta / Icerik / Hepsi / Iptal) as structured buttons
+- `_build_suggestion_saved_response()` — after saving a draft, shows Uygula / Detayli Sec / Iptal action buttons
+- `CHAT_ACTION` protocol — buttons with an `action` key send `[[CHAT_ACTION:<action>]]` hidden messages; handled by `_maybe_handle_single_product_apply_flow()`
+- `_extract_message_directives()` returns 4-tuple: `(cleaned_message, instruction, agent_type, allow_tools)`
+- `ToolRegistry` — lightweight tool name→handler map; currently registers `save_seo_suggestion` and `apply_seo_to_ikas`
+- `_build_chat_tools()` assembles 3-layer tool list: Registry tools → AgentToolkit tools → MCP tools (MCP only for `operator` agent)
+- `apply_seo_to_ikas` tool: dual-route strategy (IkasClient OAuth/GraphQL first, MCP mutation fallback)
+- `save_seo_suggestion` tool: saves to in-memory session store (`_session_pending_suggestions`), not to DB
+- `_build_auth_headers()` handles Anthropic (`x-api-key`) vs all other providers (`Authorization: Bearer`)
 - Max 5 sequential tool-call rounds per user message
-- Turkish/English language detection
-- System prompt with product and score context; uses configurable agent prompt templates from `prompt_store.py`
+- Integrates with `IkasMCPClient` for real-time store queries (products, categories, inventory)
+- System prompt layers: `CHAT_FLOW_SYSTEM_PROMPT_TR` + agent persona + `IKAS_OPERATION_GUIDE_TR` + product context
 - Per-WebSocket-connection isolation of chat history and MCP state
 
+### `core/chat_operation_guidance.py` — Operation guidance helpers
+- `select_product_operation_suggestion()` — context-aware footer suggesting next ikas operation
+- `append_operation_suggestion()` — appends operation footer to assistant response
+- `append_false_action_disclaimer()` — safety net: if LLM falsely claims it applied changes without a tool call, appends a warning disclaimer
+- All pattern matching uses Turkish-normalized text (`MATCH_NORMALIZATION_TABLE`)
+
 ### `core/mcp_client.py` — ikas MCP integration
-- JSON-RPC 2.0 over HTTP client
+- JSON-RPC 2.0 over Streamable HTTP transport
 - Endpoint: `https://api.myikas.com/api/v2/admin/mcp`
-- Tool discovery and execution for live store data access
-- Session ID tracking via headers
+- Tool discovery via `tools/list` and execution via `call_tool()`
+- `introspect_operation(name)` — fetches GraphQL schema for an operation; results cached in `_introspect_cache`
+- `execute_mutation(name, query, vars)` — runs a mutation using introspect→execute chain
+- `get_tools_as_openai_functions()` — converts 50+ ikas operations to OpenAI function calling format
+- Session ID tracking via `mcp-session-id` header
 - Async context manager pattern
 
 ### `core/provider_service.py` — provider management
@@ -579,8 +603,8 @@ React/TypeScript SPA built with Vite. Communicates with the FastAPI backend via 
 
 ### Component groups
 - `components/dashboard/` — Dashboard layout: header, sidebar, detail panel, empty state
-- `components/chat/` — Chat utilities: message rendering, prompt parameters, suggestion creation from chat
-- `components/ChatPanel.tsx` — Full chat UI with WebSocket connection and multi-agent awareness
+- `components/chat/` — Chat utilities: message rendering, prompt parameters, suggestion option parsing (JSON→buttons)
+- `components/ChatPanel.tsx` — Full chat UI with WebSocket connection, multi-agent awareness, and **interaction panel** (renders structured options from the latest assistant message as clickable buttons above the input area)
 - `components/ProductTable.tsx` — Product list with pagination and score badges
 - `components/ScoreCard.tsx` — SEO score breakdown display
 

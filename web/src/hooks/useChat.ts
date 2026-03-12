@@ -526,6 +526,13 @@ export function useChat(productContext?: ChatProductContext) {
     wsRef.current = null;
   }, []);
 
+  const addLocalMessage = useCallback(
+    (msg: ChatMessage) => {
+      setMessages((prev) => [...prev, msg]);
+    },
+    [],
+  );
+
   return {
     messages,
     isLoading,
@@ -537,6 +544,7 @@ export function useChat(productContext?: ChatProductContext) {
     pendingSuggestion,
     mcpState,
     sendMessage,
+    addLocalMessage,
     cancelMessage,
     clearHistory,
     connect,
