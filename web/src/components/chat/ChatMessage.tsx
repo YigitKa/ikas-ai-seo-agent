@@ -521,16 +521,16 @@ export function MessageBubble({
             {roleMeta.label}
           </div>
           <div
-            className="rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed"
+            className="rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed shadow-sm"
             style={{
               background: isUser
-                ? 'rgba(99, 102, 241, 0.15)'
+                ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(79, 70, 229, 0.18))'
                 : isSystem
-                  ? 'rgba(255, 255, 255, 0.03)'
-                  : 'var(--color-bg-elevated)',
+                  ? 'rgba(148, 163, 184, 0.08)'
+                  : 'linear-gradient(160deg, rgba(30,41,59,0.66), rgba(15,23,42,0.7))',
               border: isSystem
                 ? 'none'
-                : `1px solid ${isUser ? 'rgba(99, 102, 241, 0.2)' : 'var(--color-border)'}`,
+                : `1px solid ${isUser ? 'rgba(99, 102, 241, 0.35)' : 'rgba(148, 163, 184, 0.22)'}`,
               color: isUser
                 ? '#c7d2fe'
                 : isSystem

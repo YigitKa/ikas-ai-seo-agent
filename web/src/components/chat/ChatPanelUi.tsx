@@ -28,7 +28,11 @@ export function ChatStatusPill({
   } as const;
 
   return (
-    <div className="rounded-full px-2 py-1 text-[10px] font-medium" style={palette[tone]} title={`${label}: ${value}`}>
+    <div
+      className="rounded-full px-2.5 py-1 text-[10px] font-medium backdrop-blur-sm"
+      style={palette[tone]}
+      title={`${label}: ${value}`}
+    >
       {label}: {value}
     </div>
   );
@@ -37,10 +41,10 @@ export function ChatStatusPill({
 export function ReconnectingBanner() {
   return (
     <div
-      className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium"
+      className="mx-3 mt-3 flex items-center gap-2 rounded-xl px-4 py-2 text-[12px] font-medium"
       style={{
-        background: 'rgba(245, 158, 11, 0.10)',
-        borderBottom: '1px solid rgba(245, 158, 11, 0.20)',
+        background: 'rgba(245, 158, 11, 0.08)',
+        border: '1px solid rgba(245, 158, 11, 0.24)',
         color: '#fbbf24',
       }}
     >
@@ -67,10 +71,11 @@ export function StarterStateCard({
 }) {
   return (
     <div
-      className="rounded-2xl p-4 text-center"
+      className="rounded-2xl p-4 text-center shadow-lg"
       style={{
-        background: 'linear-gradient(180deg, rgba(99, 102, 241, 0.10), rgba(17, 24, 39, 0.02))',
-        border: '1px solid rgba(99, 102, 241, 0.15)',
+        background: 'linear-gradient(160deg, rgba(99, 102, 241, 0.14), rgba(17, 24, 39, 0.22))',
+        border: '1px solid rgba(99, 102, 241, 0.22)',
+        boxShadow: '0 14px 30px rgba(14, 21, 48, 0.28)',
       }}
     >
       <div

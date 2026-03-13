@@ -299,17 +299,16 @@ export default function ChatPanel({
 
   return (
     <div
-      className="flex h-full flex-col overflow-hidden rounded-xl"
+      className="flex h-full flex-col overflow-hidden rounded-2xl"
       style={{
-        background: "var(--color-bg-surface)",
-        border: "1px solid var(--color-border)",
+        background:
+          "radial-gradient(circle at top left, rgba(99,102,241,0.12), transparent 28%), linear-gradient(180deg, rgba(15,23,42,0.96), rgba(10,14,27,0.98))",
+        border: "1px solid rgba(148,163,184,0.18)",
+        boxShadow: "0 22px 48px rgba(2, 6, 23, 0.5)",
       }}
     >
       {/* ── Header ── */}
-      <div
-        className="px-4 py-3"
-        style={{ borderBottom: "1px solid var(--color-border)" }}
-      >
+      <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(148,163,184,0.16)" }}>
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -380,8 +379,8 @@ export default function ChatPanel({
           {messages.length > 0 && (
             <button
               onClick={clearHistory}
-              className="text-[11px] font-medium transition-all"
-              style={{ color: "var(--color-text-muted)" }}
+              className="rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-all"
+              style={{ color: "var(--color-text-muted)", borderColor: "rgba(148,163,184,0.24)" }}
               onMouseEnter={(e) =>
                 (e.currentTarget.style.color = "var(--color-text-secondary)")
               }
@@ -455,7 +454,7 @@ export default function ChatPanel({
       {isReconnecting && <ReconnectingBanner />}
 
       {/* ── Messages ── */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-4">
         {/* Score analysis — shown as the app's first message before LLM */}
         {score && productId && (
           <SeoScoreChatMessage key={`score-${productId}`} score={score} />
@@ -482,10 +481,10 @@ export default function ChatPanel({
 
         {(isLoading || isInspectingProduct) && (
           <div
-            className="mr-6 rounded-xl px-4 py-3"
+            className="mr-6 rounded-2xl px-4 py-3"
             style={{
-              background: "var(--color-bg-elevated)",
-              border: "1px solid var(--color-border)",
+              background: "linear-gradient(180deg, rgba(30,41,59,0.75), rgba(15,23,42,0.8))",
+              border: "1px solid rgba(148,163,184,0.2)",
             }}
           >
             <div className="flex items-center gap-2">
@@ -525,11 +524,8 @@ export default function ChatPanel({
       </div>
 
       {/* ── Input ── */}
-      <div
-        className="p-3"
-        style={{ borderTop: "1px solid var(--color-border)" }}
-      >
-        <div className="flex items-end gap-2">
+      <div className="p-3" style={{ borderTop: "1px solid rgba(148,163,184,0.16)" }}>
+        <div className="flex items-end gap-2 rounded-2xl border p-2" style={{ borderColor: "rgba(148,163,184,0.2)", background: "rgba(15,23,42,0.66)" }}>
           <div className="relative flex-1">
             {showParamMenu && (
               <div
@@ -661,19 +657,17 @@ export default function ChatPanel({
                     ? `${displayProductName} icin soru sorun. { ile hazir alan ekleyin...`
                     : "Mesaj yazin... { ile parametre ekleyin."
               }
-              className="min-h-[44px] w-full resize-none rounded-lg px-3 py-2 text-[13px] outline-none transition-all"
+              className="min-h-[44px] w-full resize-none rounded-xl px-3 py-2 text-[13px] outline-none transition-all"
               style={{
-                background: "var(--color-bg-base)",
-                border: "1px solid var(--color-border-light)",
+                background: "rgba(15,23,42,0.86)",
+                border: "1px solid rgba(148,163,184,0.2)",
                 color: "var(--color-text-primary)",
                 opacity: isAutoIntroActive ? 0.7 : 1,
                 cursor: isAutoIntroActive ? "not-allowed" : "text",
               }}
-              onFocus={(e) =>
-                (e.currentTarget.style.borderColor = "var(--color-primary)")
-              }
+              onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(99,102,241,0.7)")}
               onBlur={(e) => {
-                e.currentTarget.style.borderColor = "var(--color-border-light)";
+                e.currentTarget.style.borderColor = "rgba(148,163,184,0.2)";
                 setParamTrigger(null);
               }}
             />
@@ -701,7 +695,7 @@ export default function ChatPanel({
               (!isLoading && !input.trim()) ||
               (isAutoIntroActive && !isLoading)
             }
-            className={`flex min-h-[44px] flex-shrink-0 items-center justify-center rounded-lg px-3 text-white transition-all hover:opacity-90 disabled:opacity-30 ${isLoading ? "min-w-[64px]" : "w-11"}`}
+            className={`flex min-h-[44px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-white transition-all hover:opacity-90 disabled:opacity-30 ${isLoading ? "min-w-[64px]" : "w-11"}`}
             style={{
               background: isLoading
                 ? "linear-gradient(135deg, #ef4444, #f97316)"
