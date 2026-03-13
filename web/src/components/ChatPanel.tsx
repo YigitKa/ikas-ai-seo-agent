@@ -11,12 +11,13 @@ import {
 import { MessageBubble, type SuggestionOption } from "./chat/ChatMessage";
 import SeoScoreChatMessage from "./chat/SeoScoreChatMessage";
 import SuggestionDiffModal from "./chat/SuggestionDiffModal";
+import { ChatStatusPill, ReconnectingBanner, StarterStateCard } from "./chat/ChatPanelUi";
+import { STARTER_PROMPTS } from "./chat/chatPanelConstants";
 import {
   buildPromptParamOptions,
   getParamTriggerState,
   resolvePromptTemplate,
   type ParamTriggerState,
-  type StarterPrompt,
 } from "./chat/promptParams";
 
 interface Props {
@@ -27,46 +28,6 @@ interface Props {
   product?: Product | null;
   score?: SeoScore | null;
   productDetailUrl?: string;
-}
-
-// ── StatusPill ────────────────────────────────────────────────────────────────
-
-function StatusPill({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone: "neutral" | "success" | "warn";
-}) {
-  const palette = {
-    neutral: {
-      background: "rgba(148, 163, 184, 0.08)",
-      color: "var(--color-text-secondary)",
-      border: "1px solid rgba(148, 163, 184, 0.12)",
-    },
-    success: {
-      background: "rgba(16, 185, 129, 0.10)",
-      color: "#34d399",
-      border: "1px solid rgba(16, 185, 129, 0.16)",
-    },
-    warn: {
-      background: "rgba(245, 158, 11, 0.10)",
-      color: "#fbbf24",
-      border: "1px solid rgba(245, 158, 11, 0.16)",
-    },
-  } as const;
-
-  return (
-    <div
-      className="rounded-full px-2 py-1 text-[10px] font-medium"
-      style={palette[tone]}
-      title={`${label}: ${value}`}
-    >
-      {label}: {value}
-    </div>
-  );
 }
 
 // ── ChatPanel ─────────────────────────────────────────────────────────────────
@@ -212,29 +173,6 @@ export default function ChatPanel({
       ? liveTokensPerSecond.toFixed(0)
       : liveTokensPerSecond.toFixed(1);
 
-  const starterPrompts: StarterPrompt[] = [
-    {
-      label: "SEO metriklerini yorumla",
-      template:
-        "Bu mevcut SEO metriklerini alan bazinda yorumla ve sadece bu skorlara gore 3 oncelikli tavsiye ver.\n\n{seoMetricsSummary}",
-    },
-    {
-      label: "Urun aciklamasini yorumla",
-      template:
-        "Bu urunun mevcut aciklamasini yorumla. Yalnizca eldeki metni kullan.\n\n{productDescription}",
-    },
-    {
-      label: "Meta titlei yorumla",
-      template:
-        "Bu mevcut meta titlei SEO acisindan yorumla.\n\n{productMetaTitle}",
-    },
-    {
-      label: "Meta descriptioni yorumla",
-      template:
-        "Bu mevcut meta descriptioni SEO acisindan yorumla.\n\n{productMetaDescription}",
-    },
-  ];
-
   const isInspectingProduct = isAutoIntroActive && messages.length === 0;
   const showStarterState =
     !isAutoIntroActive &&
@@ -285,7 +223,7 @@ export default function ChatPanel({
   };
 
   const handleSend = () => submitPrompt(input);
-  const handleStarterPrompt = (prompt: StarterPrompt) =>
+  const handleStarterPrompt = (prompt: (typeof STARTER_PROMPTS)[number]) =>
     submitPrompt(prompt.template);
   const ACTION_LABELS: Record<string, string> = {
     single_apply_meta: "\u{1F527} Meta alanlarini duzelt",
@@ -361,17 +299,16 @@ export default function ChatPanel({
 
   return (
     <div
-      className="flex h-full flex-col overflow-hidden rounded-xl"
+      className="flex h-full flex-col overflow-hidden rounded-2xl"
       style={{
-        background: "var(--color-bg-surface)",
-        border: "1px solid var(--color-border)",
+        background:
+          "radial-gradient(circle at top left, rgba(99,102,241,0.12), transparent 28%), linear-gradient(180deg, rgba(15,23,42,0.96), rgba(10,14,27,0.98))",
+        border: "1px solid rgba(148,163,184,0.18)",
+        boxShadow: "0 22px 48px rgba(2, 6, 23, 0.5)",
       }}
     >
       {/* ── Header ── */}
-      <div
-        className="px-4 py-3"
-        style={{ borderBottom: "1px solid var(--color-border)" }}
-      >
+      <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(148,163,184,0.16)" }}>
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -442,8 +379,8 @@ export default function ChatPanel({
           {messages.length > 0 && (
             <button
               onClick={clearHistory}
-              className="text-[11px] font-medium transition-all"
-              style={{ color: "var(--color-text-muted)" }}
+              className="rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-all"
+              style={{ color: "var(--color-text-muted)", borderColor: "rgba(148,163,184,0.24)" }}
               onMouseEnter={(e) =>
                 (e.currentTarget.style.color = "var(--color-text-secondary)")
               }
@@ -457,8 +394,8 @@ export default function ChatPanel({
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
-          <StatusPill label="Model" value={assistantLabel} tone="neutral" />
-          <StatusPill
+          <ChatStatusPill label="Model" value={assistantLabel} tone="neutral" />
+          <ChatStatusPill
             label="MCP"
             value={
               mcpState.initialized
@@ -476,35 +413,35 @@ export default function ChatPanel({
             }
           />
           {mcpState.initialized && (
-            <StatusPill
+            <ChatStatusPill
               label="Arac"
               value={String(mcpState.toolCount)}
               tone="success"
             />
           )}
           {sessionTotalTokens > 0 && (
-            <StatusPill
+            <ChatStatusPill
               label="Token"
               value={`${formatCompactNumber(sessionTotalTokens)} tok`}
               tone="neutral"
             />
           )}
           {typeof liveContextLength === "number" && liveContextLength > 0 && (
-            <StatusPill
+            <ChatStatusPill
               label="Context"
               value={formatCompactNumber(liveContextLength)}
               tone="neutral"
             />
           )}
           {isLoading && (
-            <StatusPill
+            <ChatStatusPill
               label="Sure"
               value={formatDuration(liveElapsedSeconds)}
               tone="warn"
             />
           )}
           {isLoading && liveElapsedSeconds > 0 && liveRateBase > 0 && (
-            <StatusPill
+            <ChatStatusPill
               label="Canli Hiz"
               value={`${formattedLiveTokensPerSecond} tok/sn`}
               tone="success"
@@ -514,102 +451,21 @@ export default function ChatPanel({
       </div>
 
       {/* ── Reconnecting banner ── */}
-      {isReconnecting && (
-        <div
-          className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium"
-          style={{
-            background: "rgba(245, 158, 11, 0.10)",
-            borderBottom: "1px solid rgba(245, 158, 11, 0.20)",
-            color: "#fbbf24",
-          }}
-        >
-          <svg
-            className="h-3.5 w-3.5 animate-spin"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
-          Yeniden bağlanılıyor...
-        </div>
-      )}
+      {isReconnecting && <ReconnectingBanner />}
 
       {/* ── Messages ── */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-4">
         {/* Score analysis — shown as the app's first message before LLM */}
         {score && productId && (
           <SeoScoreChatMessage key={`score-${productId}`} score={score} />
         )}
 
         {showStarterState && (
-          <div
-            className="rounded-2xl p-4 text-center"
-            style={{
-              background:
-                "linear-gradient(180deg, rgba(99, 102, 241, 0.10), rgba(17, 24, 39, 0.02))",
-              border: "1px solid rgba(99, 102, 241, 0.15)",
-            }}
-          >
-            <div
-              className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl"
-              style={{
-                background: "rgba(99, 102, 241, 0.12)",
-                color: "#c7d2fe",
-              }}
-            >
-              <svg
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.7}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                />
-              </svg>
-            </div>
-            <p
-              className="mt-3 text-[13px] font-medium"
-              style={{ color: "var(--color-text-primary)" }}
-            >
-              Secili urunun mevcut SEO metrikleri ve eldeki alanlariyla sohbet
-              hazir.
-            </p>
-            <p
-              className="mt-1 text-xs"
-              style={{ color: "var(--color-text-muted)" }}
-            >
-              Mesaj yaz veya {"{"}  ile
-              `productDescription` veya `seoMetricsSummary` gibi alanlari mesaja
-              ekleyebilirsin.
-            </p>
-            <div className="mt-4 flex flex-wrap justify-center gap-2">
-              {starterPrompts.map((prompt) => (
-                <button
-                  key={prompt.label}
-                  onClick={() => handleStarterPrompt(prompt)}
-                  disabled={isLoading}
-                  className="rounded-full px-3 py-1.5 text-[11px] font-medium transition-all hover:opacity-90 disabled:opacity-40"
-                  style={{
-                    background: "rgba(99, 102, 241, 0.12)",
-                    color: "#c7d2fe",
-                    border: "1px solid rgba(99, 102, 241, 0.2)",
-                  }}
-                >
-                  {prompt.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <StarterStateCard
+            prompts={STARTER_PROMPTS}
+            onPromptClick={handleStarterPrompt}
+            disabled={isLoading}
+          />
         )}
 
         {messages.map((msg, i) => (
@@ -625,10 +481,10 @@ export default function ChatPanel({
 
         {(isLoading || isInspectingProduct) && (
           <div
-            className="mr-6 rounded-xl px-4 py-3"
+            className="mr-6 rounded-2xl px-4 py-3"
             style={{
-              background: "var(--color-bg-elevated)",
-              border: "1px solid var(--color-border)",
+              background: "linear-gradient(180deg, rgba(30,41,59,0.75), rgba(15,23,42,0.8))",
+              border: "1px solid rgba(148,163,184,0.2)",
             }}
           >
             <div className="flex items-center gap-2">
@@ -668,11 +524,8 @@ export default function ChatPanel({
       </div>
 
       {/* ── Input ── */}
-      <div
-        className="p-3"
-        style={{ borderTop: "1px solid var(--color-border)" }}
-      >
-        <div className="flex items-end gap-2">
+      <div className="p-3" style={{ borderTop: "1px solid rgba(148,163,184,0.16)" }}>
+        <div className="flex items-end gap-2 rounded-2xl border p-2" style={{ borderColor: "rgba(148,163,184,0.2)", background: "rgba(15,23,42,0.66)" }}>
           <div className="relative flex-1">
             {showParamMenu && (
               <div
@@ -804,19 +657,17 @@ export default function ChatPanel({
                     ? `${displayProductName} icin soru sorun. { ile hazir alan ekleyin...`
                     : "Mesaj yazin... { ile parametre ekleyin."
               }
-              className="min-h-[44px] w-full resize-none rounded-lg px-3 py-2 text-[13px] outline-none transition-all"
+              className="min-h-[44px] w-full resize-none rounded-xl px-3 py-2 text-[13px] outline-none transition-all"
               style={{
-                background: "var(--color-bg-base)",
-                border: "1px solid var(--color-border-light)",
+                background: "rgba(15,23,42,0.86)",
+                border: "1px solid rgba(148,163,184,0.2)",
                 color: "var(--color-text-primary)",
                 opacity: isAutoIntroActive ? 0.7 : 1,
                 cursor: isAutoIntroActive ? "not-allowed" : "text",
               }}
-              onFocus={(e) =>
-                (e.currentTarget.style.borderColor = "var(--color-primary)")
-              }
+              onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(99,102,241,0.7)")}
               onBlur={(e) => {
-                e.currentTarget.style.borderColor = "var(--color-border-light)";
+                e.currentTarget.style.borderColor = "rgba(148,163,184,0.2)";
                 setParamTrigger(null);
               }}
             />
@@ -844,7 +695,7 @@ export default function ChatPanel({
               (!isLoading && !input.trim()) ||
               (isAutoIntroActive && !isLoading)
             }
-            className={`flex min-h-[44px] flex-shrink-0 items-center justify-center rounded-lg px-3 text-white transition-all hover:opacity-90 disabled:opacity-30 ${isLoading ? "min-w-[64px]" : "w-11"}`}
+            className={`flex min-h-[44px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-white transition-all hover:opacity-90 disabled:opacity-30 ${isLoading ? "min-w-[64px]" : "w-11"}`}
             style={{
               background: isLoading
                 ? "linear-gradient(135deg, #ef4444, #f97316)"
