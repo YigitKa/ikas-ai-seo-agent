@@ -45,7 +45,6 @@ ikas-ai-seo-agent/
 │   ├── product_manager.py   # Orchestrator — coordinates all core operations + agentic rewrite
 │   ├── seo_analyzer.py      # Rule-based SEO scoring engine (100-point scale + GEO)
 │   ├── geo_audit.py         # Full GEO audit pipeline (GeoAuditor class)
-│   ├── csv_handler.py       # CSV import/export for products and suggestions
 │   ├── prompt_store.py      # Loads and renders prompt templates; multi-agent + agentic system prompts
 │   ├── chat_service.py      # Multi-turn AI chat with MCP tool integration + AgentToolkit
 │   ├── chat_operation_guidance.py # Operation suggestion footer and false-action safety logic
@@ -272,7 +271,6 @@ ProductManager (core/product_manager.py)  [request-scoped — fresh per HTTP req
     ├── ChatService          -> multi-turn AI chat + multi-agent routing + MCP tools + AgentToolkit
     ├── IkasMCPClient        -> ikas MCP (live store queries)
     ├── ProviderService      -> provider detection & health
-    ├── CSVHandler           -> import/export
     └── Database             -> async SQLite (aiosqlite) + file cache
 ```
 

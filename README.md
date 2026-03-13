@@ -720,7 +720,6 @@ ikas-ai-seo-agent/
 |   |-- chat_service.py
 |   |-- chat_operation_guidance.py  # Operation suggestion footer + false-action safety
 |   |-- claude_client.py       # legacy, geriye donuk uyumluluk
-|   |-- csv_handler.py
 |   |-- html_utils.py
 |   |-- ikas_client.py
 |   |-- mcp_client.py
