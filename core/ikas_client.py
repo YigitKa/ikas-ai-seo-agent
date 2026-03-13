@@ -55,7 +55,31 @@ class IkasClient:
             id
             name
             description
-            metaData { pageTitle description }
+            metaData { pageTitle description slug }
+        }
+    }
+    """
+
+    _PREFETCH_FOR_UPDATE_QUERY = """
+    query GetProductForUpdate($id: StringFilterInput!) {
+        listProduct(id: $id) {
+            data {
+                id
+                name
+                description
+                type
+                salesChannelIds
+                brandId
+                categoryIds
+                tagIds
+                translations { locale name description }
+                metaData { slug pageTitle description }
+                variants {
+                    id sku weight
+                    prices { sellPrice discountPrice currency }
+                    images { imageId order fileName isMain }
+                }
+            }
         }
     }
     """
@@ -362,7 +386,56 @@ class IkasClient:
             logger.info(f"[DRY RUN] Would update product {product_id}: {updates}")
             return True
 
-        input_data: Dict[str, Any] = {"id": product_id}
+        # Prefetch required fields that ikas saveProduct mutation always expects
+        prefetch = await self._graphql(
+            self._PREFETCH_FOR_UPDATE_QUERY,
+            {"id": {"eq": product_id}},
+        )
+        products = prefetch["listProduct"]["data"]
+        if not products:
+            raise RuntimeError(f"Product {product_id} not found")
+        current = products[0]
+        logger.info(
+            "Prefetched product %s: type=%s, variants=%d, slug=%s",
+            product_id,
+            current.get("type"),
+            len(current.get("variants") or []),
+            (current.get("metaData") or {}).get("slug"),
+        )
+
+        input_data: Dict[str, Any] = {
+            "id": product_id,
+            "name": updates.get("name", current["name"]),
+            "type": current["type"],
+            "salesChannelIds": current.get("salesChannelIds") or [],
+            "description": current.get("description") or "",
+            "variants": [
+                {
+                    k: v
+                    for k, v in variant.items()
+                    if v is not None
+                }
+                for variant in (current.get("variants") or [])
+            ],
+        }
+
+        # Preserve optional top-level fields
+        if current.get("brandId"):
+            input_data["brandId"] = current["brandId"]
+        if current.get("categoryIds"):
+            input_data["categoryIds"] = current["categoryIds"]
+        if current.get("tagIds"):
+            input_data["tagIds"] = current["tagIds"]
+        if current.get("translations"):
+            input_data["translations"] = current["translations"]
+
+        # Always include full metaData from existing product, then overlay updates
+        current_meta = current.get("metaData") or {}
+        input_data["metaData"] = {
+            "slug": current_meta.get("slug", ""),
+            "pageTitle": current_meta.get("pageTitle", ""),
+            "description": current_meta.get("description", ""),
+        }
 
         if "description" in updates:
             input_data["description"] = updates["description"]
@@ -377,14 +450,14 @@ class IkasClient:
                 for locale, text in translations.items()
                 if isinstance(text, str) and text.strip()
             ]
-        if "name" in updates:
-            input_data["name"] = updates["name"]
-        if "meta_title" in updates or "meta_description" in updates:
-            input_data["metaData"] = {}
-            if "meta_title" in updates:
-                input_data["metaData"]["pageTitle"] = updates["meta_title"]
-            if "meta_description" in updates:
-                input_data["metaData"]["description"] = updates["meta_description"]
+        if "meta_title" in updates:
+            input_data["metaData"]["pageTitle"] = updates["meta_title"]
+        if "meta_description" in updates:
+            input_data["metaData"]["description"] = updates["meta_description"]
+
+        logger.info("Sending saveProduct input keys: %s", list(input_data.keys()))
+        if "metaData" in input_data:
+            logger.info("metaData keys: %s", list(input_data["metaData"].keys()))
 
         try:
             await self._graphql(self.UPDATE_PRODUCT_MUTATION, {"input": input_data})

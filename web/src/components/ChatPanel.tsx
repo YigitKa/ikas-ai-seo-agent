@@ -11,7 +11,12 @@ import {
 import { MessageBubble, type SuggestionOption } from "./chat/ChatMessage";
 import SeoScoreChatMessage from "./chat/SeoScoreChatMessage";
 import SuggestionDiffModal from "./chat/SuggestionDiffModal";
-import { ChatStatusPill, ReconnectingBanner, StarterStateCard } from "./chat/ChatPanelUi";
+import {
+  ChatStatusDeck,
+  ReconnectingBanner,
+  StarterStateCard,
+  type ChatStatusItem,
+} from "./chat/ChatPanelUi";
 import { STARTER_PROMPTS } from "./chat/chatPanelConstants";
 import {
   buildPromptParamOptions,
@@ -162,6 +167,16 @@ export default function ChatPanel({
     typeof latestAssistant?.meta?.model === "string"
       ? String(latestAssistant.meta.model)
       : configuredAssistantLabel;
+  const mcpStatusLabel = mcpState.initialized
+    ? "bagli"
+    : mcpState.hasToken
+      ? "bekliyor"
+      : "kapali";
+  const mcpStatusTone: ChatStatusItem["tone"] = mcpState.initialized
+    ? "success"
+    : mcpState.hasToken
+      ? "warn"
+      : "neutral";
   const liveRateBase =
     liveTokenEstimate > 0 ? liveTokenEstimate : liveChunkCount;
   const liveTokensPerSecond =
@@ -186,6 +201,50 @@ export default function ChatPanel({
       )
     : [];
   const showParamMenu = !isAutoIntroActive && filteredParamOptions.length > 0;
+  const sessionStatusItems: ChatStatusItem[] = [
+    { label: "Model", value: assistantLabel, tone: "neutral" },
+    { label: "MCP", value: mcpStatusLabel, tone: mcpStatusTone },
+  ];
+
+  if (mcpState.initialized) {
+    sessionStatusItems.push({
+      label: "Arac",
+      value: String(mcpState.toolCount),
+      tone: "success",
+    });
+  }
+
+  if (sessionTotalTokens > 0) {
+    sessionStatusItems.push({
+      label: "Token",
+      value: `${formatCompactNumber(sessionTotalTokens)} tok`,
+      tone: "neutral",
+    });
+  }
+
+  if (typeof liveContextLength === "number" && liveContextLength > 0) {
+    sessionStatusItems.push({
+      label: "Context",
+      value: formatCompactNumber(liveContextLength),
+      tone: "neutral",
+    });
+  }
+
+  if (isLoading) {
+    sessionStatusItems.push({
+      label: "Sure",
+      value: formatDuration(liveElapsedSeconds),
+      tone: "warn",
+    });
+  }
+
+  if (isLoading && liveElapsedSeconds > 0 && liveRateBase > 0) {
+    sessionStatusItems.push({
+      label: "Canli Hiz",
+      value: `${formattedLiveTokensPerSecond} tok/sn`,
+      tone: "success",
+    });
+  }
 
   // Handlers
   const syncParamTrigger = (value: string, caretPosition: number | null) => {
@@ -309,39 +368,16 @@ export default function ChatPanel({
     >
       {/* ── Header ── */}
       <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(148,163,184,0.16)" }}>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <div
-                className="flex h-6 w-6 items-center justify-center rounded-md"
-                style={{
-                  background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                }}
-              >
-                <svg
-                  className="h-3.5 w-3.5 text-white"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
+            {displayProductName ? (
+              <div className="min-w-0">
+                <div
+                  className="text-[10px] font-semibold uppercase tracking-[0.18em]"
+                  style={{ color: "var(--color-text-muted)" }}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                  />
-                </svg>
-              </div>
-              <span
-                className="text-[13px] font-semibold"
-                style={{ color: "var(--color-text-primary)" }}
-              >
-                AI Chat
-              </span>
-            </div>
-
-            {displayProductName && (
-              <div className="mt-2 min-w-0">
+                  Aktif urun
+                </div>
                 <div className="flex items-center gap-2">
                   <div className="truncate text-[18px] font-semibold text-white">
                     {displayProductName}
@@ -373,6 +409,21 @@ export default function ChatPanel({
                     : ""}
                 </div>
               </div>
+            ) : (
+              <div className="min-w-0">
+                <div
+                  className="text-[10px] font-semibold uppercase tracking-[0.18em]"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
+                  Sohbet
+                </div>
+                <div
+                  className="mt-1 text-[14px] font-semibold"
+                  style={{ color: "var(--color-text-primary)" }}
+                >
+                  Bir urun secin veya mesaja baslayin
+                </div>
+              </div>
             )}
           </div>
 
@@ -393,61 +444,6 @@ export default function ChatPanel({
           )}
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          <ChatStatusPill label="Model" value={assistantLabel} tone="neutral" />
-          <ChatStatusPill
-            label="MCP"
-            value={
-              mcpState.initialized
-                ? "bagli"
-                : mcpState.hasToken
-                  ? "bekliyor"
-                  : "kapali"
-            }
-            tone={
-              mcpState.initialized
-                ? "success"
-                : mcpState.hasToken
-                  ? "warn"
-                  : "neutral"
-            }
-          />
-          {mcpState.initialized && (
-            <ChatStatusPill
-              label="Arac"
-              value={String(mcpState.toolCount)}
-              tone="success"
-            />
-          )}
-          {sessionTotalTokens > 0 && (
-            <ChatStatusPill
-              label="Token"
-              value={`${formatCompactNumber(sessionTotalTokens)} tok`}
-              tone="neutral"
-            />
-          )}
-          {typeof liveContextLength === "number" && liveContextLength > 0 && (
-            <ChatStatusPill
-              label="Context"
-              value={formatCompactNumber(liveContextLength)}
-              tone="neutral"
-            />
-          )}
-          {isLoading && (
-            <ChatStatusPill
-              label="Sure"
-              value={formatDuration(liveElapsedSeconds)}
-              tone="warn"
-            />
-          )}
-          {isLoading && liveElapsedSeconds > 0 && liveRateBase > 0 && (
-            <ChatStatusPill
-              label="Canli Hiz"
-              value={`${formattedLiveTokensPerSecond} tok/sn`}
-              tone="success"
-            />
-          )}
-        </div>
       </div>
 
       {/* ── Reconnecting banner ── */}
@@ -723,6 +719,9 @@ export default function ChatPanel({
               </svg>
             )}
           </button>
+        </div>
+        <div className="mt-1.5 px-1">
+          <ChatStatusDeck items={sessionStatusItems} />
         </div>
       </div>
 

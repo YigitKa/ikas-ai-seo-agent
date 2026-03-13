@@ -198,18 +198,61 @@ class ChatServiceSuggestionMixin:
             # Strategy 2: Use MCP updateProduct mutation
             if self._mcp and self._mcp_initialized:
                 try:
+                    # Prefetch required fields via a temporary IkasClient
+                    prefetch_product: dict[str, Any] | None = None
+                    try:
+                        _pf_client = IkasClient()
+                        try:
+                            pf_data = await _pf_client._graphql(
+                                _pf_client._PREFETCH_FOR_UPDATE_QUERY,
+                                {"id": {"eq": product_id}},
+                            )
+                            pf_list = pf_data["listProduct"]["data"]
+                            if pf_list:
+                                prefetch_product = pf_list[0]
+                        finally:
+                            with contextlib.suppress(Exception):
+                                await _pf_client.close()
+                    except Exception:
+                        logger.debug("MCP path: prefetch via IkasClient failed")
+
                     input_data: dict[str, Any] = {"id": product_id}
-                    if "name" in updates:
-                        input_data["name"] = updates["name"]
+                    if prefetch_product:
+                        input_data["name"] = updates.get("name", prefetch_product["name"])
+                        input_data["type"] = prefetch_product["type"]
+                        input_data["salesChannelIds"] = prefetch_product.get("salesChannelIds") or []
+                        input_data["description"] = prefetch_product.get("description") or ""
+                        input_data["variants"] = [
+                            {k: v for k, v in var.items() if v is not None}
+                            for var in (prefetch_product.get("variants") or [])
+                        ]
+                        if prefetch_product.get("brandId"):
+                            input_data["brandId"] = prefetch_product["brandId"]
+                        if prefetch_product.get("categoryIds"):
+                            input_data["categoryIds"] = prefetch_product["categoryIds"]
+                        if prefetch_product.get("tagIds"):
+                            input_data["tagIds"] = prefetch_product["tagIds"]
+                        if prefetch_product.get("translations"):
+                            input_data["translations"] = prefetch_product["translations"]
+                        pf_meta = prefetch_product.get("metaData") or {}
+                        input_data["metaData"] = {
+                            "slug": pf_meta.get("slug", ""),
+                            "pageTitle": pf_meta.get("pageTitle", ""),
+                            "description": pf_meta.get("description", ""),
+                        }
+                    else:
+                        if "name" in updates:
+                            input_data["name"] = updates["name"]
+
                     if "description" in updates:
                         input_data["description"] = updates["description"]
                     if "meta_title" in updates or "meta_description" in updates:
-                        meta_data: dict[str, Any] = {}
+                        if "metaData" not in input_data:
+                            input_data["metaData"] = {}
                         if "meta_title" in updates:
-                            meta_data["pageTitle"] = updates["meta_title"]
+                            input_data["metaData"]["pageTitle"] = updates["meta_title"]
                         if "meta_description" in updates:
-                            meta_data["description"] = updates["meta_description"]
-                        input_data["metaData"] = meta_data
+                            input_data["metaData"]["description"] = updates["meta_description"]
                     if description_translations:
                         input_data["translations"] = [
                             {"locale": locale, "description": text}
