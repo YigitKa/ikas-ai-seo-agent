@@ -1,801 +1,426 @@
 # ikas AI SEO Agent
 
-`ikas AI SEO Agent`, ikas magazalari icin gelistirilmis web tabanli bir SEO analiz ve AI destekli icerik iyilestirme aracidir. Urunleri ikas API'sinden senkronize eder, yerel SQLite cache icinde saklar, 100 puanlik bir rubric ile skorlar ve secilen AI provider uzerinden rewrite veya TR -> EN ceviri onerileri uretir.
+**An autonomous AI agent that analyzes, scores, and rewrites e-commerce product content for maximum SEO and AI discoverability.**
 
-`2026-03-10` itibariyla proje yalnizca web uygulamasi olarak devam eder. Legacy masaustu UI repo'dan kaldirilmistir.
+Built for [ikas](https://ikas.com) stores. Connects via GraphQL API, scores every product on a 100-point rubric, then deploys an agentic AI pipeline that autonomously identifies weak fields, iteratively rewrites them, validates improvements, and saves suggestions — all without human intervention per product.
 
-## Son Guncellemeler (2026-03-11)
+Ships as a full-stack web application: **React/TypeScript** frontend, **FastAPI** backend, **async SQLite** storage.
 
-- **Yapisal secenek butonlari:** AI'nin sorulari ve onerileri artik chat ekraninda tiklanabilir butonlar olarak goruntulenir. Kullanici serbest metin yazmak yerine butona tiklayarak secenek belirler — typo ve belirsizlik riski ortadan kalkar.
-- **Agentic tool mimarisi:** AI artik tek seferlik istek/cevap yerine iteratif tool-calling agent olarak calisir. Urun SEO'sunu otomatik skorlar, zayif alanlari tespit eder, tek tek yeniden yazar, dogrular ve kaydeder.
-- Yeni modüller: `core/agent_tools.py` (AgentTool, AgentToolkit, built-in tool'lar), `core/agent_orchestrator.py` (generic agent loop)
-- SSE streaming endpoint: `POST /api/suggestions/generate/{id}/stream` — agent adimlari gercek zamanli izlenebilir
-- Tool-calling tum aktif provider'larda desteklenir (Ollama, LM Studio, OpenAI, Anthropic, Gemini, OpenRouter, custom). Yalnizca `none` provider tek-seferlik (fallback) modda kalir.
-- Chat akisi `seo`, `operator` ve `general` ajanlari arasinda niyet tabanli yonlendirme ile calisir; operasyon rehberi ayri modulde (`core/chat_operation_guidance.py`) tutulur.
-- Sohbet guvenilirligi guclendirildi: modelin gercekte yapilmayan degisiklikleri yapildi gibi raporlamasini engelleyen ek dogrulama kontrolleri bulunur.
-- GEO denetimi icin tam website tarama endpoint'i eklendi: `POST /api/seo/geo-audit`.
-- Dokumantasyon ve kod yapisi Claude/Codex agent akislariyla uyumlu hale getirildi.
+---
 
-## Guncel Durum
+## The Problem
 
-- React 19 + TypeScript frontend (`web/`)
-- FastAPI backend + WebSocket chat (`api/`)
-- SQLite tabanli yerel cache, skor ve suggestion kaydi (`data/`)
-- ikas urun senkronizasyonu ve tekil urun fetch destegi
-- **Agentic SEO optimizasyonu**: AI otonom olarak skorlar, zayif alanlari belirler, iteratif yeniden yazar, dogrular ve kaydeder (tool-calling ile)
-- Urun filtreleri: `all`, `low_score`, `missing_english`, `pending`, `approved`
-- SEO score breakdown: title, description, EN description, meta, keyword, content quality, technical SEO, readability, AI citability (GEO)
-- GEO (Generative Engine Optimization): AI citability skorlama ve `llms.txt` uretimi
-- Chat-first AI akisi: urun baglami, SEO metrikleri, prompt parametre ekleme, istek iptali, oturum token/context gostergeleri
-- Otomatik urun giris mesaji: urun secildiginde chat paneli SEO analizi ile baslar
-- Gecmis ozetleme: uzun sohbet gecmisi AI ile otomatik olarak ozetlenir
-- Semantik yonlendirme: kullanici mesaji tamamen otomatik olarak dogru agent'a (SEO / Operator / Genel) yonlendirilir
-- **Yapisal secenek butonlari:** AI onerileri, onay sorulari ve alternatifler tiklanabilir butonlar olarak gosterilir; kullanici serbest metin yerine butonla secer
-- LM Studio native streaming: `/api/v1/chat` uzerinden gercek zamanli akis
-- Ayar merkezi: provider secimi, model kesfi, prompt editoru, MCP durumu, LM Studio canli durum ekrani
-- Suggestion durumlari: `pending`, `approved`, `rejected`, `applied`
-- Guvenli varsayilan: `DRY_RUN=true`
+E-commerce SEO optimization is repetitive, expensive, and increasingly insufficient. Every product needs a well-crafted title, rich description, proper meta tags, multilingual content, and — in the age of AI search — structured facts that ChatGPT, Perplexity, and Google AI Overviews can cite.
 
-## Mimari
+Doing this manually for hundreds of products is impractical. Doing it with a single AI prompt produces mediocre, one-shot results with no quality feedback loop.
 
-```text
-+------------------------------+
-| React SPA (Vite)             |
-| /            -> Dashboard    |
-| /settings    -> Settings     |
-+---------------+--------------+
-                |
-                v
-+-----------------------------------+
-| FastAPI                           |
-| REST + WebSocket                  |
-| api/main.py                       |
-+---+---+---+-----------+-----------+
-    |   |   |
-    v   v   v
-+---------------+--------------+
-| ProductManager                 |
-| core/product_manager.py        |
-+---+-----------+-----------+---+
-    |           |           |
-    v           v           v
-  ikas API    SEO        AI / Chat / Agent
-  GraphQL     Rules      Providers + MCP
-    |                      |
-    v                      v
- SQLite cache          AgentOrchestrator
- scores, suggestions   + AgentToolkit
- logs                  (iteratif tool-calling)
+## The Solution
+
+This agent doesn't just generate content — it **thinks, scores, rewrites, validates, and iterates**. Like a human SEO specialist would, but across your entire catalog.
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    Agent Loop                        │
+│                                                      │
+│   Score product (100-point rubric)                   │
+│       ↓                                              │
+│   Identify weakest fields                            │
+│       ↓                                              │
+│   Rewrite field with SEO best practices              │
+│       ↓                                              │
+│   Validate: did the score actually improve?           │
+│       ↓                                              │
+│   No improvement → try different strategy             │
+│   Improved → move to next weak field                  │
+│       ↓                                              │
+│   Save suggestion when all fields optimized           │
+└─────────────────────────────────────────────────────┘
+         (up to 8 autonomous iterations)
 ```
 
-Production modunda FastAPI, build edilmis SPA'yi `web/dist` altindan servis eder.
+The result: measurable, validated SEO improvements — not just "AI-generated text."
 
-## Baslangic
+---
 
-### Gereksinimler
+## Key Capabilities
 
+### Agentic SEO Optimization
+The AI doesn't fire-and-forget. It uses **tool calling** to autonomously score → rewrite → validate → iterate. Each rewrite is checked against the scoring rubric before being accepted. If a rewrite doesn't improve the score, the agent tries a different approach — up to 2 strategies per field, up to 8 total iterations.
+
+### 100-Point SEO Scoring Engine
+Rule-based rubric inspired by Ahrefs, Semrush, Yoast, Moz, and Screaming Frog:
+
+| Category | Points | What it checks |
+|---|---|---|
+| Title | 15 | Length, capitalization, power words, special chars |
+| Description (TR) | 20 | Word count, paragraph structure, HTML elements |
+| Description (EN) | 5 | Translation quality, min word count |
+| Meta Title | 15 | Length 50-60 chars, brand separator, uniqueness |
+| Meta Description | 10 | Length 120-160 chars, CTA presence |
+| Keyword Optimization | 10 | Keyword placement, category alignment, consistency |
+| Content Quality | 10 | Stuffing detection, vocabulary diversity, coherence |
+| Technical SEO | 10 | Images, tags, categories, slug, pricing |
+| Readability | 5 | Sentence length, variation, transitions |
+| **AI Citability (GEO)** | **10** | Structured facts, clear attributes, AI-readable format |
+
+The last category — **AI Citability** — is what makes this forward-looking. It scores how well your content can be cited by AI search engines.
+
+### GEO Site Audit
+A standalone crawler that audits **any website** for Generative Engine Optimization readiness:
+
+- Crawls homepage + sitemap (configurable page limit)
+- Runs **5 parallel analysis agents** via `asyncio.gather`:
+  - AI Visibility — citability scoring, `robots.txt` crawler policy analysis (tracks 14+ AI bots: GPTBot, ClaudeBot, PerplexityBot...), `llms.txt` detection
+  - Platform Readiness — ChatGPT / Perplexity / Google AIO signal scores
+  - Technical SEO — HTTPS, mobile viewport, CSP, SSR detection
+  - Content Quality — readability, E-E-A-T signals, freshness
+  - Schema Markup — JSON-LD detection and type variety
+- Synthesizes into a weighted composite **GEO Score (0-100)**
+- Generates a prioritized Markdown action plan
+
+### Multi-Agent Chat with Semantic Routing
+The chat panel isn't a single chatbot — it's **three specialized agents** with automatic routing:
+
+| Agent | Role | Tools |
+|---|---|---|
+| **SEO Expert** | Rewrites titles, descriptions, meta tags | SEO scoring, validation, save/apply |
+| **Store Operator** | Queries live store data (stock, orders, prices) | 50+ ikas MCP operations |
+| **General** | Answers product, SEO, and store management questions | SEO toolkit |
+
+Every user message is semantically classified by the LLM (temp=0.0, max 20 tokens) — no tags or commands needed. Ask about stock levels and you're routed to the Operator. Ask to optimize a title and you're routed to the SEO Expert.
+
+### Structured Option Buttons
+AI proposals render as **clickable buttons** in the chat — not free text that users need to type responses to. This eliminates typos, ambiguity, and the need for intent parsing on follow-up messages.
+
+The AI appends a JSON option block to its response:
+```json
+[{"tone": "Professional", "value": "Apply all changes"}, {"tone": "Cautious", "value": "Let me review first"}]
+```
+The frontend parses this into styled, clickable cards. When a button has an `action` key, it sends a hidden `[[CHAT_ACTION:action_name]]` message — enabling deterministic multi-step workflows (save → review → apply) without free-text ambiguity.
+
+### Provider Agnostic
+One codebase, **8 AI providers**:
+
+| Provider | Type | Default Model |
+|---|---|---|
+| Anthropic | Cloud API | `claude-haiku-4-5-20251001` |
+| OpenAI | Cloud API | `gpt-4o-mini` |
+| Gemini | Cloud API | `gemini-1.5-flash` |
+| OpenRouter | Cloud API | `openai/gpt-4o-mini` |
+| Ollama | Local | `llama3.2` |
+| LM Studio | Local | First available |
+| Custom | Any OpenAI-compatible | Configurable |
+| None | No AI | Scoring only |
+
+All providers (except `none`) support tool calling through a unified OpenAI-compatible interface. Switch providers by changing one environment variable — the entire agentic pipeline, chat system, and streaming work identically.
+
+### Safe by Default
+`DRY_RUN=true` is the default. Nothing is written to your ikas store unless you explicitly opt in. Every suggestion goes through a human approval step before it can be applied.
+
+---
+
+## Architecture
+
+```
+┌──────────────────────────────────┐
+│     React 19 + TypeScript SPA    │
+│     TailwindCSS 4 · Vite 7       │
+│     TanStack Query · WebSocket    │
+└───────────────┬──────────────────┘
+                │
+                ▼
+┌──────────────────────────────────┐
+│     FastAPI · REST + WebSocket    │
+│     Request-scoped DI · SSE       │
+└───────────────┬──────────────────┘
+                │
+                ▼
+┌──────────────────────────────────────────────────────────┐
+│                    ProductManager                         │
+│              (fresh instance per request)                  │
+│                                                           │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────┐  │
+│  │ IkasClient   │  │ SEO Analyzer │  │ AI Client       │  │
+│  │ OAuth+GraphQL│  │ 100-pt rubric│  │ 8 providers     │  │
+│  └─────────────┘  └──────────────┘  └─────────────────┘  │
+│                                                           │
+│  ┌──────────────────────┐  ┌───────────────────────────┐  │
+│  │ AgentOrchestrator     │  │ ChatService               │  │
+│  │ Tool-calling loop     │  │ Multi-agent + MCP + Tools  │  │
+│  │ run() / stream()      │  │ Semantic routing           │  │
+│  │ AgentToolkit registry │  │ Structured option buttons  │  │
+│  └──────────────────────┘  └───────────────────────────┘  │
+│                                                           │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────┐  │
+│  │ GeoAuditor   │  │ IkasMCPClient│  │ ProviderService │  │
+│  │ Site crawler  │  │ JSON-RPC 2.0 │  │ Health + models │  │
+│  └─────────────┘  └──────────────┘  └─────────────────┘  │
+└───────────────────────────┬──────────────────────────────┘
+                            │
+                            ▼
+                ┌──────────────────────┐
+                │  Async SQLite        │
+                │  aiosqlite           │
+                │  products · scores   │
+                │  suggestions · logs  │
+                └──────────────────────┘
+```
+
+### Design Decisions Worth Noting
+
+**Request-scoped orchestration.** `ProductManager` is instantiated fresh per HTTP request via FastAPI dependency injection — no global state, no cross-request contamination. Chat state is isolated per WebSocket connection.
+
+**Three-layer tool resolution.** When the chat agent calls a tool, it's resolved through three layers in priority order: (1) Local registry tools (save/apply), (2) AgentToolkit tools (SEO scoring/validation), (3) MCP tools (50+ live ikas operations). This keeps tool dispatch decoupled from implementation.
+
+**Dual-route apply strategy.** When applying suggestions to ikas, the system tries IkasClient (OAuth + GraphQL) first, then falls back to MCP mutation. Two paths to the same destination — resilient by design.
+
+**Layered prompt architecture.** Chat prompts aren't monolithic. They're assembled from 5 layers: base flow prompt → agent-specific persona → operation guide → product context → routing instructions. Each layer is independently maintainable.
+
+**Thinking extraction.** `<think>...</think>` blocks are automatically extracted from model responses and surfaced separately in the UI — users can see the AI's reasoning process without it cluttering the response.
+
+**False-action safety.** If the AI claims it applied changes without actually calling the `apply_seo_to_ikas` tool, the system detects this and appends a warning disclaimer. Trust the tool calls, not the text.
+
+---
+
+## Quick Start
+
+### Prerequisites
 - Python 3.11+
 - Node.js 20+
-- npm
 
-### Kurulum
+### Setup
 
 ```bash
 git clone https://github.com/YigitKa/ikas-ai-seo-agent.git
 cd ikas-ai-seo-agent
 
+# Python
 python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-
-# Linux / macOS
-source .venv/bin/activate
-
+source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-cd web
-npm install
-cd ..
+# Frontend
+cd web && npm install && cd ..
 
-copy .env.example .env   # Windows
-# cp .env.example .env   # Linux / macOS
+# Configuration
+cp .env.example .env
+# Edit .env with your ikas credentials and AI provider key
 ```
 
-`.env` dosyasini doldurmadan ikas baglantili akislar calismaz.
-
-## Calistirma
-
-### Onerilen gelistirme modu
+### Run
 
 ```bash
-python start.py dev
-```
-
-Bu komut:
-
-- FastAPI backend'i baslatir
-- Vite dev server'i `:5173` uzerinden calistirir
-- Backend portu mesgulse sonraki 20 portu dener
-
-### Production benzeri calisma
-
-```bash
-python start.py
-```
-
-Varsayilan mod `prod`'dur. `web/dist` yoksa frontend build edilir, sonra FastAPI tek proses olarak kalkar.
-
-### Diger launcher modlari
-
-```bash
-python start.py build
-python start.py backend
-python start.py prod
-```
-
-`main.py`, geriye donuk uyumluluk icin `start.py` alias'i olarak birakilmistir. Su komutlar da ayni sekilde calisir:
-
-```bash
+# Development (recommended) — backend :8000 + Vite :5173
 python main.py dev
+
+# Production — builds frontend, serves everything from :8000
 python main.py
 ```
 
-### Manuel calistirma
-
-Frontend ve backend'i ayri proseslerde acmak isterseniz:
+### Verify
 
 ```bash
-# terminal 1
-python -m uvicorn api.main:app --reload
-
-# terminal 2
-cd web
-npm run dev
+python -m pytest tests/ -v
 ```
 
-## Uygulama Akisi
+---
 
-### Dashboard
+## Configuration
 
-Dashboard ekraninda:
+All configuration lives in `.env`. Three-layer resolution (highest priority first):
+1. `.cache/user_settings.json` — runtime overrides from the Settings UI
+2. `.env` — initial defaults (read-only at runtime)
+3. Hardcoded defaults in `AppConfig`
 
-- Tum katalog senkronize edilir
-- Yerel veritabani sifirlanabilir
-- Onayli suggestion'lar tek seferde uygulanabilir
-- Sol panelde urun listesi ve skor rozetleri gorulur
-- Secilen urun icin chat paneli ve SEO skor karti acilir
+### Required
 
-### Chat Panel
+| Variable | Description |
+|---|---|
+| `IKAS_STORE_NAME` | Your ikas store subdomain |
+| `IKAS_CLIENT_ID` | OAuth2 client ID from ikas admin |
+| `IKAS_CLIENT_SECRET` | OAuth2 client secret |
+| `AI_PROVIDER` | `anthropic`, `openai`, `gemini`, `openrouter`, `ollama`, `lm-studio`, `custom`, or `none` |
+| `AI_API_KEY` | API key for cloud providers |
 
-Chat paneli mevcut urun baglamini ve skor metriklerini modele verir. Urun secildiginde panel otomatik olarak bir SEO analizi intro mesaji gonderir. Arayuzde:
+### Optional
 
-- Urun seciminde otomatik giris mesaji (auto intro)
-- Dogal dilde istekte bulunma; sistem otomatik olarak yerel SEO baglami veya canli magaza verisi uzerinden analiz yapar
-- Etiket gerektirmeden semantik yonlendirme ile dogru kaynak secilir
-- **Yapisal secenek butonlari:** AI'nin onay sorulari, alternatif onerileri ve sonraki adim secenekleri chat ekraninda tiklanabilir butonlar olarak goruntulenir. Butonlar mesaj icerisinde kart olarak ve input alani uzerinde etkilesim paneli olarak gosterilir.
-- `{productDescription}`, `{productMetaTitle}`, `{seoMetricsSummary}` gibi hazir alanlari mesaja ekleme
-- Aktif istegi `Stop` ile iptal etme
-- MCP arac cagri sonucunu mesaja gomulu gorme
-- Uzun sohbet gecmisi otomatik olarak ozetlenir (gecmis sıkıştırma)
-- LM Studio kullanirken context uzunlugu ve token kullanimini izleme
+| Variable | Default | Description |
+|---|---|---|
+| `AI_MODEL_NAME` | Provider default | Override model selection |
+| `AI_TEMPERATURE` | `0.7` | Generation creativity |
+| `AI_MAX_TOKENS` | `2000` | Max output tokens |
+| `AI_THINKING_MODE` | `false` | Extended thinking (Anthropic) |
+| `IKAS_MCP_TOKEN` | — | Enables live store queries in chat |
+| `STORE_LANGUAGES` | `tr,en` | Supported content languages |
+| `SEO_TARGET_KEYWORDS` | — | Comma-separated target keywords |
+| `SEO_LOW_SCORE_THRESHOLD` | `70` | Score below which products need attention |
+| `DRY_RUN` | `true` | Set `false` to write changes to ikas |
 
-### Settings
+---
 
-Settings ekraninda:
+## How It Works
 
-- ikas kimlik bilgileri
-- MCP token
-- AI provider / model / base URL
-- `AI_THINKING_MODE`
-- Prompt editoru
-- Provider health check
-- Ollama ve LM Studio icin model discovery
-- LM Studio secili model ve download job durumu
+### Dashboard Flow
+1. **Sync** your product catalog from ikas
+2. **Browse** products with SEO score badges in the sidebar
+3. **Select** a product — see its score breakdown and chat panel
+4. **Chat** with the AI about the product, or generate an autonomous rewrite
+5. **Review** the AI's suggestions with before/after diffs
+6. **Approve** and apply changes back to ikas
 
-tek yerden yonetilir.
+### Agentic Rewrite Flow
+When you click "Generate AI Suggestion," the agent takes over:
 
-## Konfigurasyon
+1. Scores the product against all 10 rubric categories
+2. Identifies the weakest scoring fields
+3. Rewrites each field, starting with the lowest-scoring
+4. Validates each rewrite against the rubric — **measurable improvement required**
+5. If no improvement: tries alternative strategy (max 2 per field)
+6. Saves the final suggestion only after validation passes
+7. Streams every step in real-time via SSE
 
-### Zorunlu `.env` alanlari
+### Chat Flow
+1. User message enters `ChatService`
+2. Semantic routing classifies intent → selects agent persona
+3. System prompt assembled from 5 layers + product context
+4. Agent responds with tool calls as needed (up to 5 rounds)
+5. Tools resolve through 3-layer hierarchy (Registry → Toolkit → MCP)
+6. Response includes structured option buttons for next actions
+7. User clicks button → deterministic workflow continues
 
-| Key | Aciklama |
-| --- | --- |
-| `IKAS_STORE_NAME` | Magaza alt alani veya host bilgisi |
-| `IKAS_CLIENT_ID` | ikas OAuth client id |
-| `IKAS_CLIENT_SECRET` | ikas OAuth client secret |
+---
 
-TTY ortaminda zorunlu alanlar eksikse uygulama bunlari terminalden isteyebilir. TTY yoksa hata verir.
+## Tech Stack
 
-### Opsiyonel `.env` alanlari
+### Backend
+- **Python 3.11+** — async-first with `asyncio`
+- **FastAPI** — REST API + WebSocket
+- **aiosqlite** — async SQLite for products, scores, suggestions
+- **httpx** — async HTTP for ikas GraphQL + MCP
+- **Pydantic v2** — data validation and serialization
 
-| Key | Varsayilan | Not |
-| --- | --- | --- |
-| `IKAS_MCP_TOKEN` | bos | AI sohbeti icin ikas MCP baglantisi |
-| `AI_PROVIDER` | `none` | `none`, `anthropic`, `openai`, `gemini`, `openrouter`, `ollama`, `lm-studio`, `custom` |
-| `AI_API_KEY` | bos | Secilen provider API key'i |
-| `AI_BASE_URL` | provider default | OpenAI-compatible endpoint |
-| `AI_MODEL_NAME` | provider default | Model adi |
-| `AI_TEMPERATURE` | `0.7` | Rewrite yaraticiligi |
-| `AI_MAX_TOKENS` | `2000` | Max output token |
-| `AI_THINKING_MODE` | `false` | Destekleyen providerlarda reasoning isteyen mod |
-| `STORE_LANGUAGES` | `tr,en` | Virgulle ayrilmis dil listesi |
-| `STORE_LANGUAGE` | `tr` | Geriye donuk desteklenir |
-| `SEO_TARGET_KEYWORDS` | bos | Virgulle ayrilmis keyword listesi |
-| `SEO_LOW_SCORE_THRESHOLD` | `70` | `low_score` filtresi icin alt esik |
-| `DRY_RUN` | `true` | Aciksa ikas'a yazma yapilmaz |
-| `LOG_LEVEL` | `INFO` | Log seviyesi |
-| `ANTHROPIC_API_KEY` | bos | Legacy geriye donuk uyumluluk |
+### Frontend
+- **React 19** + **TypeScript 5.9**
+- **Vite 7** — dev server + production builds
+- **TailwindCSS 4** — utility-first styling
+- **TanStack Query 5** — server state management
+- **React Router 7** — client-side routing
+- **react-markdown** — chat message rendering
 
-### Provider varsayilanlari
+### Protocols
+- **OAuth2** — ikas API authentication
+- **GraphQL** — ikas product CRUD
+- **JSON-RPC 2.0** — ikas MCP (Model Context Protocol)
+- **OpenAI-compatible** — unified AI provider interface
+- **SSE** — real-time agent progress streaming
+- **WebSocket** — bidirectional chat
 
-| Provider | Varsayilan model | Varsayilan base URL |
-| --- | --- | --- |
-| `anthropic` | `claude-haiku-4-5-20251001` | SDK icinden |
-| `openai` | `gpt-4o-mini` | `https://api.openai.com/v1` |
-| `gemini` | `gemini-1.5-flash` | `https://generativelanguage.googleapis.com/v1beta/openai/` |
-| `openrouter` | `openai/gpt-4o-mini` | `https://openrouter.ai/api/v1` |
-| `ollama` | `llama3.2` | `http://localhost:11434/v1` |
-| `lm-studio` | `local-model` | `http://localhost:1234/v1` |
-| `custom` | `gpt-3.5-turbo` | kullanici tanimlar |
+---
 
-## API Yuzeyi
+## Project Structure
 
-### Genel
+```
+ikas-ai-seo-agent/
+├── main.py                     # Entry point
+├── start.py                    # Backend/frontend coordinator
+│
+├── config/settings.py          # Three-layer config resolution
+│
+├── core/                       # Business logic — no UI dependencies
+│   ├── models.py               # Pydantic models (Product, SeoScore, AgentEvent, etc.)
+│   ├── product_manager.py      # Central orchestrator
+│   ├── prompt_store.py         # Template loading + multi-agent prompts
+│   │
+│   ├── ai/client.py            # Multi-provider AI abstraction (factory + adapters)
+│   ├── agent/orchestrator.py   # Generic agent loop (run + stream)
+│   ├── agent/tools.py          # Tool definitions + toolkit factories
+│   │
+│   ├── chat/                   # Multi-turn chat (mixin composition)
+│   │   ├── state.py            # Conversation history + product context
+│   │   ├── streaming.py        # SSE streaming + multi-agent routing
+│   │   ├── suggestions.py      # Draft → review → apply flows
+│   │   ├── support.py          # ToolRegistry + helpers
+│   │   └── guidance.py         # Operation suggestions + false-action safety
+│   │
+│   ├── seo/analyzer.py         # 100-point scoring engine
+│   ├── seo/geo_audit.py        # Full site GEO audit pipeline
+│   │
+│   ├── clients/ikas.py         # Async GraphQL client (OAuth2)
+│   ├── clients/mcp.py          # ikas MCP JSON-RPC client
+│   │
+│   ├── services/provider.py    # Provider health + model discovery
+│   ├── services/settings.py    # Settings management
+│   └── services/suggestion.py  # Suggestion field operations
+│
+├── api/                        # FastAPI REST + WebSocket
+│   ├── main.py                 # App setup, CORS, SPA serving
+│   ├── dependencies.py         # Request-scoped DI
+│   └── routers/                # products, seo, suggestions, settings, chat
+│
+├── web/src/                    # React/TypeScript SPA
+│   ├── pages/                  # Dashboard, Settings
+│   ├── components/             # ChatPanel, ProductTable, ScoreCard
+│   ├── api/client.ts           # API client functions
+│   └── hooks/useChat.ts        # Chat state management
+│
+├── data/
+│   ├── db.py                   # Async SQLite schema + helpers
+│   └── cache.py                # File-based TTL cache
+│
+├── prompts/                    # Editable AI prompt templates
+└── tests/                      # 20+ test files, no live API calls
+```
 
-| Method | Path | Aciklama |
-| --- | --- | --- |
-| `GET` | `/api/health` | Saglik kontrolu |
+---
+
+## API Surface
 
 ### Products
-
-| Method | Path | Aciklama |
-| --- | --- | --- |
-| `GET` | `/api/products?page=1&limit=50&filter=all` | Cache'deki urunleri listeler |
-| `POST` | `/api/products/fetch` | ikas'tan sayfali urun ceker |
-| `POST` | `/api/products/sync` | Tum katalogu ceker, cache ve skorlar guncellenir |
-| `POST` | `/api/products/reset` | Urun, skor, suggestion ve log verisini temizler |
-| `GET` | `/api/products/{product_id}` | Tekil urun ve son skoru |
-
-`filter` parametresi su degerleri kabul eder: `all`, `low_score`, `missing_english`, `pending`, `approved`.
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/products` | List cached products (filterable) |
+| `POST` | `/api/products/fetch` | Fetch from ikas |
+| `POST` | `/api/products/sync` | Full catalog sync |
+| `GET` | `/api/products/{id}` | Single product detail |
 
 ### SEO
-
-| Method | Path | Aciklama |
-| --- | --- | --- |
-| `POST` | `/api/seo/analyze` | Cache'deki tum urunleri skorlar |
-| `POST` | `/api/seo/analyze/{product_id}` | Tek urun skoru uretir |
-| `GET` | `/api/seo/scores/{product_id}` | Son kaydedilen skoru doner |
-| `GET` | `/api/seo/generate-llms-txt` | AI tarayicilari icin `llms.txt` uretir (GEO) |
-| `POST` | `/api/seo/geo-audit` | Verilen URL icin tam GEO audit calistirir |
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/seo/analyze` | Score all products |
+| `POST` | `/api/seo/analyze/{id}` | Score single product |
+| `GET` | `/api/seo/generate-llms-txt` | Generate `llms.txt` for AI crawlers |
+| `POST` | `/api/seo/geo-audit` | Full GEO site audit |
 
 ### Suggestions
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/suggestions/generate/{id}` | Generate AI suggestion (agentic) |
+| `POST` | `/api/suggestions/generate/{id}/stream` | Generate with SSE streaming |
+| `PATCH` | `/api/suggestions/{id}/approve` | Approve suggestion |
+| `POST` | `/api/suggestions/apply` | Apply all approved to ikas |
 
-| Method | Path | Aciklama |
-| --- | --- | --- |
-| `POST` | `/api/suggestions/generate/{product_id}` | Tam rewrite suggestion uretir (agentic mod) |
-| `POST` | `/api/suggestions/generate/{product_id}/stream` | SSE streaming ile agent adimlarini gercek zamanli izler |
-| `POST` | `/api/suggestions/generate-field/{product_id}` | Tek alan rewrite veya EN ceviri uretir |
-| `GET` | `/api/suggestions/{product_id}` | Urunun suggestion gecmisi |
-| `PATCH` | `/api/suggestions/{product_id}/approve` | Son pending suggestion'i onaylar |
-| `PATCH` | `/api/suggestions/{product_id}/reject` | Son pending suggestion'i reddeder |
-| `PATCH` | `/api/suggestions/{product_id}/update` | Son pending suggestion alanlarini gunceller |
-| `POST` | `/api/suggestions/apply` | Tum approved suggestion'lari uygular |
-
-### Settings ve MCP
-
-| Method | Path | Aciklama |
-| --- | --- | --- |
-| `GET` | `/api/settings` | Aktif ayarlar |
-| `PUT` | `/api/settings` | Ayarlari `.cache/user_settings.json`'a kaydet ve yeniden yukle |
-| `GET` | `/api/settings/prompts` | Prompt editor metadata + icerik |
-| `PUT` | `/api/settings/prompts` | Promptlari kaydet |
-| `POST` | `/api/settings/prompts/reset` | Promptlari varsayilana dondur |
-| `GET` | `/api/settings/providers` | Provider listesi |
-| `GET` | `/api/settings/health` | Provider baglanti durumu |
-| `GET` | `/api/settings/models/{provider}` | Model discovery |
-| `GET` | `/api/settings/lm-studio/status` | LM Studio canli durum |
-| `POST` | `/api/settings/test-connection` | ikas + provider baglanti testi |
-| `GET` | `/api/mcp/status` | MCP durum ozeti |
-| `POST` | `/api/mcp/initialize` | MCP baglantisini baslat |
-| `POST` | `/api/chat/clear` | Sohbet gecmisini temizle |
-
-### WebSocket
-
-| Path | Aciklama |
-| --- | --- |
-| `/ws/chat` | AI sohbet, MCP arac cagirilari ve streaming response |
-| `/ws/progress` | Uzun sureli operasyonlar icin keep-alive / progress kanali |
-
-## SEO Skorlama
-
-Toplam skor `100` puandir:
-
-| Alan | Maks puan |
-| --- | --- |
-| Title | 15 |
-| Description | 20 |
-| English description | 5 |
-| Meta title | 15 |
-| Meta description | 10 |
-| Keyword usage | 10 |
-| Content quality | 10 |
-| Technical SEO | 10 |
-| Readability | 5 |
-| AI Citability (GEO) | 10 |
-
-Toplam 100 puan. Varsayilan olarak `70` alti urunler dusuk skor kabul edilir.
-
-GEO skoru; yapilandirilmis urun bilgisi, net urun ozellikleri ve AI-okunabilir formatlama gibi sinyaller uzerinden hesaplanir.
-
-Kontroller arasinda su sinyaller bulunur:
-
-- title uzunlugu, buyuk harf ve ozel karakter yogunlugu
-- TR ve EN description uzunlugu ve yapisi
-- meta alan uzunluklari
-- hedef keyword kapsami
-- tekrar / stuffing sinyalleri
-- gorsel, etiket, kategori, fiyat, slug gibi teknik alanlar
-- cumle uzunlugu ve okunabilirlik
-
-## Prompt Sistemi
-
-Prompt dosyalari `prompts/` klasorunde tutulur ve her AI isteginde yeniden okunur.
-
-Aktif prompt dosyalari:
-
-- `description_rewrite.system.txt`
-- `description_rewrite.user.txt`
-- `translation_en.system.txt`
-- `translation_en.user.txt`
-- `geo_rewrite.system.txt`
-- `geo_rewrite.user.txt`
-
-Promptlar Settings ekranindan duzenlenebilir. Gecerli degiskenler:
-
-- `{{name}}`
-- `{{description}}`
-- `{{category}}`
-- `{{keywords}}`
-
-Translation prompt'larinda `{{keywords}}` yoktur; yalnizca ilgili ceviri degiskenleri kullanilir.
-
-## Agentic Tool Mimarisi
-
-Sistem iki farkli agentic pipeline icerir: **SEO Rewrite Agent** (urun optimizasyonu) ve **Chat Agent** (canli sohbet + MCP). Her iki pipeline de OpenAI-compatible tool calling (function calling) formatini kullanir.
-
-Desteklenen provider'larin hepsi tool calling'i destekler: Ollama, LM Studio, OpenAI, Anthropic, Gemini, OpenRouter, custom. `none` provider'da tool calling devre disidir.
-
-### Provider Bazli Kimlik Dogrulama
-
-Her provider farkli endpoint ve auth header kullanir:
-
-| Provider | Base URL | Auth Header |
-| --- | --- | --- |
-| `anthropic` | `https://api.anthropic.com/v1` | `x-api-key: <key>` |
-| `openai` | `https://api.openai.com/v1` | `Authorization: Bearer <key>` |
-| `gemini` | `https://generativelanguage.googleapis.com/v1beta/openai` | `Authorization: Bearer <key>` |
-| `openrouter` | `https://openrouter.ai/api/v1` | `Authorization: Bearer <key>` |
-| `ollama` | `http://localhost:11434/v1` | `Authorization: Bearer ollama` |
-| `lm-studio` | `http://localhost:1234/v1` | `Authorization: Bearer lm-studio` |
-| `custom` | `.env`'deki `AI_BASE_URL` | `Authorization: Bearer <key>` |
-
-> **Not:** Anthropic, OpenAI-compatible endpoint uzerinden (`/v1/chat/completions`) tool calling yapar ancak auth icin `x-api-key` header kullanir, `Authorization: Bearer` degil.
+### Real-time
+| Protocol | Endpoint | Description |
+|---|---|---|
+| WebSocket | `/ws/chat` | Multi-agent AI chat |
+| WebSocket | `/ws/progress` | Operation progress |
 
 ---
 
-### 1. SEO Rewrite Agent (AgentOrchestrator)
-
-Dashboard'dan "AI Onerisi Olustur" butonuna basildiginda tetiklenir.
-
-#### Is Akisi
-
-1. `ProductManager.rewrite_product()` → `supports_tool_calling(config)` kontrol eder
-2. Agentic mod: `AgentOrchestrator` + `AgentToolkit` olusturulur
-3. Agent otonom olarak:
-   - `seo_score_product` ile urunu skorlar
-   - En dusuk puan alan alandan baslayarak `validate_rewrite` ile optimize eder
-   - Skor iyilesmediyse farkli strateji dener (alan basina maks 2 deneme)
-   - `save_suggestion` ile oneriyi DB'ye kaydeder
-4. Maks 8 iterasyon guvenligi vardir
-5. SSE streaming: `POST /api/suggestions/generate/{id}/stream` ile agent adimlari gercek zamanli izlenebilir
-
-#### Built-in Tool'lar
-
-| Tool | Aciklama |
-| --- | --- |
-| `seo_score_product` | Urunu skorlar, issues/suggestions JSON dondurur |
-| `get_product_details` | Urunun tum alanlarini getirir |
-| `search_products` | Urunleri filtreler (dusuk skorlular vb.) |
-| `validate_rewrite` | Yeni degerle skoru hesaplar, iyilesmeyi gosterir |
-| `save_suggestion` | Oneriyi SQLite DB'ye kaydeder |
-| `get_seo_guidelines` | SEO rubrik kurallarini dondurur |
-
-#### Toolkit Fabrikalar
-
-- `create_seo_rewrite_toolkit()` — Rewrite pipeline (5 tool)
-- `create_chat_toolkit()` — Chat (6 tool, MCP tool'lari dinamik eklenir)
-- `create_batch_toolkit()` — Toplu operasyonlar (5 tool)
-
-#### Agent Loop Detayi (AgentOrchestrator)
-
-```
-[System Prompt + Tools] → LLM
-       ↓
-   LLM Response
-       ↓
-  ┌─ tool_calls var mi? ─── Hayir → Sonuc dondur
-  │
-  Evet ↓
-  Tool cagir → sonucu inject et → LLM'e geri gonder
-       ↓
-  (max iterasyona kadar tekrarla)
-```
-
-- `run()` — bloklayici calistirma, `AgentResult` dondurur
-- `stream()` — async iterator, `AgentEvent` yield eder (thinking, tool_call, tool_result, response_chunk, completed, error)
-- `cancel()` — aktif istegi iptal eder
-- `<think>...</think>` bloklari otomatik olarak `thinking_text` alanina cikarilir
-
----
-
-### 2. Chat Agent (ChatService)
-
-Chat panelinden gonderilen her kullanici mesaji bu pipeline'dan gecer.
-
-#### Multi-Agent Yonlendirme
-
-Sistem uc farkli agent persona icerir:
-
-| Agent | Persona | Gorev |
-| --- | --- | --- |
-| `seo` | SEO Uzman / Kreatif Metin Yazari | Baslik, aciklama, meta tag yeniden yazimi |
-| `operator` | Veri/Operasyon Analisti | MCP ile canli magaza verisi sorgulama (stok, siparis, fiyat) |
-| `general` | Genel Asistan | Urun, SEO, envanter ve magaza yonetimi sorulari |
-
-#### Yonlendirme Akisi (`_route_to_agent`)
-
-Her kullanici mesaji otomatik olarak semantik routing'den gecer — etiket gerektirmez.
-
-```
-Kullanici mesaji
-       ↓
-  LLM'e semantik routing prompt'u gonder (temp=0.0, max 20 token)
-       ↓
-  {"agent_type": "seo" | "operator" | "general"}
-       ↓
-  Hata durumunda → "general" (fallback)
-```
-
-**Semantik routing prompt'u**, mesajin icerigine gore siniflandirir:
-- Stok, fiyat, siparis, envanter sorulari → `operator`
-- SEO, metin yazimi, baslik/aciklama optimizasyonu → `seo`
-- Diger her sey → `general`
-
-#### Mesaj Islem Akisi
-
-```
-1. _extract_message_directives()
-   → (temizlenmis_mesaj, yonlendirme_talimati, agent_type, allow_tools)
-
-2. Kullanici mesajini gecmise ekle (maks 40 mesaj)
-
-3. Kaydetme niyeti kontrolu → varsa pending suggestion'i cikar, erken don
-
-4. Uygulama niyeti kontrolu → varsa kaydedilmis oneriyi uygula, erken don
-
-5. MCP guided data prefetch (operator ise canli urun snapshot'u cek)
-
-6. Completion mesajlari + tool listesi olustur
-
-7. LLM'e gonder (streaming veya blocking)
-   ├─ Chunk'lari topla, tool_calls tespit et
-   ├─ Tool cagri dongusu (maks 5 tur):
-   │   ├─ _execute_chat_tool() → Registry → Toolkit → MCP
-   │   ├─ Sonucu inject et → devam
-   │   └─ Suggestion kaydedildiyse → erken don
-   └─ Tool kalmadi → thinking cikar → don
-
-8. Yanitı gecmise ekle
-9. ChatResponse dondur
-```
-
-#### ToolRegistry ve Tool Hiyerarsisi
-
-`ToolRegistry`, tool adini handler fonksiyonuna eslestiren hafif bir kayit defteri. Tool cagrilari su oncelik sirasinda cozumlenir:
-
-```
-_execute_chat_tool(tool_name, args)
-  │
-  ├─ 1. ToolRegistry (yerel tool'lar)
-  │     ├─ save_seo_suggestion    → session'a kaydeder (DB'ye degil)
-  │     └─ apply_seo_to_ikas     → urunu ikas'a yazar
-  │
-  ├─ 2. AgentToolkit (SEO tool'lari)
-  │     ├─ seo_score_product
-  │     ├─ validate_rewrite
-  │     ├─ get_product_details
-  │     ├─ get_seo_guidelines
-  │     └─ search_products
-  │
-  └─ 3. MCP (ikas canli islemler)
-        ├─ listProduct, getProduct, updateProduct, ...
-        └─ 50+ ikas GraphQL operasyonu
-```
-
-#### Yerel Tool Detaylari
-
-**`save_seo_suggestion`** — SEO onerilerini chat oturumuna kaydeder
-
-- Alanlar: `name`, `meta_title`, `meta_description`, `description`, `description_en`
-- Oturum bazli bellekte saklar (`_session_pending_suggestions[product_id]`)
-- ikas'a yazmaz, sadece taslak olusturur
-- Donus: `{"ok": true, "suggestion_saved": {...}}`
-
-**`apply_seo_to_ikas`** — Oneriyi ikas magazasina uygular
-
-- **Cift yollu strateji:**
-  1. **IkasClient** (OAuth + GraphQL) — ikas API credential'lari varsa tercih edilir
-  2. **MCP mutation** — IkasClient kullanilamazsa fallback olarak MCP uzerinden yazar
-- Desteklenen alanlar: `name`, `description`, `description_en`, `meta_title`, `meta_description`
-- Donus: `{"ok": true, "method": "ikas_api" | "mcp", "updated_fields": [...]}`
-- `DRY_RUN=true` iken gercek yazim yapmaz
-
-#### Tool Listesi Olusturma (`_build_chat_tools`)
-
-Agent tipine gore tool listesi dinamik olarak olusturulur:
-
-| Parametre | Aciklama |
-| --- | --- |
-| `agent_type` | `"seo"`, `"operator"` veya `"general"` |
-| `include_save_seo_tool` | `True` ise `save_seo_suggestion` ve `apply_seo_to_ikas` eklenir |
-| `allow_mcp_tools` | `True` ise (sadece operator) MCP tool'lari eklenir |
-
-Sonuc 3 katman halinde birlestirilir:
-1. **Yerel Registry tool'lari** — save_seo_suggestion, apply_seo_to_ikas (her zaman, include_save_seo_tool True ise)
-2. **AgentToolkit tool'lari** — seo_score, validate, get_details, guidelines, search (her zaman)
-3. **MCP tool'lari** — listProduct, updateProduct vb. (sadece operator agent'ta, allow_mcp_tools True ise)
-
----
-
-## MCP Entegrasyonu (ikas Model Context Protocol)
-
-`IKAS_MCP_TOKEN` tanimliysa backend, MCP baglantisini acilista veya Settings ekranindan kurabilir.
-
-### Baglanti
-
-- Endpoint: `https://api.myikas.com/api/v2/admin/mcp`
-- Protokol: JSON-RPC 2.0 (Streamable HTTP transport)
-- Auth: `mcp-session-id` header ile oturum takibi
-
-### Temel Islemler
-
-| Metod | Aciklama |
-| --- | --- |
-| `initialize()` | MCP oturumunu baslat, tool listesini cek |
-| `get_tools_as_openai_functions()` | 50+ ikas operasyonunu OpenAI function formatina cevir |
-| `call_tool(name, args)` | Tekil MCP tool cagrisi (query veya mutation) |
-| `introspect_operation(name)` | GraphQL semasini cek (sonuc bellekte onbellekelenir) |
-| `execute_mutation(name, query, vars)` | Mutation calistir (introspect → execute zinciri) |
-
-### MCP Tool Discovery
-
-MCP baglantisi kuruldugunda `tools/list` cagrisi yapilir. Donen tool'lar (listProduct, updateProduct, listOrder vb.) OpenAI function calling formatina donusturulur ve chat tool listesine eklenir.
-
-### MCP Mutation Akisi
-
-```
-apply_seo_to_ikas tetiklendi
-       ↓
-  IkasClient ile dene (OAuth + GraphQL)
-       ↓
-  Basarisiz? → MCP fallback:
-       ↓
-  introspect_operation("updateProduct")
-       → GraphQL sema + input type'lar cache'lenir
-       ↓
-  execute_mutation("updateProduct", query, variables)
-       → JSON-RPC execute cagrisi
-       ↓
-  Sonuc dondur
-```
-
-### Chat + MCP Birlikte Calisma
-
-```
-Kullanici: "Bu urunun stok durumu nedir?"
-       ↓
-  _route_to_agent() → "operator" (stok sorgusu)
-       ↓
-  _build_chat_tools(agent_type="operator", allow_mcp_tools=True)
-       → Registry + Toolkit + MCP tool'lari
-       ↓
-  LLM tool_call: listProduct({id: "..."})
-       ↓
-  _execute_chat_tool() → MCP → ikas API → JSON sonuc
-       ↓
-  Sonuc LLM'e inject edilir → kullaniciya yanitlanir
-```
-
-```
-Kullanici: "Bu urunun basligini SEO icin optimize et"
-       ↓
-  _route_to_agent() → "seo" (SEO optimizasyonu)
-       ↓
-  _build_chat_tools(agent_type="seo", include_save_seo_tool=True)
-       → Registry + Toolkit (MCP yok)
-       ↓
-  LLM tool_call: seo_score_product({product_id: "..."})
-       → Skor sonucu
-  LLM tool_call: save_seo_suggestion({...yeni degerler...})
-       → Oturum bellegine kaydedilir
-       ↓
-  Kullanici onayladiginda: apply_seo_to_ikas ile ikas'a yazilir
-```
-
-### Sistem Prompt Yapisi
-
-Chat agent'in davranisini belirleyen prompt'lar katmanli olarak olusturulur:
-
-1. **`CHAT_FLOW_SYSTEM_PROMPT_TR`** — Ana sistem prompt'u: rol tanimi, hedefler, dogruluk kurallari, tool kullanim rehberi, yapisal secenek buton formati
-2. **Agent-spesifik prompt** — `AGENT_SYSTEM_PROMPTS_TR["seo" | "operator" | "general"]` ile secilir
-3. **`IKAS_OPERATION_GUIDE_TR`** — apply_seo_to_ikas kullanim talimatlari
-4. **Urun baglami** — Secili urunun adi, skoru, mevcut alanlari
-5. **Yonlendirme talimati** — `_extract_message_directives()` icerideki routing context'i
-
-> **Dogruluk kurali:** Sistem prompt'unda "Yapmadığın bir şeyi yaptığını iddia ETME. Başarı YALNIZCA araç gerçekten başarılı olduysa bildir." kuralı mevcuttur.
-
-### Yapisal Secenek Butonlari
-
-Chat panelinde AI'nin onerileri ve sorulari tiklanabilir butonlar olarak gosterilir. Bu mekanizma kullanicinin serbest metin yazip typo yapmasi veya farkli ifade kullanmasi riskini ortadan kaldirir.
-
-#### Nasil Calisir
-
-1. **Backend**: AI yaniti veya programatik builder (`_build_suggestion_saved_response`, `_build_single_apply_confirmation_response`) yanitinin sonuna bir JSON blogu ekler:
-   ```json
-   [{"tone": "Etiket", "value": "Buton aciklamasi", "action": "aksiyon_adi"}]
-   ```
-2. **Frontend**: `suggestionUtils.ts` mesaj icerigindeki JSON bloklarini parse eder
-3. **Gosterim**: Secenekler iki yerde goruntulenir:
-   - **Mesaj icinde**: Renkli kartlar olarak (`SuggestionCards` bileseninde)
-   - **Input uzerinde**: Son mesajin secenekleri etkisil panel olarak (`hasPendingInteraction`)
-4. **Tiklandiginda**: `action` varsa `[[CHAT_ACTION:aksiyon_adi]]` gizli mesaj olarak gonderilir; yoksa secenek icerik olarak gonderilir
-
-#### Secenek Turleri
-
-| Durum | Secenek ornekleri | `action` kullanimi |
-| --- | --- | --- |
-| AI onay sorusu | Evet / Hayir | Yok (metin olarak gonderilir) |
-| Yeniden yazim alternatifleri | Profesyonel / Agresif / Minimal | Yok (secenek icerigi gonderilir) |
-| Taslak kaydedildi | Uygula / Detayli Sec / Iptal | `single_apply_all`, `single_apply_confirm`, `single_apply_cancel` |
-| Uygulama onay | Meta / Icerik / Hepsi / Iptal | `single_apply_meta`, `single_apply_content`, `single_apply_all`, `single_apply_cancel` |
-
-> Sistem prompt'u AI'yi her yanit sonunda yapisal secenek blogu eklemeye yonlendirir.
-
-## Testler
+## Contributing
 
 ```bash
-python -m pytest tests -v
+# Run all tests
+python -m pytest tests/ -v
+
+# Run specific test
+python -m pytest tests/test_seo_analyzer.py -v
 ```
 
-Sik kullanilan testler:
+Tests use mocks and fixtures — no live API calls. Sample products in `tests/fixtures/sample_products.json`.
 
-```bash
-python -m pytest tests/test_products_api.py -v
-python -m pytest tests/test_product_manager.py -v
-python -m pytest tests/test_chat_service.py -v
-python -m pytest tests/test_settings_service.py -v
-python -m pytest tests/test_provider_service.py -v
-```
+---
 
-## Gelistirme Notlari
+## License
 
-- `seo_optimizer.db` yerel veritabani dosyasidir.
-- Frontend build ciktilari `web/dist` altina uretilir.
-- FastAPI, build alinmis SPA varsa root path'te onu servis eder.
-- `web/package.json` icinde `dev`, `build`, `lint`, `preview` script'leri bulunur.
-- Legacy masaustu UI (`ui/`) repo'dan kaldirilmistir; `ui/` dizini artik mevcut degil.
-- LM Studio entegrasyonu native SSE streaming (`/api/v1/chat`) ile calisir; OpenAI-compat endpoint'i de desteklenir.
-
-## Proje Yapisi
-
-```text
-ikas-ai-seo-agent/
-|-- api/
-|   |-- dependencies.py
-|   |-- main.py
-|   |-- schemas.py
-|   `-- routers/
-|       |-- chat.py
-|       |-- products.py
-|       |-- seo.py
-|       |-- settings.py
-|       `-- suggestions.py
-|-- config/
-|   `-- settings.py
-|-- core/
-|   |-- agent_orchestrator.py  # Generic agent loop (run + stream)
-|   |-- agent_tools.py         # AgentTool, AgentToolkit, built-in tool'lar, toolkit fabrikalar
-|   |-- ai_client.py
-|   |-- chat_service.py
-|   |-- chat_operation_guidance.py  # Operation suggestion footer + false-action safety
-|   |-- claude_client.py       # legacy, geriye donuk uyumluluk
-|   |-- html_utils.py
-|   |-- ikas_client.py
-|   |-- mcp_client.py
-|   |-- models.py
-|   |-- presentation.py
-|   |-- product_manager.py
-|   |-- prompt_store.py
-|   |-- provider_service.py
-|   |-- seo_analyzer.py
-|   |-- settings_service.py
-|   `-- suggestion_service.py
-|-- data/
-|   |-- cache.py
-|   `-- db.py
-|-- prompts/
-|   |-- description_rewrite.system.txt
-|   |-- description_rewrite.user.txt
-|   |-- translation_en.system.txt
-|   |-- translation_en.user.txt
-|   `-- README.txt
-|-- tests/
-|   |-- fixtures/
-|   |   `-- sample_products.json
-|   |-- test_ai_client.py
-|   |-- test_chat_service.py
-|   |-- test_chat_apply_flow.py
-|   |-- test_claude_client.py
-|   |-- test_db.py
-|   |-- test_html_utils.py
-|   |-- test_ikas_client.py
-|   |-- test_mcp_client.py
-|   |-- test_presentation.py
-|   |-- test_product_manager.py
-|   |-- test_products_api.py
-|   |-- test_provider_service.py
-|   |-- test_seo_analyzer.py
-|   |-- test_settings.py
-|   |-- test_settings_service.py
-|   |-- test_suggestion_service.py
-|   |-- test_agent_tools.py
-|   `-- test_agent_orchestrator.py
-|-- web/
-|   |-- package.json
-|   |-- vite.config.ts
-|   `-- src/
-|       |-- api/
-|       |   `-- client.ts
-|       |-- components/
-|       |   |-- ChatPanel.tsx
-|       |   |-- ProductTable.tsx
-|       |   |-- ScoreCard.tsx
-|       |   |-- chat/
-|       |   |   |-- ChatMessage.tsx
-|       |   |   |-- chatUtils.ts
-|       |   |   |-- promptParams.ts
-|       |   |   `-- suggestionUtils.ts
-|       |   `-- dashboard/
-|       |       |-- DashboardDetail.tsx
-|       |       |-- DashboardEmptyState.tsx
-|       |       |-- DashboardHeader.tsx
-|       |       |-- DashboardSidebar.tsx
-|       |       |-- constants.ts
-|       |       `-- productUrl.ts
-|       |-- hooks/
-|       |   `-- useChat.ts
-|       |-- pages/
-|       |   |-- Dashboard.tsx
-|       |   `-- Settings.tsx
-|       `-- types/
-|           `-- index.ts
-|-- .env.example
-|-- main.py
-|-- requirements.txt
-`-- start.py
-```
-
-## Lisans
-
-MIT. Detaylar icin `LICENSE` dosyasina bakin.
+MIT
