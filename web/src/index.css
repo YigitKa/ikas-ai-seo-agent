@@ -13,6 +13,11 @@
   --color-danger: #ef4444;
   --color-orange: #f97316;
 
+  --score-excellent: #10b981;
+  --score-good: #f59e0b;
+  --score-fair: #f97316;
+  --score-poor: #ef4444;
+
   --color-bg-base: #0a0a0f;
   --color-bg-surface: #111118;
   --color-bg-elevated: #1a1a24;

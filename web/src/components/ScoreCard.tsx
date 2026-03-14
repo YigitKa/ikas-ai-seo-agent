@@ -1,49 +1,10 @@
 import type { SeoScore } from '../types';
-import { SCORE_FIELDS, SUMMARY_FIELDS, explainIssue, getFieldStatusText, getScoreColor, getScoreGradient } from './seo-score/scoreCardUtils';
+import { SCORE_FIELDS, SUMMARY_FIELDS, explainIssue, getFieldStatusText, getScoreColor } from '../shared/score/scoreUtils';
+import CircularScore from '../shared/ui/CircularScore';
+import ProgressBar from '../shared/ui/ProgressBar';
 
 interface Props {
   score: SeoScore;
-}
-
-function CircularScore({ score }: { score: number }) {
-  const size = 104;
-  const strokeWidth = 6;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (score / 100) * circumference;
-  const color = getScoreColor(score);
-
-  return (
-    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg className="score-ring" width={size} height={size}>
-        <circle
-          className="score-ring-track"
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          strokeWidth={strokeWidth}
-        />
-        <circle
-          className="score-ring-fill"
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          strokeWidth={strokeWidth}
-          stroke={color}
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-        />
-      </svg>
-      <div className="absolute flex flex-col items-center">
-        <span className="text-2xl font-bold" style={{ color }}>
-          {score}
-        </span>
-        <span className="text-[10px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
-          /100
-        </span>
-      </div>
-    </div>
-  );
 }
 
 export default function ScoreCard({ score }: Props) {
@@ -56,7 +17,7 @@ export default function ScoreCard({ score }: Props) {
       }}
     >
       <div className="flex items-center gap-4 pb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <CircularScore score={score.total_score} />
+        <CircularScore score={score.total_score} size={104} strokeWidth={6} />
         <div className="min-w-0 flex-1">
           <div
             className="text-[10px] font-semibold uppercase tracking-[0.18em]"
@@ -145,17 +106,8 @@ export default function ScoreCard({ score }: Props) {
                 </div>
               </div>
 
-              <div
-                className="mt-3 h-1.5 w-full overflow-hidden rounded-full"
-                style={{ background: 'rgba(255,255,255,0.06)' }}
-              >
-                <div
-                  className="h-full rounded-full transition-all duration-700"
-                  style={{
-                    width: `${pct}%`,
-                    background: getScoreGradient(pct),
-                  }}
-                />
+              <div className="mt-3">
+                <ProgressBar pct={pct} height="h-1.5" />
               </div>
             </div>
           );
@@ -184,7 +136,7 @@ export default function ScoreCard({ score }: Props) {
                 <div className="flex items-start gap-2">
                   <span
                     className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                    style={{ background: '#ef4444' }}
+                    style={{ background: 'var(--score-poor)' }}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="text-[12px] font-medium text-white">{issue}</div>

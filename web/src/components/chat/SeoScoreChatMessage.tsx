@@ -1,35 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useState } from 'react';
 import type { SeoScore } from '../../types';
+import {
+  getScoreColor,
+  getFieldStatusText,
+  getStatusBadgeStyle,
+} from '../../shared/score/scoreUtils';
+import CircularScore, { useCountUp } from '../../shared/ui/CircularScore';
+import ProgressBar from '../../shared/ui/ProgressBar';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function getScoreColor(pct: number): string {
-  if (pct >= 80) return '#10b981';
-  if (pct >= 60) return '#f59e0b';
-  if (pct >= 40) return '#f97316';
-  return '#ef4444';
-}
-
-function getScoreGradient(pct: number): string {
-  if (pct >= 80) return 'linear-gradient(135deg, #10b981, #06b6d4)';
-  if (pct >= 60) return 'linear-gradient(135deg, #f59e0b, #f97316)';
-  if (pct >= 40) return 'linear-gradient(135deg, #f97316, #ef4444)';
-  return 'linear-gradient(135deg, #ef4444, #dc2626)';
-}
-
-function getFieldStatusText(pct: number): string {
-  if (pct >= 80) return 'Guclu';
-  if (pct >= 60) return 'Gelistirilebilir';
-  if (pct >= 40) return 'Zayif';
-  return 'Kritik';
-}
-
-function getStatusBadgeStyle(pct: number): { background: string; color: string } {
-  if (pct >= 80) return { background: 'rgba(16, 185, 129, 0.15)', color: '#34d399' };
-  if (pct >= 60) return { background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' };
-  if (pct >= 40) return { background: 'rgba(249, 115, 22, 0.15)', color: '#fb923c' };
-  return { background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' };
-}
+// ── Style helpers ────────────────────────────────────────────────────────────
 
 function getCategoryCardStyle(accent: string): {
   background: string;
@@ -53,102 +32,6 @@ function getCategoryHintStyle(accent: string): {
     border: `1px solid ${accent}22`,
     color: accent,
   };
-}
-
-// ── useCountUp hook ─────────────────────────────────────────────────────────
-
-function useCountUp(target: number, duration: number, delay: number): number {
-  const [value, setValue] = useState(0);
-  const rafRef = useRef<number>(0);
-
-  useEffect(() => {
-    let startTime: number | null = null;
-
-    const animate = (timestamp: number) => {
-      if (startTime === null) startTime = timestamp;
-      const elapsed = timestamp - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      // Ease-out cubic
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setValue(Math.round(eased * target));
-      if (progress < 1) {
-        rafRef.current = requestAnimationFrame(animate);
-      }
-    };
-
-    const delayTimer = setTimeout(() => {
-      rafRef.current = requestAnimationFrame(animate);
-    }, delay);
-
-    return () => {
-      clearTimeout(delayTimer);
-      cancelAnimationFrame(rafRef.current);
-    };
-  }, [target, duration, delay]);
-
-  return value;
-}
-
-// ── AnimatedCircularScore ───────────────────────────────────────────────────
-
-function AnimatedCircularScore({
-  score,
-  size = 72,
-  strokeWidth = 5,
-  delay = 0,
-}: {
-  score: number;
-  size?: number;
-  strokeWidth?: number;
-  delay?: number;
-}) {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const displayValue = useCountUp(score, 1200, delay);
-  const color = getScoreColor(score);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setMounted(true), delay);
-    return () => clearTimeout(timer);
-  }, [delay]);
-
-  const offset = mounted
-    ? circumference - (score / 100) * circumference
-    : circumference;
-
-  return (
-    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="rgba(255,255,255,0.06)"
-          strokeWidth={strokeWidth}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          style={{
-            transition: `stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1) ${delay}ms`,
-          }}
-        />
-      </svg>
-      <div className="absolute flex flex-col items-center">
-        <span className="text-lg font-bold" style={{ color }}>{displayValue}</span>
-        <span className="text-[9px] font-medium" style={{ color: 'var(--color-text-muted)' }}>/100</span>
-      </div>
-    </div>
-  );
 }
 
 // ── Category definitions ────────────────────────────────────────────────────
@@ -179,7 +62,7 @@ const CATEGORIES = [
   {
     key: 'aeo_score' as const,
     label: 'AEO',
-    accent: '#f59e0b',
+    accent: 'var(--score-good)',
     icon: (
       <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
@@ -202,39 +85,7 @@ const FIELDS = [
   { key: 'ai_citability_score' as const, label: 'AI Alintilanabilirlik', max: 10 },
 ] as const;
 
-// ── AnimatedProgressBar ─────────────────────────────────────────────────────
-
-function AnimatedProgressBar({
-  pct,
-  delay,
-}: {
-  pct: number;
-  delay: number;
-}) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setMounted(true), delay);
-    return () => clearTimeout(timer);
-  }, [delay]);
-
-  return (
-    <div
-      className="h-1 w-full overflow-hidden rounded-full"
-      style={{ background: 'rgba(255,255,255,0.06)' }}
-    >
-      <div
-        className="h-full rounded-full"
-        style={{
-          width: mounted ? `${pct}%` : '0%',
-          background: getScoreGradient(pct),
-          transition: `width 800ms cubic-bezier(0.4, 0, 0.2, 1) ${delay}ms`,
-        }}
-      />
-    </div>
-  );
-}
-
-// ── CategoryCard (extracted so useCountUp can be called as a hook) ─────────
+// ── CategoryCard ────────────────────────────────────────────────────────────
 
 function CategoryCard({
   cat,
@@ -302,7 +153,7 @@ function CategoryCard({
         {cat.description}
       </p>
       <div className="relative mt-3">
-        <AnimatedProgressBar pct={value} delay={700 + index * 150} />
+        <ProgressBar pct={value} animated delay={700 + index * 150} />
       </div>
     </div>
   );
@@ -310,7 +161,7 @@ function CategoryCard({
 
 // ── Main Component ──────────────────────────────────────────────────────────
 
-export default function SeoScoreChatMessage({ score }: { score: SeoScore }) {
+function SeoScoreChatMessage({ score }: { score: SeoScore }) {
   const [issuesOpen, setIssuesOpen] = useState(false);
   const totalPct = score.total_score;
   const statusText = getFieldStatusText(totalPct);
@@ -352,7 +203,7 @@ export default function SeoScoreChatMessage({ score }: { score: SeoScore }) {
             animationDelay: '0ms',
           }}
         >
-          <AnimatedCircularScore score={totalPct} size={76} strokeWidth={5} delay={200} />
+          <CircularScore score={totalPct} size={76} strokeWidth={5} animated delay={200} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span
@@ -443,7 +294,7 @@ export default function SeoScoreChatMessage({ score }: { score: SeoScore }) {
                     </div>
                   </div>
                   <div className="mt-1">
-                    <AnimatedProgressBar pct={pct} delay={baseDelay + 200} />
+                    <ProgressBar pct={pct} animated delay={baseDelay + 200} />
                   </div>
                 </div>
               );
@@ -472,7 +323,7 @@ export default function SeoScoreChatMessage({ score }: { score: SeoScore }) {
                 stroke="currentColor"
                 strokeWidth={2.5}
                 style={{
-                  color: '#ef4444',
+                  color: 'var(--score-poor)',
                   transform: issuesOpen ? 'rotate(90deg)' : 'rotate(0deg)',
                 }}
               >
@@ -495,7 +346,7 @@ export default function SeoScoreChatMessage({ score }: { score: SeoScore }) {
                       animationDelay: `${index * 50}ms`,
                     }}
                   >
-                    <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full" style={{ background: '#ef4444' }} />
+                    <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full" style={{ background: 'var(--score-poor)' }} />
                     <span className="text-[11px] leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
                       {issue}
                     </span>
@@ -509,3 +360,8 @@ export default function SeoScoreChatMessage({ score }: { score: SeoScore }) {
     </div>
   );
 }
+
+export default memo(SeoScoreChatMessage, (prev, next) =>
+  prev.score.product_id === next.score.product_id &&
+  prev.score.total_score === next.score.total_score,
+);

@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(python -m pytest tests/test_chat_service.py -v)",
-      "Bash(.venv/Scripts/python -m pytest tests/test_chat_service.py -v)"
+      "Bash(.venv/Scripts/python -m pytest tests/test_chat_service.py -v)",
+      "Bash(xargs wc:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

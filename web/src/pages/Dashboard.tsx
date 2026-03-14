@@ -8,7 +8,7 @@ import {
   resetLocalProductData,
   syncProductsFromIkas,
 } from '../api/client';
-import DashboardDetail from '../components/dashboard/DashboardDetail';
+import ChatPanel from '../components/ChatPanel';
 import DashboardEmptyState from '../components/dashboard/DashboardEmptyState';
 import DashboardHeader from '../components/dashboard/DashboardHeader';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar';
@@ -127,12 +127,21 @@ export default function Dashboard() {
 
         <main className="flex flex-1 overflow-hidden">
           {selectedId && selectedProduct ? (
-            <DashboardDetail
-              productId={selectedId}
-              product={selectedProduct}
-              score={selectedScore}
-              productDetailUrl={productDetailUrl}
-            />
+            <section className="min-w-0 flex flex-1 flex-col overflow-hidden p-6">
+              <div className="min-h-0 flex flex-1 flex-col gap-5 overflow-hidden">
+                <div className="min-h-0 flex-1">
+                  <ChatPanel
+                    productId={selectedId}
+                    productName={selectedProduct.name}
+                    productCategory={selectedProduct.category}
+                    seoScore={selectedScore?.total_score ?? null}
+                    product={selectedProduct}
+                    score={selectedScore}
+                    productDetailUrl={productDetailUrl}
+                  />
+                </div>
+              </div>
+            </section>
           ) : (
             <DashboardEmptyState />
           )}

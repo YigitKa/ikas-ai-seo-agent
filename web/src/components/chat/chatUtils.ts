@@ -1,41 +1,14 @@
 import type { ChatResponseMeta } from '../../types';
+import { formatDuration, formatCompactNumber } from '../../shared/format/formatters';
 
-// ── Formatters ────────────────────────────────────────────────────────────────
+// Re-export formatters so existing consumers don't break
+export { formatDuration, formatCompactNumber, formatThoughtDuration, formatPercent } from '../../shared/format/formatters';
 
-export function formatDuration(seconds: number) {
-  const safeSeconds = Math.max(seconds, 0);
-  if (safeSeconds < 60) {
-    return safeSeconds < 10 ? `${safeSeconds.toFixed(2)}s` : `${safeSeconds.toFixed(1)}s`;
-  }
-  const minutes = Math.floor(safeSeconds / 60);
-  const remainder = Math.floor(safeSeconds % 60);
-  return `${minutes}m ${remainder}s`;
-}
-
-export function formatCompactNumber(value: number) {
-  if (value >= 1000) {
-    return value >= 10_000 ? `${Math.round(value / 1000)}K` : `${(value / 1000).toFixed(1)}K`;
-  }
-  return String(value);
-}
-
-export function formatThoughtDuration(seconds: number) {
-  const safeSeconds = Math.max(seconds, 0);
-  if (safeSeconds < 60) {
-    return `${safeSeconds.toFixed(2)} seconds`;
-  }
-  return formatDuration(safeSeconds);
-}
-
-export function formatPercent(value: number) {
-  return `${value.toFixed(1)}%`;
-}
+// ── Meta helpers ──────────────────────────────────────────────────────────────
 
 function clampPercent(value: number) {
   return Math.min(100, Math.max(0, value));
 }
-
-// ── Meta helpers ──────────────────────────────────────────────────────────────
 
 export function readMetaNumber(meta: ChatResponseMeta | undefined, key: keyof ChatResponseMeta) {
   const value = meta?.[key];
