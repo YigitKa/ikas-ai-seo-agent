@@ -105,7 +105,7 @@ def build_seo_score_product_tool() -> AgentTool:
     """Tool: score a product using the rule-based SEO analyser."""
 
     async def handler(args: dict[str, Any]) -> str:
-        from core.seo_analyzer import analyze_product
+        from core.seo.analyzer import analyze_product
         from data import db
 
         product_id = args.get("product_id", "")
@@ -176,7 +176,7 @@ def build_search_products_tool() -> AgentTool:
         limit = args.get("limit", 20)
 
         if max_score is not None:
-            from core.seo_analyzer import analyze_product
+            from core.seo.analyzer import analyze_product
 
             filtered = []
             for p in products:
@@ -216,7 +216,7 @@ def build_validate_rewrite_tool() -> AgentTool:
     """Tool: score a product with hypothetical field values (before/after comparison)."""
 
     async def handler(args: dict[str, Any]) -> str:
-        from core.seo_analyzer import analyze_product
+        from core.seo.analyzer import analyze_product
         from data import db
 
         product_id = args.get("product_id", "")
@@ -310,7 +310,7 @@ def build_save_suggestion_tool() -> AgentTool:
         if product is None:
             return json.dumps({"error": f"Product '{product_id}' not found."}, ensure_ascii=False)
 
-        from core.presentation import get_tr_description_value, get_en_description_value
+        from core.utils.presentation import get_tr_description_value, get_en_description_value
 
         suggestion = SeoSuggestion(
             product_id=product_id,

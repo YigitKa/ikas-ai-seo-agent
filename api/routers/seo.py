@@ -10,8 +10,8 @@ from fastapi.responses import PlainTextResponse
 from api.dependencies import get_manager
 from api.schemas import GeoAuditRequest, GeoAuditResponse, MessageResponse, ScoreResponse
 from config.settings import get_config
-from core.html_utils import html_to_plain_text
-from core.geo_audit import GeoAuditor
+from core.utils.html import html_to_plain_text
+from core.seo.geo_audit import GeoAuditor
 from core.product_manager import ProductManager
 from data import db
 

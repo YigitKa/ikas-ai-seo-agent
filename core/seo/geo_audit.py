@@ -19,7 +19,7 @@ from xml.etree import ElementTree
 
 import httpx
 
-from core.html_utils import html_to_plain_text
+from core.utils.html import html_to_plain_text
 
 AI_CRAWLERS = [
     "GPTBot",

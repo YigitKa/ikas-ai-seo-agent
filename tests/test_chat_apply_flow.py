@@ -1,6 +1,6 @@
 import pytest
 
-from core.chat_service import ChatService, SAVE_SEO_SUGGESTION_TOOL_NAME
+from core.chat import ChatService, SAVE_SEO_SUGGESTION_TOOL_NAME
 from core.models import AppConfig, ChatMessage, Product, SeoScore
 
 

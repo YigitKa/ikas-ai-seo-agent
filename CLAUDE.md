@@ -37,23 +37,46 @@ ikas-ai-seo-agent/
 │
 ├── core/                    # Business logic (no UI dependencies)
 │   ├── models.py            # Pydantic models: Product, SeoScore, SeoSuggestion, ChatMessage, AgentEvent, AgentResult, etc.
-│   ├── ikas_client.py       # Async GraphQL client for ikas API (httpx)
-│   ├── ai_client.py         # Multi-provider AI abstraction (factory + adapters)
-│   ├── agent_tools.py       # AgentTool, AgentToolkit, built-in tools (score, validate, save), toolkit factories
-│   ├── agent_orchestrator.py # Generic agent loop with tool calling (run + stream)
-│   ├── claude_client.py     # Legacy Anthropic-only client (backward compat)
 │   ├── product_manager.py   # Orchestrator — coordinates all core operations + agentic rewrite
-│   ├── seo_analyzer.py      # Rule-based SEO scoring engine (100-point scale + GEO)
-│   ├── geo_audit.py         # Full GEO audit pipeline (GeoAuditor class)
 │   ├── prompt_store.py      # Loads and renders prompt templates; multi-agent + agentic system prompts
-│   ├── chat_service.py      # Multi-turn AI chat with MCP tool integration + AgentToolkit
-│   ├── chat_operation_guidance.py # Operation suggestion footer and false-action safety logic
-│   ├── mcp_client.py        # ikas MCP (Model Context Protocol) JSON-RPC client
-│   ├── provider_service.py  # Provider detection, health checks, model discovery
-│   ├── settings_service.py  # Settings management service
-│   ├── suggestion_service.py # Suggestion field operations
-│   ├── html_utils.py        # HTML parsing and sanitization utilities
-│   └── presentation.py      # Display formatting utilities
+│   │
+│   ├── ai/                  # AI provider abstraction
+│   │   ├── __init__.py      # Re-exports: create_ai_client, BaseAIClient, etc.
+│   │   └── client.py        # Multi-provider AI abstraction (factory + adapters)
+│   │
+│   ├── agent/               # Agent orchestration
+│   │   ├── __init__.py      # Re-exports: AgentOrchestrator, AgentToolkit, etc.
+│   │   ├── orchestrator.py  # Generic agent loop with tool calling (run + stream)
+│   │   └── tools.py         # AgentTool, AgentToolkit, built-in tools, toolkit factories
+│   │
+│   ├── chat/                # Multi-turn AI chat service
+│   │   ├── __init__.py      # ChatService facade (mixin composition) + re-exports
+│   │   ├── state.py         # ChatServiceStateMixin — conversation history, product context, MCP
+│   │   ├── streaming.py     # ChatServiceStreamingMixin — SSE streaming + multi-agent routing
+│   │   ├── suggestions.py   # ChatServiceSuggestionMixin — draft, review, apply flows
+│   │   ├── support.py       # ToolRegistry, streaming helpers, metadata builders
+│   │   └── guidance.py      # Operation suggestion footer and false-action safety logic
+│   │
+│   ├── seo/                 # SEO analysis
+│   │   ├── __init__.py      # Re-exports: analyze_product, GeoAuditor
+│   │   ├── analyzer.py      # Rule-based SEO scoring engine (100-point scale + GEO)
+│   │   └── geo_audit.py     # Full GEO audit pipeline (GeoAuditor class)
+│   │
+│   ├── clients/             # External service clients
+│   │   ├── __init__.py      # Re-exports: IkasClient, IkasMCPClient, MCPError
+│   │   ├── ikas.py          # Async GraphQL client for ikas API (httpx + OAuth2)
+│   │   └── mcp.py           # ikas MCP (Model Context Protocol) JSON-RPC client
+│   │
+│   ├── services/            # Lightweight business services
+│   │   ├── __init__.py      # Re-exports: SettingsService, provider helpers
+│   │   ├── provider.py      # Provider detection, health checks, model discovery
+│   │   ├── settings.py      # Settings management service
+│   │   └── suggestion.py    # Suggestion field operations
+│   │
+│   └── utils/               # Cross-cutting utilities
+│       ├── __init__.py      # Re-exports: html_to_plain_text, format_prompt_display, etc.
+│       ├── html.py          # HTML parsing and sanitization utilities
+│       └── presentation.py  # Display formatting utilities
 │
 ├── api/                     # FastAPI REST API + WebSocket
 │   ├── main.py              # FastAPI app with CORS, lifespan, SPA static file serving
@@ -117,7 +140,6 @@ ikas-ai-seo-agent/
     │   └── sample_products.json    # 4 sample products for unit tests
     ├── test_seo_analyzer.py
     ├── test_ai_client.py
-    ├── test_claude_client.py
     ├── test_ikas_client.py
     ├── test_db.py
     ├── test_settings.py
@@ -305,17 +327,17 @@ ProductManager (core/product_manager.py)  [request-scoped — fresh per HTTP req
 6. Full `GeoAuditResponse` (JSON) is returned to the client
 
 ### Design patterns used
-- **Factory** — `create_ai_client(config)` in `core/ai_client.py` instantiates the correct provider adapter
+- **Factory** — `create_ai_client(config)` in `core/ai/client.py` instantiates the correct provider adapter
 - **Adapter** — All AI providers implement `BaseAIClient` with a uniform `generate()` interface
 - **Orchestrator** — `ProductManager` coordinates all core modules; the UI/API only calls it
-- **Agent Loop** — `AgentOrchestrator` in `core/agent_orchestrator.py` runs an iterative tool-calling loop: LLM call → tool execution → result injection → repeat until done or max iterations
-- **Toolkit** — `AgentToolkit` in `core/agent_tools.py` groups related tools; toolkit factories (`create_seo_rewrite_toolkit`, `create_chat_toolkit`, `create_batch_toolkit`) assemble curated subsets for different use cases
+- **Agent Loop** — `AgentOrchestrator` in `core/agent/orchestrator.py` runs an iterative tool-calling loop: LLM call → tool execution → result injection → repeat until done or max iterations
+- **Toolkit** — `AgentToolkit` in `core/agent/tools.py` groups related tools; toolkit factories (`create_seo_rewrite_toolkit`, `create_chat_toolkit`, `create_batch_toolkit`) assemble curated subsets for different use cases
 - **Singleton** — `get_config()` caches a single `AppConfig` instance per process
 - **Template** — Prompts use `{{variable}}` placeholders, rendered by `PromptStore`
 - **Repository** — `data/db.py` abstracts all async SQLite reads/writes behind plain functions
 - **Dependency Injection** — `api/dependencies.py` yields a fresh `ProductManager` per FastAPI request (request-scoped, not a global singleton)
-- **Multi-agent routing** — `chat_service.py` selects one of three agent personas (SEO Expert, Store Operator, General) based on the conversation context; prompts are defined in `prompt_store.py` as `AGENT_SYSTEM_PROMPTS_TR`
-- **Registry** — `ToolRegistry` in `chat_service.py` decouples tool dispatch from implementation; tools register without modifying the dispatcher
+- **Multi-agent routing** — `core/chat/streaming.py` selects one of three agent personas (SEO Expert, Store Operator, General) based on the conversation context; prompts are defined in `prompt_store.py` as `AGENT_SYSTEM_PROMPTS_TR`
+- **Registry** — `ToolRegistry` in `core/chat/support.py` decouples tool dispatch from implementation; tools register without modifying the dispatcher
 - **Strategy** — `apply_seo_to_ikas` uses IkasClient (OAuth/GraphQL) first, with MCP mutation as fallback
 - **Structured Options** — AI responses and programmatic builders (e.g. `_build_suggestion_saved_response`) embed JSON option arrays that the frontend parses into clickable buttons, ensuring deterministic user input without free-text ambiguity
 
@@ -338,13 +360,13 @@ Key Pydantic models:
 - `AgentEvent` — streaming event from `AgentOrchestrator` (types: thinking, tool_call, tool_result, response_chunk, completed, error)
 - `AgentResult` — final result of an agent run (content, thinking, tool_calls_made, iterations, suggestion_saved)
 
-### `core/agent_tools.py` — Agent tool definitions and toolkits
+### `core/agent/tools.py` — Agent tool definitions and toolkits
 - `AgentTool` dataclass — name, description, JSON Schema parameters, async handler
 - `AgentToolkit` — registry class with `register()`, `get_openai_functions()`, `execute()`
 - Built-in tools: `seo_score_product`, `get_product_details`, `search_products`, `validate_rewrite`, `save_suggestion`, `get_seo_guidelines`
 - Toolkit factories: `create_seo_rewrite_toolkit()` (5 tools for rewrite pipeline), `create_chat_toolkit()` (6 tools for chat), `create_batch_toolkit()` (5 tools for batch operations)
 
-### `core/agent_orchestrator.py` — Generic agent loop
+### `core/agent/orchestrator.py` — Generic agent loop
 - `supports_tool_calling(config)` — returns `True` for all providers except `none`
 - `AgentOrchestrator` — provider-agnostic agent loop using OpenAI-compatible `/chat/completions` endpoint
 - `run()` — blocking execution, returns `AgentResult`
@@ -353,7 +375,7 @@ Key Pydantic models:
 - Extracts `<think>...</think>` blocks from model responses as thinking text
 - Max iterations safety limit (default 10)
 
-### `core/seo_analyzer.py` — SEO scoring rubric
+### `core/seo/analyzer.py` — SEO scoring rubric
 
 Scoring inspired by Ahrefs, Semrush, Yoast, Moz, and Screaming Frog.
 
@@ -370,7 +392,7 @@ Scoring inspired by Ahrefs, Semrush, Yoast, Moz, and Screaming Frog.
 | Readability | 5 | Avg sentence length (15-25 words), sentence length variation, transition words |
 | AI Citability (GEO) | 10 | Structured facts, clear product attributes, AI-readable formatting |
 
-### `core/geo_audit.py` — Full GEO audit pipeline
+### `core/seo/geo_audit.py` — Full GEO audit pipeline
 
 `GeoAuditor` performs a standalone, provider-agnostic crawl-and-score of any public website URL. It does not require an ikas connection or AI provider.
 
@@ -400,7 +422,7 @@ Scoring inspired by Ahrefs, Semrush, Yoast, Moz, and Screaming Frog.
 
 **Known AI crawlers tracked in `robots.txt` analysis:** GPTBot, ChatGPT-User, CCBot, ClaudeBot, Claude-Web, anthropic-ai, PerplexityBot, Google-Extended, GoogleOther, Bytespider, Amazonbot, Applebot-Extended, Meta-ExternalAgent, OAI-SearchBot.
 
-### `core/ai_client.py` — supported providers
+### `core/ai/client.py` — supported providers
 | `AI_PROVIDER` value | SDK / Endpoint | Default model |
 |---|---|---|
 | `anthropic` | Anthropic Python SDK | `claude-haiku-4-5-20251001` |
@@ -447,14 +469,14 @@ Key implementations:
 | `BATCH_AGENT_SYSTEM_PROMPT` | Batch optimize pipeline | Instructs agent to find low-score products and optimize in bulk |
 | `GEO_AGENT_SYSTEM_PROMPT` | GEO audit AI enhancement | Instructs agent to interpret GEO audit results and create action plans |
 
-### `core/ikas_client.py`
+### `core/clients/ikas.py`
 - OAuth2 token fetch via form-encoded POST to ikas auth endpoint
 - All product reads/writes use GraphQL queries/mutations
 - Async methods: `fetch_products()`, `update_product()`, `test_connection()`
 - Token is cached in-memory and refreshed on expiry
 - ikas API URL: `https://api.myikas.com/api/v1/admin/graphql`
 
-### `core/chat_service.py` — AI chat with live store data
+### `core/chat/` — AI chat with live store data
 - Multi-turn conversation history (max 40 messages)
 - Multi-agent routing via `_route_to_agent()`: selects `"seo"`, `"operator"`, or `"general"` agent per message using semantic LLM routing (no explicit tags needed)
 - **Structured option buttons** — AI responses that contain a trailing JSON block (`[{"tone":"...","value":"..."}]`) are parsed by the frontend into clickable buttons; users select options by clicking instead of typing
@@ -472,13 +494,13 @@ Key implementations:
 - System prompt layers: `CHAT_FLOW_SYSTEM_PROMPT_TR` + agent persona + `IKAS_OPERATION_GUIDE_TR` + product context
 - Per-WebSocket-connection isolation of chat history and MCP state
 
-### `core/chat_operation_guidance.py` — Operation guidance helpers
+### `core/chat/guidance.py` — Operation guidance helpers
 - `select_product_operation_suggestion()` — context-aware footer suggesting next ikas operation
 - `append_operation_suggestion()` — appends operation footer to assistant response
 - `append_false_action_disclaimer()` — safety net: if LLM falsely claims it applied changes without a tool call, appends a warning disclaimer
 - All pattern matching uses Turkish-normalized text (`MATCH_NORMALIZATION_TABLE`)
 
-### `core/mcp_client.py` — ikas MCP integration
+### `core/clients/mcp.py` — ikas MCP integration
 - JSON-RPC 2.0 over Streamable HTTP transport
 - Endpoint: `https://api.myikas.com/api/v2/admin/mcp`
 - Tool discovery via `tools/list` and execution via `call_tool()`
@@ -488,13 +510,13 @@ Key implementations:
 - Session ID tracking via `mcp-session-id` header
 - Async context manager pattern
 
-### `core/provider_service.py` — provider management
+### `core/services/provider.py` — provider management
 - Provider labels, model options, and metadata
 - Base URL resolution (auto-appends `/v1` for OpenAI-compatible)
 - Provider health checking via API test requests
 - Model discovery via provider's model list endpoints
 
-### `core/html_utils.py` — HTML processing
+### `core/utils/html.py` — HTML processing
 - `html_to_plain_text()` — Strip HTML with break preservation
 - `sanitize_html_for_prompt()` — Clean HTML for AI prompts
 - `has_html_markup()` — Detect HTML content
@@ -650,20 +672,20 @@ To add a new prompt type: add `.system.txt` + `.user.txt` entries to `PROMPT_FIL
 ## Common Tasks
 
 ### Add a new AI provider
-1. Create a subclass of `BaseAIClient` in `core/ai_client.py`
+1. Create a subclass of `BaseAIClient` in `core/ai/client.py`
 2. Implement `rewrite_product()`, `rewrite_field()`, `translate_description_to_en()`, and `rewrite_product_for_geo()`
 3. Register it in the `create_ai_client()` factory function
 4. Add the provider name to the enum in `core/models.py` (`AppConfig.ai_provider`)
-5. Add provider metadata in `core/provider_service.py`
+5. Add provider metadata in `core/services/provider.py`
 6. Document it in `README.md` and `.env.example`
 
 ### Add a new SEO scoring rule
-1. Edit `core/seo_analyzer.py` — add your rule to the relevant field scorer
+1. Edit `core/seo/analyzer.py` — add your rule to the relevant field scorer
 2. Update the max points constant if the rule changes the total weight
 3. Add a test case to `tests/test_seo_analyzer.py`
 
 ### Add a new GEO audit analysis dimension
-1. Add an `async _analyze_<dimension>()` method to `GeoAuditor` in `core/geo_audit.py`
+1. Add an `async _analyze_<dimension>()` method to `GeoAuditor` in `core/seo/geo_audit.py`
 2. Add it to the `asyncio.gather()` call in `run_full_audit()`
 3. Add a weight entry to `WEIGHTS` (ensure all weights still sum to 1.0)
 4. Update `_synthesize()` and `_build_report()` to include the new dimension
@@ -686,7 +708,7 @@ To add a new prompt type: add `.system.txt` + `.user.txt` entries to `PROMPT_FIL
 4. The Settings API router will automatically include it in save/load via the key map
 
 ### Add a new agent tool
-1. Create a builder function `build_<tool_name>_tool()` in `core/agent_tools.py` that returns an `AgentTool`
+1. Create a builder function `build_<tool_name>_tool()` in `core/agent/tools.py` that returns an `AgentTool`
 2. Define the tool's JSON Schema parameters and async handler
 3. Add the tool to the appropriate toolkit factory (`create_seo_rewrite_toolkit`, `create_chat_toolkit`, etc.)
 4. Add test cases in `tests/test_agent_tools.py`
@@ -729,7 +751,7 @@ websockets>=12.0
 - **ikas GraphQL field names** differ from REST conventions — verify against the ikas API docs
 - **OAuth token** is not persisted across restarts — re-fetched automatically on each run
 - **`DRY_RUN=true`** is the default — changes will NOT be written to ikas unless explicitly set to `false`
-- The `claude_client.py` legacy module is kept for backward compatibility; new code should use `ai_client.py`
+- Legacy `claude_client.py` has been removed; all AI code is in `core/ai/client.py`
 - `save_config_to_env` is a backward-compat alias for `save_config_to_db` — both write to `.cache/user_settings.json`, never to `.env`
 - When running in a non-TTY environment (e.g., CI), missing env vars will raise an error instead of prompting
 - SQLite database file is created at `./seo_optimizer.db` in the working directory

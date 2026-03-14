@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from core.ikas_client import IkasClient
+from core.clients.ikas import IkasClient
 from core.models import Product
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"

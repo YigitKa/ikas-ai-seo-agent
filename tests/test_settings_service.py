@@ -1,4 +1,4 @@
-from core.settings_service import SettingsService
+from core.services.settings import SettingsService
 
 
 def test_settings_service_exposes_provider_labels():
@@ -15,7 +15,7 @@ def test_settings_service_saves_prompt_templates(monkeypatch):
     def fake_save(prompt_key: str, content: str):
         captured.append((prompt_key, content))
 
-    monkeypatch.setattr("core.settings_service.save_prompt_template", fake_save)
+    monkeypatch.setattr("core.services.settings.save_prompt_template", fake_save)
 
     service = SettingsService()
     service.save_prompt_templates(
@@ -33,7 +33,7 @@ def test_settings_service_saves_prompt_templates(monkeypatch):
 
 def test_settings_service_loads_prompt_templates(monkeypatch):
     monkeypatch.setattr(
-        "core.settings_service.load_prompt_template",
+        "core.services.settings.load_prompt_template",
         lambda prompt_key: f"content:{prompt_key}",
     )
 
@@ -52,9 +52,9 @@ def test_settings_service_resets_prompt_templates(monkeypatch):
     def fake_reset(prompt_key: str):
         reset_calls.append(prompt_key)
 
-    monkeypatch.setattr("core.settings_service.reset_prompt_template", fake_reset)
+    monkeypatch.setattr("core.services.settings.reset_prompt_template", fake_reset)
     monkeypatch.setattr(
-        "core.settings_service.load_prompt_template",
+        "core.services.settings.load_prompt_template",
         lambda prompt_key: f"default:{prompt_key}",
     )
 

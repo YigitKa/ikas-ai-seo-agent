@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from api.main import app
-from core.geo_audit import GeoAuditor
+from core.seo.geo_audit import GeoAuditor
 
 
 def test_geo_audit_synthesis_uses_weighted_score():

@@ -22,7 +22,7 @@ from typing import Any
 
 import httpx
 
-from core.agent_tools import AgentToolkit
+from core.agent.tools import AgentToolkit
 from core.models import AgentEvent, AgentResult, AgentToolCall, AppConfig
 
 logger = logging.getLogger(__name__)

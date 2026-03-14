@@ -3,28 +3,28 @@ from collections.abc import AsyncIterator
 from typing import Any, List, Optional, TypeVar
 
 from config.settings import get_config, save_config_to_db
-from core.ai_client import (
+from core.ai.client import (
     BaseAIClient,
     build_en_translation_request,
     build_field_rewrite_request,
     build_product_rewrite_request,
     create_ai_client,
 )
-from core.agent_orchestrator import AgentOrchestrator, supports_tool_calling
-from core.agent_tools import create_seo_rewrite_toolkit, create_batch_toolkit
-from core.html_utils import html_to_plain_text
-from core.chat_service import ChatService
-from core.ikas_client import IkasClient
+from core.agent.orchestrator import AgentOrchestrator, supports_tool_calling
+from core.agent.tools import create_seo_rewrite_toolkit, create_batch_toolkit
+from core.utils.html import html_to_plain_text
+from core.chat import ChatService
+from core.clients.ikas import IkasClient
 from core.models import AgentEvent, AppConfig, ChatResponse, Product, SeoScore, SeoSuggestion
-from core.presentation import format_prompt_display, get_en_description_value, get_tr_description_value
+from core.utils.presentation import format_prompt_display, get_en_description_value, get_tr_description_value
 from core.prompt_store import REWRITE_AGENT_SYSTEM_PROMPT, BATCH_AGENT_SYSTEM_PROMPT, ensure_prompt_files
-from core.provider_service import (
+from core.services.provider import (
     discover_provider_models,
     get_lm_studio_live_status,
     get_provider_health,
     test_settings_connection,
 )
-from core.seo_analyzer import analyze_product
+from core.seo.analyzer import analyze_product
 from data import db
 
 logger = logging.getLogger(__name__)

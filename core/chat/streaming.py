@@ -12,8 +12,8 @@ from typing import Any
 
 import httpx
 
-from core.agent_tools import AgentToolkit, create_chat_toolkit
-from core.chat_service_support import (
+from core.agent.tools import AgentToolkit, create_chat_toolkit
+from core.chat.support import (
     APPLY_INTENT_EXTRACTION_SYSTEM_PROMPT,
     APPLY_SEO_TO_IKAS_TOOL_NAME,
     CHAT_ACTION_PATTERN,
@@ -71,9 +71,9 @@ from core.chat_service_support import (
     _parse_agent_type,
     _should_request_structured_suggestion_options,
 )
-from core.ikas_client import IkasClient
+from core.clients.ikas import IkasClient
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
-from core.mcp_client import IkasMCPClient, MCPError
+from core.clients.mcp import IkasMCPClient, MCPError
 
 logger = logging.getLogger(__name__)
 
