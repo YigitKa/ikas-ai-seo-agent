@@ -22,8 +22,8 @@ from api.schemas import (
     TestConnectionResponse,
 )
 from core.product_manager import ProductManager
-from core.provider_service import PROVIDERS, PROVIDER_LABELS
-from core.settings_service import SettingsService
+from core.services.provider import PROVIDERS, PROVIDER_LABELS
+from core.services.settings import SettingsService
 
 router = APIRouter()
 settings_service = SettingsService()

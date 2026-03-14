@@ -16,7 +16,7 @@ from api.schemas import (
 )
 from core.models import SeoSuggestion
 from core.product_manager import ProductManager
-from core.suggestion_service import apply_suggestion_field
+from core.services.suggestion import apply_suggestion_field
 from data import db
 
 router = APIRouter()

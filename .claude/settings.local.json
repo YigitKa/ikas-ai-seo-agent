@@ -5,7 +5,9 @@
       "Bash(.venv/Scripts/python -m pytest tests/test_chat_service.py -v)",
       "Bash(xargs wc:*)",
       "Bash(npx tsc:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(grep -h \"^from\\\\|^import\" /c/Users/yigit/OneDrive/Belgeler/GitHub/ikas-ai-seo-agent/core/*.py)",
+      "Bash(python -c \":*)"
     ]
   }
 }

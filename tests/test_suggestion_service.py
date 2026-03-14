@@ -1,5 +1,5 @@
 from core.models import Product
-from core.suggestion_service import (
+from core.services.suggestion import (
     apply_suggestion_field,
     create_pending_suggestion,
     sync_suggestion_fields,

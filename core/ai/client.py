@@ -18,7 +18,7 @@ from typing import List, Optional
 
 import httpx
 
-from core.html_utils import sanitize_html_for_prompt
+from core.utils.html import sanitize_html_for_prompt
 from core.models import AppConfig, Product, SeoScore, SeoSuggestion
 from core.prompt_store import load_prompt_template, render_prompt_template
 

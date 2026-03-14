@@ -1,5 +1,5 @@
 from core.models import SeoSuggestion
-from core.presentation import (
+from core.utils.presentation import (
     clean_suggestion_value,
     format_prompt_display,
     get_en_description_value,

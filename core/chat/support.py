@@ -27,12 +27,12 @@ ToolHandler = Callable[[dict[str, Any]], Awaitable[tuple[str, "dict[str, Any] | 
 
 import httpx
 
-from core.agent_tools import AgentToolkit, create_chat_toolkit
-from core.ikas_client import IkasClient
+from core.agent.tools import AgentToolkit, create_chat_toolkit
+from core.clients.ikas import IkasClient
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
-from core.mcp_client import IkasMCPClient, MCPError
+from core.clients.mcp import IkasMCPClient, MCPError
 from core.prompt_store import AGENT_SYSTEM_PROMPTS_TR
-from core import chat_operation_guidance as op_guidance
+from core.chat import guidance as op_guidance
 
 logger = logging.getLogger(__name__)
 

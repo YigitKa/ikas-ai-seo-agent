@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from core.models import Product
-from core.seo_analyzer import (
+from core.seo.analyzer import (
     analyze_product,
     analyze_content_quality,
     analyze_technical_seo,
