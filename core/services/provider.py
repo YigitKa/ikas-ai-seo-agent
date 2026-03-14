@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from core.ai_client import PROVIDER_BASE_URLS
+from core.ai.client import PROVIDER_BASE_URLS
 from core.models import AppConfig
 
 PROVIDERS = [

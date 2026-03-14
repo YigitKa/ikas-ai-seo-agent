@@ -3,7 +3,7 @@ import math
 from collections import Counter
 from typing import List
 
-from core.html_utils import html_to_plain_text
+from core.utils.html import html_to_plain_text
 from core.models import Product, SeoScore
 SPECIAL_CHAR_RE = re.compile(r"[!@#$%^&*()+=\[\]{};:'\"|<>?/\\~`]")
 PARAGRAPH_SPLIT_RE = re.compile(r"\n\s*\n|<br\s*/?>|</p>", re.IGNORECASE)

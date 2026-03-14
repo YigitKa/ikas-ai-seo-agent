@@ -1,5 +1,5 @@
 from core.models import AppConfig
-from core.provider_service import (
+from core.services.provider import (
     discover_provider_models,
     get_provider_health,
     provider_key_from_label,
@@ -47,7 +47,7 @@ def test_discover_provider_models_for_ollama(monkeypatch):
         assert timeout == 5.0
         return _Response(200, {"models": [{"name": "llama3.2"}, {"name": "qwen2.5"}]})
 
-    monkeypatch.setattr("core.provider_service.httpx.get", fake_get)
+    monkeypatch.setattr("core.services.provider.httpx.get", fake_get)
 
     models = discover_provider_models("ollama", "http://localhost:11434/v1")
 
@@ -62,7 +62,7 @@ def test_test_settings_connection_formats_message(monkeypatch):
         assert timeout == 10.0
         return _Response(200, {})
 
-    monkeypatch.setattr("core.provider_service.httpx.post", fake_post)
+    monkeypatch.setattr("core.services.provider.httpx.post", fake_post)
 
     result = run_settings_connection_test(
         {

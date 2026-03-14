@@ -4,7 +4,7 @@ import asyncio
 import httpx
 import pytest
 
-from core.chat_service import (
+from core.chat import (
     ChatService,
     SAVE_SEO_SUGGESTION_TOOL_NAME,
     _StreamingVisibleTextFilter,

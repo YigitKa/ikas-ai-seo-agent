@@ -1,4 +1,4 @@
-from core.html_utils import has_html_markup, html_to_plain_text, sanitize_html_for_prompt
+from core.utils.html import has_html_markup, html_to_plain_text, sanitize_html_for_prompt
 
 
 def test_has_html_markup_detects_tags():

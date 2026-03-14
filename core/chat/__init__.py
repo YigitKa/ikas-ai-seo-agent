@@ -1,11 +1,11 @@
 """Compatibility facade for chat service and helper exports."""
 
-from core.chat_service_state_mixin import ChatServiceStateMixin
-from core.chat_service_suggestion_mixin import ChatServiceSuggestionMixin
-from core.chat_service_streaming_mixin import ChatServiceStreamingMixin
+from core.chat.state import ChatServiceStateMixin
+from core.chat.suggestions import ChatServiceSuggestionMixin
+from core.chat.streaming import ChatServiceStreamingMixin
 
 # Re-export helper symbols used by tests and other modules.
-from core.chat_service_support import (  # noqa: F401
+from core.chat.support import (  # noqa: F401
     SAVE_SEO_SUGGESTION_TOOL_NAME,
     _LMStudioNativeUnavailable,
     _StreamingVisibleTextFilter,

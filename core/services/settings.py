@@ -13,7 +13,7 @@ from core.prompt_store import (
     reset_prompt_template,
     save_prompt_template,
 )
-from core.provider_service import (
+from core.services.provider import (
     PROVIDER_LABELS,
     discover_provider_models,
     get_provider_model_options,

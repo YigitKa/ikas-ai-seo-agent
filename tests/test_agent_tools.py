@@ -3,7 +3,7 @@
 import json
 import pytest
 
-from core.agent_tools import (
+from core.agent.tools import (
     AgentTool,
     AgentToolkit,
     build_get_product_details_tool,

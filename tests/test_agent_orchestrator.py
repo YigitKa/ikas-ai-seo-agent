@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 import httpx
 
-from core.agent_orchestrator import (
+from core.agent.orchestrator import (
     AgentOrchestrator,
     supports_tool_calling,
     _resolve_base_url,
@@ -14,7 +14,7 @@ from core.agent_orchestrator import (
     _extract_thinking,
     _remove_thinking,
 )
-from core.agent_tools import AgentTool, AgentToolkit
+from core.agent.tools import AgentTool, AgentToolkit
 from core.models import AppConfig, AgentEvent, AgentResult
 
 
@@ -162,7 +162,7 @@ async def test_orchestrator_run_simple_response():
 
     mock_resp = _mock_response("Here is my answer.")
 
-    with patch("core.agent_orchestrator.httpx.AsyncClient") as MockClient:
+    with patch("core.agent.orchestrator.httpx.AsyncClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -226,7 +226,7 @@ async def test_orchestrator_run_with_tool_calls():
             mock_http_resp.json.return_value = final_resp
         return mock_http_resp
 
-    with patch("core.agent_orchestrator.httpx.AsyncClient") as MockClient:
+    with patch("core.agent.orchestrator.httpx.AsyncClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -274,7 +274,7 @@ async def test_orchestrator_stream_yields_events():
         mock_http_resp.json.return_value = tool_call_resp if call_count == 1 else final_resp
         return mock_http_resp
 
-    with patch("core.agent_orchestrator.httpx.AsyncClient") as MockClient:
+    with patch("core.agent.orchestrator.httpx.AsyncClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -322,7 +322,7 @@ async def test_orchestrator_max_iterations():
         mock_http_resp.json.return_value = tool_call_resp
         return mock_http_resp
 
-    with patch("core.agent_orchestrator.httpx.AsyncClient") as MockClient:
+    with patch("core.agent.orchestrator.httpx.AsyncClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -343,7 +343,7 @@ async def test_orchestrator_thinking_extraction():
 
     resp = _mock_response("<think>I need to analyze this</think>Here is the answer.")
 
-    with patch("core.agent_orchestrator.httpx.AsyncClient") as MockClient:
+    with patch("core.agent.orchestrator.httpx.AsyncClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)

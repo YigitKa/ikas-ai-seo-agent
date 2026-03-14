@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from core.mcp_client import IkasMCPClient, MCPError
+from core.clients.mcp import IkasMCPClient, MCPError
 
 
 def test_mcp_client_requires_token():

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from core.models import Product, SeoSuggestion
-from core.presentation import clean_suggestion_value
+from core.utils.presentation import clean_suggestion_value
 
 
 def create_pending_suggestion(product: Product) -> SeoSuggestion:
