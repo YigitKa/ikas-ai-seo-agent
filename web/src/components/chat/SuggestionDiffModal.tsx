@@ -29,6 +29,8 @@ function FieldDiff({
   onEdit,
   isEditing,
   onToggleEdit,
+  isIncluded,
+  onToggleInclude,
 }: {
   field: DiffField;
   original: string;
@@ -37,6 +39,8 @@ function FieldDiff({
   onEdit: (value: string) => void;
   isEditing: boolean;
   onToggleEdit: () => void;
+  isIncluded: boolean;
+  onToggleInclude: () => void;
 }) {
   if (!suggested) return null;
 
@@ -47,28 +51,39 @@ function FieldDiff({
 
   return (
     <div
-      className="rounded-xl p-4"
+      className="rounded-xl p-4 transition-opacity"
       style={{
         background: "rgba(255,255,255,0.03)",
-        border: "1px solid rgba(255,255,255,0.08)",
+        border: `1px solid ${isIncluded ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)"}`,
+        opacity: isIncluded ? 1 : 0.45,
       }}
     >
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
-          {field.label}
-        </span>
-        <button
-          type="button"
-          onClick={onToggleEdit}
-          className="rounded-md px-2 py-1 text-[11px] font-medium transition-all hover:opacity-80"
-          style={{
-            background: isEditing ? "rgba(99, 102, 241, 0.2)" : "rgba(255,255,255,0.06)",
-            color: isEditing ? "#a5b4fc" : "var(--color-text-secondary)",
-            border: `1px solid ${isEditing ? "rgba(99, 102, 241, 0.3)" : "rgba(255,255,255,0.1)"}`,
-          }}
-        >
-          {isEditing ? "Tamam" : "Duzenle"}
-        </button>
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            checked={isIncluded}
+            onChange={onToggleInclude}
+            className="h-3.5 w-3.5 cursor-pointer rounded accent-emerald-500"
+          />
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+            {field.label}
+          </span>
+        </label>
+        {isIncluded && (
+          <button
+            type="button"
+            onClick={onToggleEdit}
+            className="rounded-md px-2 py-1 text-[11px] font-medium transition-all hover:opacity-80"
+            style={{
+              background: isEditing ? "rgba(99, 102, 241, 0.2)" : "rgba(255,255,255,0.06)",
+              color: isEditing ? "#a5b4fc" : "var(--color-text-secondary)",
+              border: `1px solid ${isEditing ? "rgba(99, 102, 241, 0.3)" : "rgba(255,255,255,0.1)"}`,
+            }}
+          >
+            {isEditing ? "Tamam" : "Duzenle"}
+          </button>
+        )}
       </div>
 
       {/* Original */}
@@ -93,7 +108,7 @@ function FieldDiff({
         <div className="mb-1 text-[10px] font-medium" style={{ color: "rgba(34, 197, 94, 0.7)" }}>
           ONERILEN
         </div>
-        {isEditing ? (
+        {isEditing && isIncluded ? (
           <textarea
             value={editedValue}
             onChange={(e) => onEdit(e.target.value)}
@@ -112,7 +127,8 @@ function FieldDiff({
             style={{
               background: "rgba(34, 197, 94, 0.06)",
               border: "1px solid rgba(34, 197, 94, 0.12)",
-              color: "var(--color-text-primary)",
+              color: isIncluded ? "var(--color-text-primary)" : "var(--color-text-muted)",
+              textDecoration: isIncluded ? "none" : "line-through",
             }}
           >
             {editedValue.length > 300 ? editedValue.slice(0, 300) + "..." : editedValue}
@@ -136,15 +152,39 @@ export default function SuggestionDiffModal({
 }) {
   const [editedSuggestion, setEditedSuggestion] = useState<SeoSuggestion>({ ...suggestion });
   const [editingField, setEditingField] = useState<string | null>(null);
+  const [excludedFields, setExcludedFields] = useState<Set<string>>(new Set());
 
   const handleEditField = (key: string, value: string) => {
     setEditedSuggestion((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const toggleFieldInclude = (key: string) => {
+    setExcludedFields((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+        if (editingField === key) setEditingField(null);
+      }
+      return next;
+    });
+  };
+
+  const handleApprove = () => {
+    const finalSuggestion = { ...editedSuggestion };
+    for (const key of excludedFields) {
+      (finalSuggestion as Record<string, unknown>)[key] = "";
+    }
+    onApprove(finalSuggestion);
   };
 
   const visibleFields = DIFF_FIELDS.filter((field) => {
     const value = suggestion[field.key];
     return typeof value === "string" && value.trim().length > 0;
   });
+
+  const includedCount = visibleFields.filter((f) => !excludedFields.has(f.key)).length;
 
   return (
     <div
@@ -205,6 +245,8 @@ export default function SuggestionDiffModal({
                 onToggleEdit={() =>
                   setEditingField((prev) => (prev === field.key ? null : field.key))
                 }
+                isIncluded={!excludedFields.has(field.key)}
+                onToggleInclude={() => toggleFieldInclude(field.key)}
               />
             );
           })}
@@ -235,15 +277,16 @@ export default function SuggestionDiffModal({
           </button>
           <button
             type="button"
-            onClick={() => onApprove(editedSuggestion)}
-            className="rounded-xl px-5 py-2.5 text-sm font-semibold transition-all hover:opacity-90"
+            onClick={handleApprove}
+            disabled={includedCount === 0}
+            className="rounded-xl px-5 py-2.5 text-sm font-semibold transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             style={{
-              background: "linear-gradient(135deg, #22c55e, #16a34a)",
+              background: includedCount > 0 ? "linear-gradient(135deg, #22c55e, #16a34a)" : "rgba(255,255,255,0.1)",
               color: "white",
-              boxShadow: "0 4px 12px rgba(34, 197, 94, 0.3)",
+              boxShadow: includedCount > 0 ? "0 4px 12px rgba(34, 197, 94, 0.3)" : "none",
             }}
           >
-            Onayla ve Uygula
+            Onayla ve Uygula{includedCount < visibleFields.length ? ` (${includedCount}/${visibleFields.length})` : ""}
           </button>
         </div>
       </div>
