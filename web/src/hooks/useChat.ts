@@ -25,7 +25,12 @@ export interface ChatProductContext {
   assistantLabel?: string;
 }
 
-export function useChat(productContext?: ChatProductContext) {
+export interface UseChatOptions {
+  productContext?: ChatProductContext;
+  onProductUpdated?: () => void;
+}
+
+export function useChat(productContext?: ChatProductContext, onProductUpdated?: () => void) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   const productContextRef = useRef(productContext);
@@ -76,6 +81,7 @@ export function useChat(productContext?: ChatProductContext) {
     clearAutoIntro: autoIntro.clearAutoIntro,
     sendHiddenAutoIntro: autoIntro.sendHiddenAutoIntro,
     resetToContextIntro,
+    onProductUpdated,
   });
 
   // Keep the shared wsRef in sync with the websocket hook's ref

@@ -7,6 +7,9 @@ const backendHttpTarget = `http://localhost:${backendPort}`
 const backendWsTarget = `ws://localhost:${backendPort}`
 
 export default defineConfig({
+  define: {
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,

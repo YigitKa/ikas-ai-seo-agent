@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getLmStudioLiveStatus, getSettings } from "../api/client";
 import { useChat } from "../hooks/useChat";
 import type { Product, SeoScore, SeoSuggestion } from "../types";
@@ -45,6 +45,14 @@ export default function ChatPanel({
   score,
   productDetailUrl,
 }: Props) {
+  const queryClient = useQueryClient();
+
+  const handleProductUpdated = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["products"] });
+    queryClient.invalidateQueries({ queryKey: ["product"] });
+    queryClient.invalidateQueries({ queryKey: ["suggestions"] });
+  }, [queryClient]);
+
   const settingsQ = useQuery({
     queryKey: ["settings"],
     queryFn: getSettings,
@@ -75,7 +83,7 @@ export default function ChatPanel({
     category: displayProductCategory,
     score: displaySeoScore,
     assistantLabel: configuredAssistantLabel,
-  });
+  }, handleProductUpdated);
 
   const [liveElapsedSeconds, setLiveElapsedSeconds] = useState(0);
   const [diffModalSuggestion, setDiffModalSuggestion] = useState<SeoSuggestion | null>(null);

@@ -445,6 +445,19 @@ class ChatServiceStreamingMixin:
             }
             if response.suggestion_saved:
                 payload["suggestion_saved"] = response.suggestion_saved
+
+            # Signal frontend to refresh product data after a successful apply
+            if response.tool_results:
+                for tr in response.tool_results:
+                    if tr.get("tool") == "chat_single_product_apply":
+                        try:
+                            result_data = json.loads(tr.get("result", "{}"))
+                            if result_data.get("ok"):
+                                payload["product_updated"] = True
+                                break
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
             return payload
 
         @staticmethod

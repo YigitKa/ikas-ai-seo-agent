@@ -116,6 +116,10 @@ export default function DashboardHeader({
       </div>
 
       <div className="flex items-center gap-3">
+        <span className="text-[10px] tabular-nums" style={{ color: 'var(--color-text-muted)', opacity: 0.6 }}>
+          build {new Date(__BUILD_TIME__).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+        </span>
+
         {typeof totalCount === 'number' && (
           <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
             {totalCount} urun

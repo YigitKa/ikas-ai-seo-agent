@@ -30,6 +30,9 @@ interface UseChatWebSocketDeps {
 
   // Message reset
   resetToContextIntro: () => void;
+
+  // Product update notification
+  onProductUpdated?: () => void;
 }
 
 export function useChatWebSocket(deps: UseChatWebSocketDeps) {
@@ -49,6 +52,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
     clearAutoIntro,
     sendHiddenAutoIntro,
     resetToContextIntro,
+    onProductUpdated,
   } = deps;
 
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -132,6 +136,9 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
         case 'response_done': {
           clearActiveAutoIntro();
           finalizeAssistantMessage(data);
+          if ((data as unknown as Record<string, unknown>).product_updated && onProductUpdated) {
+            onProductUpdated();
+          }
           break;
         }
 
@@ -200,6 +207,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
     finishPendingRequest,
     incrementChunkCount,
     productContextRef,
+    onProductUpdated,
     resetToContextIntro,
     scheduleReconnect,
     sendHiddenAutoIntro,
