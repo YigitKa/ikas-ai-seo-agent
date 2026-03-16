@@ -11,6 +11,21 @@ export default defineConfig({
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
   plugins: [react(), tailwindcss()],
+  build: {
+    chunkSizeWarningLimit: 750,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/react-markdown') || id.includes('node_modules/remark-gfm')) {
+            return 'markdown'
+          }
+          if (id.includes('node_modules')) {
+            return 'vendor'
+          }
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {
