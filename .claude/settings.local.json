@@ -9,7 +9,10 @@
       "Bash(grep -h \"^from\\\\|^import\" /c/Users/yigit/OneDrive/Belgeler/GitHub/ikas-ai-seo-agent/core/*.py)",
       "Bash(python -c \":*)",
       "Bash(python -m pytest tests/ -x -q)",
-      "Bash(.venv/Scripts/python -m pytest tests/ -x -q)"
+      "Bash(.venv/Scripts/python -m pytest tests/ -x -q)",
+      "Bash(python -m pytest tests/test_chat_service.py -v --tb=short)",
+      "Bash(.venv/Scripts/python -m pytest tests/test_chat_service.py -v --tb=short)",
+      "Bash(.venv/Scripts/python -m pytest tests/test_chat_apply_flow.py -v --tb=short)"
     ]
   }
 }

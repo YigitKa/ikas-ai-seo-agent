@@ -4,6 +4,7 @@ import { getLmStudioLiveStatus, getSettings } from "../api/client";
 import { useChat } from "../hooks/useChat";
 import type { Product, SeoScore, SeoSuggestion } from "../types";
 import {
+  exportChatAsText,
   formatCompactNumber,
   formatDuration,
   readMetaNumber,
@@ -166,7 +167,7 @@ export default function ChatPanel({
     const label = `${index + 1}. secenegi sec: ${option.tone}`;
     addLocalMessage({ role: "user", content: label });
     sendMessage(
-      `${index + 1}. secenegi sectim.\nTon: ${option.tone}\nIcerik: ${option.value}\nBu secenek dogrultusunda urun icin somut SEO degerleri olustur ve save_seo_suggestion araci ile kaydet.`,
+      `[[GENERATE_SUGGESTION]]${index + 1}. secenegi sectim.\nTon: ${option.tone}\nIcerik: ${option.value}\nBu secenek dogrultusunda urun icin somut SEO degerleri olustur ve save_seo_suggestion araci ile kaydet.`,
       { hidden: true },
     );
   };
@@ -208,6 +209,10 @@ export default function ChatPanel({
     sendMessage("[[CHAT_ACTION:single_apply_cancel]]", { hidden: true });
   };
 
+  const handleExport = useCallback(() => {
+    exportChatAsText(messages, displayProductName);
+  }, [messages, displayProductName]);
+
   return (
     <div
       className="flex h-full flex-col overflow-hidden rounded-2xl"
@@ -224,6 +229,7 @@ export default function ChatPanel({
         productDetailUrl={productDetailUrl}
         hasMessages={messages.length > 0}
         onClear={clearHistory}
+        onExport={handleExport}
       />
 
       {isReconnecting && <ReconnectingBanner />}

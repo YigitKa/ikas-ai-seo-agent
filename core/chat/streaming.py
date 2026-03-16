@@ -17,6 +17,7 @@ from core.chat.support import (
     APPLY_INTENT_EXTRACTION_SYSTEM_PROMPT,
     APPLY_SEO_TO_IKAS_TOOL_NAME,
     CHAT_ACTION_PATTERN,
+    GENERATE_SUGGESTION_PATTERN,
     HISTORY_SUMMARY_KEEP_RECENT_MESSAGES,
     HISTORY_SUMMARY_SYSTEM_PREFIX,
     HISTORY_SUMMARY_TRIGGER_MESSAGES,
@@ -208,8 +209,19 @@ class ChatServiceStreamingMixin:
             event_handler: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         ) -> ChatResponse:
             """Run the full chat flow, optionally streaming assistant chunks."""
+            # Detect [[GENERATE_SUGGESTION]] marker — this means the user selected
+            # an option button and the AI should generate concrete values first.
+            # Strip the marker and skip save/apply flow interception.
+            is_generate_request = bool(GENERATE_SUGGESTION_PATTERN.search(user_message or ""))
+            if is_generate_request:
+                user_message = GENERATE_SUGGESTION_PATTERN.sub("", user_message).strip()
+
             cleaned_message, routing_instruction, agent_type, allow_tools = await self._extract_message_directives(user_message)
             has_apply_intent = _message_has_apply_intent(cleaned_message)
+
+            # Force SEO agent for generate requests — always an SEO content task
+            if is_generate_request and agent_type != "seo":
+                agent_type = "seo"
 
             # Add user message to history and trim if needed
             user_msg = ChatMessage(role="user", content=cleaned_message)
@@ -217,19 +229,22 @@ class ChatServiceStreamingMixin:
             if len(self._history) > MAX_HISTORY_MESSAGES:
                 self._history = self._history[-MAX_HISTORY_MESSAGES:]
 
-            single_save_response = await self._maybe_handle_single_product_save_flow(
-                cleaned_message,
-                chunk_handler=chunk_handler,
-            )
-            if single_save_response is not None:
-                return single_save_response
+            # Skip save/apply flow interception when the message is a generate
+            # request — the AI needs to produce concrete values first.
+            if not is_generate_request:
+                single_save_response = await self._maybe_handle_single_product_save_flow(
+                    cleaned_message,
+                    chunk_handler=chunk_handler,
+                )
+                if single_save_response is not None:
+                    return single_save_response
 
-            single_apply_response = await self._maybe_handle_single_product_apply_flow(
-                cleaned_message,
-                chunk_handler=chunk_handler,
-            )
-            if single_apply_response is not None:
-                return single_apply_response
+                single_apply_response = await self._maybe_handle_single_product_apply_flow(
+                    cleaned_message,
+                    chunk_handler=chunk_handler,
+                )
+                if single_apply_response is not None:
+                    return single_apply_response
 
             # Optionally prefetch guided MCP data for live-data questions
             guided_context = ""
@@ -274,7 +289,7 @@ class ChatServiceStreamingMixin:
                 allow_tools,
                 guided_context,
                 mcp_available,
-                include_save_seo_tool=(agent_type == "seo" or has_apply_intent),
+                include_save_seo_tool=(agent_type == "seo" or has_apply_intent or is_generate_request),
             )
 
             response_text = ""

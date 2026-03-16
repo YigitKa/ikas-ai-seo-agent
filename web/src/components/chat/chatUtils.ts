@@ -1,4 +1,5 @@
 import type { ChatResponseMeta } from '../../types';
+import type { ChatMessage } from '../../hooks/useChat';
 import { formatDuration, formatCompactNumber } from '../../shared/format/formatters';
 
 // Re-export formatters so existing consumers don't break
@@ -93,4 +94,56 @@ export function getAssistantMetrics(meta?: ChatResponseMeta) {
   }
 
   return metrics;
+}
+
+// ── Chat export (WhatsApp-style txt) ─────────────────────────────────────────
+
+const ROLE_LABELS: Record<string, string> = {
+  user: 'Sen',
+  assistant: 'AI',
+  system: 'Sistem',
+  tool: 'Arac',
+};
+
+function pad2(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+function formatExportTimestamp(date: Date): string {
+  return `${pad2(date.getDate())}.${pad2(date.getMonth() + 1)}.${date.getFullYear()} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+export function exportChatAsText(
+  messages: ChatMessage[],
+  productName?: string,
+): void {
+  const now = new Date();
+  const lines: string[] = [];
+
+  if (productName) {
+    lines.push(`ikas SEO Agent - ${productName}`);
+  } else {
+    lines.push('ikas SEO Agent - Sohbet');
+  }
+  lines.push(`Disa aktarim: ${formatExportTimestamp(now)}`);
+  lines.push('');
+
+  for (const msg of messages) {
+    const role = ROLE_LABELS[msg.role] || msg.role;
+    const ts = formatExportTimestamp(now);
+    const content = (msg.content || '').trim();
+    if (!content) continue;
+    lines.push(`[${ts}] ${role}: ${content}`);
+  }
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const safeName = (productName || 'sohbet').replace(/[^a-zA-Z0-9\u00C0-\u017F_-]/g, '_').substring(0, 40);
+  a.download = `ikas-seo-chat_${safeName}_${pad2(now.getDate())}${pad2(now.getMonth() + 1)}${now.getFullYear()}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

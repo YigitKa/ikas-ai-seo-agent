@@ -383,6 +383,8 @@ SUGGESTION_APPLY_FIELD_CONFIG: dict[str, dict[str, str]] = {
     },
 }
 CHAT_ACTION_PATTERN = re.compile(r"\[\[CHAT_ACTION:([a-z0-9_-]+)(?::(.+?))?\]\]", re.IGNORECASE | re.DOTALL)
+GENERATE_SUGGESTION_MARKER = "[[GENERATE_SUGGESTION]]"
+GENERATE_SUGGESTION_PATTERN = re.compile(r"\[\[GENERATE_SUGGESTION\]\]\s*", re.IGNORECASE)
 APPLY_INTENT_PATTERN = re.compile(
     r"\b(uygula|uygulansin|onayla|evet uygula|evet|tamam uygula)\b",
     re.IGNORECASE,
