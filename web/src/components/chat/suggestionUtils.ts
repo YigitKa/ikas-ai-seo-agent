@@ -54,19 +54,27 @@ export function parseSuggestionOptions(rawValue: unknown): SuggestionOption[] {
   }, []);
 }
 
+function removeRanges(text: string, ranges: { start: number; end: number }[]) {
+  if (!ranges.length) return text;
+  const sorted = [...ranges].sort((a, b) => b.start - a.start);
+  let result = text;
+  for (const range of sorted) {
+    result = `${result.slice(0, range.start)}${result.slice(range.end)}`;
+  }
+  return result;
+}
+
 export function extractSuggestionOptions(content: string) {
   const matcher = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
-  let matchedRange: { start: number; end: number } | null = null;
-  let parsedOptions: SuggestionOption[] = [];
+  const matchedRanges: { start: number; end: number }[] = [];
+  const parsedOptions: SuggestionOption[] = [];
   let match: RegExpExecArray | null;
 
   while ((match = matcher.exec(content)) !== null) {
     const options = parseStructuredOptions(match[1]);
-    if (!options.length) {
-      continue;
-    }
-    matchedRange = { start: match.index, end: match.index + match[0].length };
-    parsedOptions = options;
+    if (!options.length) continue;
+    matchedRanges.push({ start: match.index, end: match.index + match[0].length });
+    parsedOptions.push(...options);
   }
 
   if (!parsedOptions.length) {
@@ -76,19 +84,15 @@ export function extractSuggestionOptions(content: string) {
       if (options.length) {
         const rawArray = trailingArrayMatch[1];
         const start = content.lastIndexOf(rawArray);
-        if (start !== -1) {
-          matchedRange = { start, end: start + rawArray.length };
-        }
-        parsedOptions = options;
+        if (start !== -1) matchedRanges.push({ start, end: start + rawArray.length });
+        parsedOptions.push(...options);
       }
     }
   }
 
-  let markdownContent = content;
+  let markdownContent = matchedRanges.length ? removeRanges(content, matchedRanges) : content;
 
-  if (matchedRange) {
-    markdownContent = `${content.slice(0, matchedRange.start)}${content.slice(matchedRange.end)}`;
-  } else {
+  if (!matchedRanges.length) {
     const lowerContent = content.toLowerCase();
     const trailingJsonBlockIndex = lowerContent.lastIndexOf('```json');
     if (trailingJsonBlockIndex !== -1 && lowerContent.indexOf('```', trailingJsonBlockIndex + 7) === -1) {

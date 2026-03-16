@@ -31,6 +31,7 @@ from core.chat.support import (
     SAVE_SEO_SUGGESTION_TOOL_NAME,
     SEMANTIC_ROUTING_JSON_PATTERN,
     SEMANTIC_ROUTING_SYSTEM_PROMPT,
+    STRUCTURED_SUGGESTION_OPTIONS_INSTRUCTION,
     SINGLE_PRODUCT_APPLY_ACTIONS,
     SUGGESTION_APPLY_FIELD_CONFIG,
     SUGGESTION_SAVE_SUCCESS_MESSAGE,
@@ -64,6 +65,7 @@ from core.chat.support import (
     _has_mutation_tool_result,
     _lm_studio_native_base,
     _looks_like_final_suggestion_value,
+    _looks_like_option_selection,
     _message_has_apply_intent,
     _message_has_save_intent,
     _merge_stream_meta_payload,
@@ -218,10 +220,19 @@ class ChatServiceStreamingMixin:
 
             cleaned_message, routing_instruction, agent_type, allow_tools = await self._extract_message_directives(user_message)
             has_apply_intent = _message_has_apply_intent(cleaned_message)
+            has_save_intent = _message_has_save_intent(cleaned_message)
+
+            # If the user typed "1. secenegi sec" instead of clicking, treat it like a generate request
+            if not is_generate_request and _looks_like_option_selection(cleaned_message):
+                is_generate_request = True
 
             # Force SEO agent for generate requests — always an SEO content task
             if is_generate_request and agent_type != "seo":
                 agent_type = "seo"
+
+            # Ensure tool calling is allowed when we need to save/apply or generate suggestions
+            if is_generate_request or has_apply_intent or has_save_intent:
+                allow_tools = True
 
             # Add user message to history and trim if needed
             user_msg = ChatMessage(role="user", content=cleaned_message)

@@ -755,6 +755,23 @@ def _looks_like_final_suggestion_value(value: str) -> bool:
     return True
 
 
+def _looks_like_option_selection(text: str) -> bool:
+    """
+    Detect user phrases like "1. secenegi sec" that imply an option button click.
+    Helpful when the user types instead of clicking the structured card.
+    """
+    normalized = _normalize_matching_text(text)
+    if not normalized:
+        return False
+
+    patterns = [
+        re.compile(r"\b\d+\s*\.?\s*seceneg[iı]\s*sec", re.IGNORECASE),
+        re.compile(r"\bilk\s*seceneg[iı]\s*sec", re.IGNORECASE),
+        re.compile(r"\bsecenek\s*\d+\s*sec", re.IGNORECASE),
+    ]
+    return any(p.search(normalized) for p in patterns)
+
+
 def _decode_json_string_fragment(value: str) -> str:
     candidate = (value or "").strip()
     if not candidate:

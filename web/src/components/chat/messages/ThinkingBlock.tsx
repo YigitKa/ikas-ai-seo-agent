@@ -40,7 +40,8 @@ export default function ThinkingBlock({
 }) {
   const isLive = typeof durationSeconds !== 'number' || durationSeconds <= 0;
   const [expanded, setExpanded] = useState(true);
-  const isExpanded = isLive ? true : expanded;
+  const isExpanded = expanded;
+  const hasMarkdownHints = /\*\*|`|^-|\n-|\n\d+\.|^>|\n>/m.test(text);
 
   const title =
     typeof durationSeconds === 'number' && durationSeconds > 0
@@ -70,7 +71,11 @@ export default function ThinkingBlock({
       </button>
       {isExpanded && (
         <div className="mt-2 text-[12px] leading-relaxed" style={{ color: 'rgba(224, 242, 254, 0.88)' }}>
-          {isLive ? <ThinkingStreamText text={text} /> : <MarkdownMessage content={text} />}
+          {isLive && !hasMarkdownHints ? (
+            <ThinkingStreamText text={text} />
+          ) : (
+            <MarkdownMessage content={text} />
+          )}
         </div>
       )}
     </div>
