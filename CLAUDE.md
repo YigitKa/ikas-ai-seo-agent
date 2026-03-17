@@ -15,7 +15,7 @@ This file provides AI assistants with everything needed to understand, navigate,
 - Sends content to an AI provider (Claude, GPT, Gemini, Ollama, etc.) for rewrite suggestions
 - GEO (Generative Engine Optimization) rewrites and `llms.txt` generation for AI citability
 - Full **GEO site audit** — crawls a website, runs 5 parallel analysis agents, and produces a composite GEO score with an action plan
-- Shows before/after diffs, allows approval, and applies changes back to ikas
+- Shows before/after diffs, allows approval, and applies changes back to ikas — with **post-apply verification** (re-fetches from ikas, re-scores, shows score delta)
 - Real-time AI chat with **multi-agent architecture** (SEO Expert, Store Operator, General) and MCP tool integration for live store data queries
 - **Structured option buttons** in chat — AI proposals and approval questions render as clickable buttons; no manual typing needed for option selection
 - Supports Turkish and English product content

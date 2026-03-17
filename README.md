@@ -195,6 +195,14 @@ graph TD
 
 Her kullanıcı mesajı LLM tarafından semantik olarak sınıflandırılır — etiket veya komut gerekmez. Stok sorguladığınızda Operatör'e, başlık optimize etmek istediğinizde SEO Uzmanı'na yönlendirilirsiniz.
 
+### Uygulama Sonrası Doğrulama ve Skor Karşılaştırması
+
+Değişiklikler ikas'a uygulandıktan sonra sistem otomatik olarak:
+1. Ürünü ikas'tan tekrar çeker (güncel veriyi doğrular)
+2. Lokal ürün verisini ve veritabanını günceller
+3. SEO analizini yeniden çalıştırır
+4. Eski/yeni skor farkını alan bazlı gösterir (ör: 📈 65/100 → 74/100, +9 puan)
+
 ### Yapısal Seçenek Butonları
 
 AI önerileri chat'te **tıklanabilir butonlar** olarak gösterilir — kullanıcının serbest metin yazıp cevap vermesi gerekmez. Typo, belirsizlik ve niyet ayrıştırma ihtiyacını ortadan kaldırır.
@@ -330,12 +338,13 @@ mindmap
       ("1 — Registry: kaydet/uygula")
       ("2 — Toolkit: SEO skorlama")
       ("3 — MCP: 50+ ikas operasyonu")
-    ("🛡️ Çift Yollu Uygulama")
+    ("🛡️ Çift Yollu Uygulama + Doğrulama")
       ("Birincil: IkasClient OAuth+GraphQL")
       ("Fallback: MCP mutation")
+      ("Uygulama sonrası re-fetch + re-score")
     ("📝 Katmanlı Prompt Mimarisi")
-      ("5 bağımsız katman")
-      ("Her katman ayrı bakılabilir")
+      ("5 katman → tek system mesajı")
+      ("Compact mode: yerel modeller için sadeleştirme")
     ("🧠 Düşünce Çıkarımı")
       ("think bloğu otomatik ayrıştırma")
       ("UI'da ayrı gösterim")
@@ -350,7 +359,13 @@ mindmap
 
 ```mermaid
 graph TD
-    INPUT["💬 Kullanıcı Mesajı"] --> EXTRACT["1. Direktif çıkarma<br/><i>_extract_message_directives()</i>"]
+    INPUT["💬 Kullanıcı Mesajı"] --> GEN_CHECK{"[[GENERATE_SUGGESTION]]<br/>marker var mı?"}
+
+    GEN_CHECK -->|Evet| GEN_STRIP["Marker'ı sıyır<br/>agent_type → seo"]
+    GEN_STRIP --> GEN_BUILD["Minimal prompt oluştur<br/><i>sadece ürün alanları +<br/>save_seo_suggestion tool</i>"]
+    GEN_BUILD --> LLM_CALL
+
+    GEN_CHECK -->|Hayır| EXTRACT["1. Direktif çıkarma<br/><i>_extract_message_directives()</i>"]
     EXTRACT --> HISTORY["2. Geçmişe ekle<br/><i>maks 40 mesaj</i>"]
     HISTORY --> SAVE{"3. Kaydetme<br/>niyeti var mı?"}
 
@@ -360,7 +375,7 @@ graph TD
     APPLY -->|Evet| WRITE["Kaydedilmiş öneriyi uygula<br/>erken dön"]
     APPLY -->|Hayır| PREFETCH["5. MCP data prefetch<br/><i>operator ise snapshot çek</i>"]
 
-    PREFETCH --> BUILD["6. Completion mesajları<br/>+ tool listesi oluştur"]
+    PREFETCH --> BUILD["6. Completion mesajları<br/>+ tool listesi oluştur<br/><i>local model → compact mode</i>"]
     BUILD --> LLM_CALL["7. LLM'e gönder<br/><i>streaming veya blocking</i>"]
 
     LLM_CALL --> TOOL_LOOP{"Tool call<br/>var mı?"}
@@ -373,6 +388,9 @@ graph TD
     RESPONSE --> RETURN["9. ChatResponse dön<br/><i>+ yapısal butonlar</i>"]
 
     style INPUT fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style GEN_CHECK fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style GEN_STRIP fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style GEN_BUILD fill:#0f172a,stroke:#10b981,color:#e2e8f0
     style EXTRACT fill:#1e293b,stroke:#64748b,color:#e2e8f0
     style HISTORY fill:#1e293b,stroke:#64748b,color:#e2e8f0
     style SAVE fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
@@ -389,6 +407,8 @@ graph TD
     style RESPONSE fill:#1e293b,stroke:#10b981,color:#e2e8f0
     style RETURN fill:#1e293b,stroke:#10b981,color:#e2e8f0
 ```
+
+> **Compact Mode:** LM Studio ve Ollama gibi yerel modeller için sistem prompt'u otomatik olarak sadeleştirilir — verbose örnekler, operasyon rehberi ve routing talimatları kaldırılır. `[[GENERATE_SUGGESTION]]` isteklerinde ise yalnızca ürün alanları ve `save_seo_suggestion` tool'u gönderilir (~500 token vs ~10K).
 
 ---
 
@@ -436,21 +456,26 @@ graph TD
     TRIGGER["apply_seo_to_ikas tetiklendi"] --> TRY["IkasClient ile dene<br/><i>OAuth + GraphQL</i>"]
     TRY --> CHECK{Başarılı mı?}
 
-    CHECK -->|Evet| SUCCESS["✅ Uygulandı<br/><i>method: ikas_api</i>"]
-
+    CHECK -->|Evet| VERIFY
     CHECK -->|Hayır| INTROSPECT["MCP Fallback:<br/>introspect_operation('updateProduct')"]
     INTROSPECT --> CACHE["GraphQL şema +<br/>input type'lar cache'le"]
     CACHE --> MUTATION["execute_mutation()<br/><i>JSON-RPC execute çağrısı</i>"]
-    MUTATION --> SUCCESS2["✅ Uygulandı<br/><i>method: mcp</i>"]
+    MUTATION --> VERIFY
+
+    VERIFY["🔍 Doğrulama:<br/>ikas'tan tekrar çek"] --> UPDATE["💾 Lokal veriyi güncelle<br/><i>product + DB</i>"]
+    UPDATE --> RESCORE["📊 SEO yeniden skorla"]
+    RESCORE --> DELTA["📈 Skor farkını göster<br/><i>eski → yeni + alan bazlı</i>"]
 
     style TRIGGER fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
     style TRY fill:#1e293b,stroke:#10b981,color:#e2e8f0
     style CHECK fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
-    style SUCCESS fill:#0f172a,stroke:#10b981,color:#e2e8f0
     style INTROSPECT fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
     style CACHE fill:#1e293b,stroke:#64748b,color:#e2e8f0
     style MUTATION fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
-    style SUCCESS2 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style VERIFY fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style UPDATE fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
+    style RESCORE fill:#1e293b,stroke:#10b981,color:#e2e8f0
+    style DELTA fill:#0f172a,stroke:#10b981,color:#e2e8f0
 ```
 
 ---
@@ -562,6 +587,7 @@ graph LR
     SELECT --> CHAT["4. 💬 Chat / AI Öner<br/><i>Otonom yeniden yazım</i>"]
     CHAT --> REVIEW["5. 🔍 İncele<br/><i>Önce/sonra diff</i>"]
     REVIEW --> APPLY["6. ✅ Onayla<br/><i>ikas'a uygula</i>"]
+    APPLY --> VERIFY["7. 📊 Doğrula<br/><i>Skor karşılaştırması</i>"]
 
     style SYNC fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
     style BROWSE fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
@@ -569,13 +595,16 @@ graph LR
     style CHAT fill:#1e293b,stroke:#10b981,color:#e2e8f0
     style REVIEW fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
     style APPLY fill:#1e293b,stroke:#10b981,color:#e2e8f0
+    style VERIFY fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
 ```
 
 ### Katmanlı Prompt Mimarisi
 
+Tüm katmanlar **tek bir `system` mesajında** birleştirilir (qwen, llama gibi modellerin jinja template'leri birden fazla system mesajını desteklemez).
+
 ```mermaid
 graph TB
-    subgraph LAYERS ["Prompt Katmanları (yukarıdan aşağıya birleştirilir)"]
+    subgraph LAYERS ["Prompt Katmanları (tek system mesajında birleştirilir)"]
         P1["1. 📜 Ana Sistem Prompt'u<br/><i>CHAT_FLOW_SYSTEM_PROMPT_TR<br/>Rol, hedefler, doğruluk kuralları, tool rehberi</i>"]
         P2["2. 🎭 Agent Persona<br/><i>AGENT_SYSTEM_PROMPTS_TR[seo|operator|general]<br/>Semantik routing ile seçilir</i>"]
         P3["3. 📋 Operasyon Rehberi<br/><i>IKAS_OPERATION_GUIDE_TR<br/>apply_seo_to_ikas kullanım talimatları</i>"]
@@ -584,6 +613,7 @@ graph TB
     end
 
     P1 --> P2 --> P3 --> P4 --> P5
+    P5 --> MERGE["📨 Tek system mesajı<br/><i>join('\\n\\n')</i>"]
 
     style LAYERS fill:#0f172a,stroke:#3b82f6,color:#e2e8f0
     style P1 fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
@@ -591,7 +621,10 @@ graph TB
     style P3 fill:#1e293b,stroke:#10b981,color:#e2e8f0
     style P4 fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
     style P5 fill:#1e293b,stroke:#ef4444,color:#e2e8f0
+    style MERGE fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
 ```
+
+> **Compact Mode (Yerel Modeller):** LM Studio ve Ollama kullanılırken 3. katman (Operasyon Rehberi), 5. katman (Yönlendirme Talimatı) ve verbose tool talimatları otomatik olarak atlanır. Bunların yerine kısa bir JSON buton formatı talimatı eklenir. Bu sayede ~10K token'lık tam prompt yerine ~2-3K token'lık minimal prompt gönderilir.
 
 ---
 
