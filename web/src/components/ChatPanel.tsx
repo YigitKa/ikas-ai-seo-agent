@@ -77,7 +77,7 @@ export default function ChatPanel({
   const {
     messages, isLoading, isReconnecting, isAutoIntroActive, pendingSince,
     liveChunkCount, liveTokenEstimate, pendingSuggestion, mcpState,
-    sendMessage, addLocalMessage, cancelMessage, clearHistory, connect, disconnect,
+    sendMessage, retryLastMessage, addLocalMessage, cancelMessage, clearHistory, connect, disconnect,
   } = useChat({
     id: productId,
     name: displayProductName,
@@ -248,6 +248,7 @@ export default function ChatPanel({
         liveElapsedSeconds={liveElapsedSeconds}
         onStarterPrompt={handleStarterPrompt}
         onApplyOption={handleApplySuggestionOption}
+        onRetry={retryLastMessage}
       />
 
       <ChatInput

@@ -12,7 +12,22 @@
       "Bash(.venv/Scripts/python -m pytest tests/ -x -q)",
       "Bash(python -m pytest tests/test_chat_service.py -v --tb=short)",
       "Bash(.venv/Scripts/python -m pytest tests/test_chat_service.py -v --tb=short)",
-      "Bash(.venv/Scripts/python -m pytest tests/test_chat_apply_flow.py -v --tb=short)"
+      "Bash(.venv/Scripts/python -m pytest tests/test_chat_apply_flow.py -v --tb=short)",
+      "Bash(python -m pytest tests/test_chat_service.py -v --tb=short -x)",
+      "Bash(.venv/Scripts/python -m pytest tests/test_chat_service.py -v --tb=short -x)",
+      "Bash(npx vite:*)",
+      "Bash(curl -s http://localhost:8000/api/health)",
+      "Bash(powershell -Command \"Get-Process python -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_Id -Force }\")",
+      "Bash(python -c \"from core.chat.streaming import ChatServiceStreamingMixin; print\\(''OK''\\)\")",
+      "Bash(powershell -Command \"Get-Process python -ErrorAction SilentlyContinue | Select-Object Id, StartTime, CommandLine | Format-Table -AutoSize\")",
+      "Bash(powershell -Command \"Get-Process python -ErrorAction SilentlyContinue | Measure-Object | Select-Object -ExpandProperty Count\")",
+      "Bash(curl -s http://localhost:1234/v1/models)",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(m[''''id'''']\\) for m in d.get\\(''''data'''',[]\\)]\")",
+      "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object OwningProcess | ForEach-Object { Get-Process -Id $_.OwningProcess | Select-Object Id, StartTime, ProcessName }\")",
+      "Bash(tasklist //FI 'PID eq 38960')",
+      "Bash(tasklist)",
+      "Bash(taskkill //F //PID 38960)",
+      "Bash(curl -s http://localhost:8001/api/health)"
     ]
   }
 }

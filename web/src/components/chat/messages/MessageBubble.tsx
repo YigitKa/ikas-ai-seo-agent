@@ -8,6 +8,8 @@ import ThinkingBlock from './ThinkingBlock';
 import AssistantMessageContent from './AssistantContent';
 import ContextUsageCard from './ContextUsageCard';
 
+const FAILED_RESPONSE_MARKER = 'Model nihai cevap uretmedi';
+
 export function getRoleMeta(role: ChatMessage['role'], assistantLabel: string) {
   if (role === 'user') return { label: 'Sen', color: '#c7d2fe' };
   if (role === 'assistant') return { label: assistantLabel, color: 'var(--color-text-muted)' };
@@ -19,17 +21,20 @@ function MessageBubble({
   assistantLabel,
   fallbackContextLength,
   onApplyOption,
+  onRetry,
   applyDisabled,
 }: {
   msg: ChatMessage;
   assistantLabel: string;
   fallbackContextLength?: number | null;
   onApplyOption?: (option: SuggestionOption, index: number) => void;
+  onRetry?: () => void;
   applyDisabled?: boolean;
 }) {
   const isUser = msg.role === 'user';
   const isSystem = msg.role === 'system';
   const isAssistant = msg.role === 'assistant';
+  const isFailedResponse = isAssistant && msg.content.includes(FAILED_RESPONSE_MARKER);
   const hasVisibleAssistantContent = isAssistant ? Boolean(msg.content.trim()) : true;
   const roleMeta = getRoleMeta(msg.role, assistantLabel);
   const assistantMetrics = isAssistant ? getAssistantMetrics(msg.meta) : [];
@@ -98,6 +103,27 @@ function MessageBubble({
         </div>
       )}
 
+      {isFailedResponse && onRetry && !applyDisabled ? (
+        <div className="mr-6 mt-1">
+          <button
+            type="button"
+            onClick={onRetry}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors"
+            style={{
+              background: 'rgba(245, 158, 11, 0.12)',
+              border: '1px solid rgba(245, 158, 11, 0.28)',
+              color: '#fcd34d',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+            Yeniden Olustur
+          </button>
+        </div>
+      ) : null}
+
       {isAssistant && assistantMetrics.length > 0 ? (
         <div className="mr-6 flex flex-wrap justify-end gap-1.5">
           {assistantMetrics.map((metric) => (
@@ -128,5 +154,6 @@ export default memo(MessageBubble, (prev, next) =>
   prev.msg.role === next.msg.role &&
   (prev.msg.thinking?.length ?? 0) === (next.msg.thinking?.length ?? 0) &&
   prev.assistantLabel === next.assistantLabel &&
-  prev.applyDisabled === next.applyDisabled,
+  prev.applyDisabled === next.applyDisabled &&
+  prev.onRetry === next.onRetry,
 );

@@ -611,8 +611,25 @@ def _parse_agent_type(content: str) -> str | None:
     return None
 
 
-def _build_product_context(product: Product | None, score: SeoScore | None, agent_type: str = "general") -> str:
-    """Build product context string for the system prompt."""
+_COMPACT_OPTION_BUTTONS_INSTRUCTION = (
+    'Yanitin sonunda secenekleri JSON olarak sun: ```json\n'
+    '[{"tone":"Etiket","value":"Aciklama"}]\n```\n'
+    "SEO deger onerisi verirken degerleri duz metin degil, bu JSON formatinda sun."
+)
+
+
+def _build_product_context(
+    product: Product | None,
+    score: SeoScore | None,
+    agent_type: str = "general",
+    *,
+    compact: bool = False,
+) -> str:
+    """Build product context string for the system prompt.
+
+    When *compact* is True the verbose examples and operation guide are
+    replaced with minimal one-liners to stay within tight context windows.
+    """
     product_ctx = ""
     score_ctx = ""
 
@@ -654,6 +671,10 @@ def _build_product_context(product: Product | None, score: SeoScore | None, agen
         product_context=product_ctx,
         score_context=score_ctx,
     )
+
+    if compact:
+        return base_prompt + "\n\n" + _COMPACT_OPTION_BUTTONS_INSTRUCTION
+
     return (
         base_prompt
         + "\n\n"
@@ -770,6 +791,85 @@ def _looks_like_option_selection(text: str) -> bool:
         re.compile(r"\bsecenek\s*\d+\s*sec", re.IGNORECASE),
     ]
     return any(p.search(normalized) for p in patterns)
+
+
+_OPTION_INDEX_PATTERN = re.compile(r"\b(\d+)\s*\.?\s*seceneg", re.IGNORECASE)
+_OPTION_FIRST_PATTERN = re.compile(r"\bilk\s*seceneg", re.IGNORECASE)
+
+
+def _extract_option_index(text: str) -> int | None:
+    """Extract the 1-based option index from a typed option selection phrase."""
+    normalized = _normalize_matching_text(text)
+    if not normalized:
+        return None
+    m = _OPTION_INDEX_PATTERN.search(normalized)
+    if m:
+        return int(m.group(1))
+    if _OPTION_FIRST_PATTERN.search(normalized):
+        return 1
+    return None
+
+
+def _extract_options_from_assistant_message(content: str) -> list[dict[str, str]]:
+    """Parse structured option JSON from an assistant message."""
+    # Try ```json ... ``` blocks first
+    for m in re.finditer(r"```(?:json)?\s*([\s\S]*?)\s*```", content):
+        try:
+            parsed = json.loads(m.group(1))
+            if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict) and "tone" in parsed[0]:
+                return parsed
+        except (json.JSONDecodeError, TypeError):
+            continue
+    # Try trailing array
+    trailing = re.search(r"(\[[\s\S]*\])\s*$", content)
+    if trailing:
+        try:
+            parsed = json.loads(trailing.group(1))
+            if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict) and "tone" in parsed[0]:
+                return parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return []
+
+
+def _resolve_typed_option_selection(
+    user_text: str,
+    history: list,
+) -> str | None:
+    """Resolve a typed option selection to an enriched message like the frontend sends.
+
+    Walks backward through *history* to find the last assistant message with
+    structured option buttons, extracts the selected option by index, and
+    returns a message identical to what the frontend would have sent (minus
+    the ``[[GENERATE_SUGGESTION]]`` marker which the caller adds separately).
+
+    Returns ``None`` if no matching option is found.
+    """
+    idx = _extract_option_index(user_text)
+    if idx is None:
+        return None
+
+    # Walk history backwards to find the last assistant message with options
+    for msg in reversed(history):
+        role = getattr(msg, "role", None) or (msg.get("role") if isinstance(msg, dict) else None)
+        content = getattr(msg, "content", None) or (msg.get("content", "") if isinstance(msg, dict) else "")
+        if role != "assistant" or not content:
+            continue
+        options = _extract_options_from_assistant_message(content)
+        if not options:
+            continue
+        if 1 <= idx <= len(options):
+            opt = options[idx - 1]
+            tone = opt.get("tone", "")
+            value = opt.get("value", "")
+            return (
+                f"{idx}. secenegi sectim.\n"
+                f"Ton: {tone}\n"
+                f"Icerik: {value}\n"
+                f"Bu secenek dogrultusunda urun icin somut SEO degerleri olustur ve save_seo_suggestion araci ile kaydet."
+            )
+        break  # Found options but index out of range
+    return None
 
 
 def _decode_json_string_fragment(value: str) -> str:

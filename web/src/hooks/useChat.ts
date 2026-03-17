@@ -155,6 +155,7 @@ export function useChat(productContext?: ChatProductContext, onProductUpdated?: 
     pendingSuggestion: status.pendingSuggestion,
     mcpState: status.mcpState,
     sendMessage: ws.sendMessage,
+    retryLastMessage: ws.retryLastMessage,
     addLocalMessage,
     cancelMessage: ws.cancelMessage,
     clearHistory: ws.clearHistory,

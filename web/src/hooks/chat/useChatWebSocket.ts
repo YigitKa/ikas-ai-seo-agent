@@ -62,6 +62,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intentionalDisconnectRef = useRef(false);
+  const lastSentPayloadRef = useRef<{ message: string; productId: string; hidden: boolean } | null>(null);
 
   // Forward-ref so scheduleReconnect can call connect without a circular dep
   const connectRef = useRef<() => void>(() => {});
@@ -245,6 +246,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
       if (!options?.hidden) {
         setMessages((prev) => [...prev, { role: 'user', content: message }]);
       }
+      lastSentPayloadRef.current = { message, productId, hidden: !!options?.hidden };
       startPendingRequest();
       wsRef.current.send(
         JSON.stringify({ action: 'message', message, product_id: productId }),
@@ -252,6 +254,25 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
     },
     [connect, startPendingRequest, productContextRef, setMessages],
   );
+
+  const retryLastMessage = useCallback(() => {
+    const payload = lastSentPayloadRef.current;
+    if (!payload) return;
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    // Remove the failed assistant message (last message if it's from assistant)
+    setMessages((prev) => {
+      if (prev.length > 0 && prev[prev.length - 1].role === 'assistant') {
+        return prev.slice(0, -1);
+      }
+      return prev;
+    });
+
+    startPendingRequest();
+    wsRef.current.send(
+      JSON.stringify({ action: 'message', message: payload.message, product_id: payload.productId }),
+    );
+  }, [startPendingRequest, setMessages]);
 
   const clearHistory = useCallback(() => {
     clearAutoIntro();
@@ -289,6 +310,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
     connect,
     disconnect,
     sendMessage,
+    retryLastMessage,
     cancelMessage,
     clearHistory,
   };

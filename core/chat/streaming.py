@@ -66,6 +66,7 @@ from core.chat.support import (
     _lm_studio_native_base,
     _looks_like_final_suggestion_value,
     _looks_like_option_selection,
+    _resolve_typed_option_selection,
     _message_has_apply_intent,
     _message_has_save_intent,
     _merge_stream_meta_payload,
@@ -73,6 +74,7 @@ from core.chat.support import (
     _operation_footer_already_present,
     _parse_agent_type,
     _should_request_structured_suggestion_options,
+    _LM_STUDIO_NON_CONTENT_EVENTS,
 )
 from core.clients.ikas import IkasClient
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
@@ -152,36 +154,51 @@ class ChatServiceStreamingMixin:
             guided_context: str,
             mcp_available: bool,
             include_save_seo_tool: bool,
+            *,
+            is_generate_request: bool = False,
         ) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
-            """Build the messages list and tools for the AI completion call."""
-            system_prompt = _build_product_context(self._product, self._score, agent_type)
-            if _should_request_structured_suggestion_options(cleaned_message):
-                system_prompt = f"{system_prompt}\n\n{STRUCTURED_SUGGESTION_OPTIONS_INSTRUCTION}"
+            """Build the messages list and tools for the AI completion call.
 
-            messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-            if routing_instruction:
-                messages.append({"role": "system", "content": routing_instruction})
+            All system-level instructions are consolidated into a single system
+            message so that models with strict jinja chat templates (e.g. qwen)
+            can locate the user message without confusion.
+
+            When *is_generate_request* is True a minimal system prompt and only
+            the ``save_seo_suggestion`` tool are sent to stay within small
+            context windows (e.g. 4 096 tokens).
+            """
+
+            if is_generate_request:
+                return self._build_generate_messages(cleaned_message)
+
+            # --- Collect all system-level parts into one block ---
+            compact = self._config.ai_provider in ("lm-studio", "ollama")
+            system_parts: list[str] = [
+                _build_product_context(self._product, self._score, agent_type, compact=compact),
+            ]
+            if _should_request_structured_suggestion_options(cleaned_message):
+                system_parts.append(STRUCTURED_SUGGESTION_OPTIONS_INSTRUCTION)
+
+            # Skip verbose routing / MCP instructions for compact (local) models
+            if not compact:
+                if routing_instruction:
+                    system_parts.append(routing_instruction)
+
             local_no_think_instruction = _build_local_no_think_instruction(self._config)
             if local_no_think_instruction:
-                messages.append({"role": "system", "content": local_no_think_instruction})
+                system_parts.append(local_no_think_instruction)
 
             if allow_tools and mcp_available and guided_context:
-                messages.append({
-                    "role": "system",
-                    "content": (
-                        "Asagidaki ikas MCP sonucu dogrulanmis canli veridir. "
-                        "Bu veriyi esas al, veri uydurma ve degistirme:\n"
-                        f"{guided_context}"
-                    ),
-                })
-            elif allow_tools and not mcp_available:
-                messages.append({
-                    "role": "system",
-                    "content": (
-                        "ikas MCP su anda hazir degil. Canli veri cekemedigini acikca belirt "
-                        "ve magaza verisi uydurma."
-                    ),
-                })
+                system_parts.append(
+                    "Asagidaki ikas MCP sonucu dogrulanmis canli veridir. "
+                    "Bu veriyi esas al, veri uydurma ve degistirme:\n"
+                    f"{guided_context}"
+                )
+            elif allow_tools and not mcp_available and not compact:
+                system_parts.append(
+                    "ikas MCP su anda hazir degil. Canli veri cekemedigini acikca belirt "
+                    "ve magaza verisi uydurma."
+                )
 
             tools, tool_instructions = self._build_chat_tools(
                 allow_mcp_tools=allow_tools,
@@ -189,8 +206,13 @@ class ChatServiceStreamingMixin:
                 agent_type=agent_type,
                 include_save_seo_tool=include_save_seo_tool,
             )
-            for instruction in tool_instructions:
-                messages.append({"role": "system", "content": instruction})
+            if not compact:
+                system_parts.extend(tool_instructions)
+
+            # Single consolidated system message
+            messages: list[dict[str, Any]] = [
+                {"role": "system", "content": "\n\n".join(p for p in system_parts if p)},
+            ]
 
             for msg in self._history:
                 m: dict[str, Any] = {"role": msg.role, "content": msg.content}
@@ -201,6 +223,43 @@ class ChatServiceStreamingMixin:
                 if msg.role == "tool" and msg.name:
                     m["name"] = msg.name
                 messages.append(m)
+
+            return messages, tools
+
+        def _build_generate_messages(
+            self,
+            cleaned_message: str,
+        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
+            """Build a minimal messages + tools payload for generate-suggestion requests.
+
+            Only sends the product fields the model needs and the
+            ``save_seo_suggestion`` tool — keeps the total under ~1 500 tokens
+            so even 4 096-context models can handle it.
+            """
+            product_lines: list[str] = []
+            if self._product:
+                p = self._product
+                product_lines = [
+                    f"Urun: {p.name}",
+                    f"Kategori: {p.category or '-'}",
+                    f"Meta Title: {p.meta_title or '-'}",
+                    f"Meta Description: {p.meta_description or '-'}",
+                    f"Aciklama (ozet): {(p.description or '')[:150]}",
+                ]
+
+            system_prompt = (
+                "Sen SEO uzmansin. Kullanicinin sectigi secenek dogrultusunda "
+                "urun icin somut SEO degerlerini olustur ve save_seo_suggestion "
+                "aracini cagirarak kaydet. Dusunme, dogrudan araci cagir. /no_think\n\n"
+                + "\n".join(product_lines)
+            )
+
+            messages: list[dict[str, Any]] = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": cleaned_message},
+            ]
+
+            tools: list[dict[str, Any]] = [_build_save_seo_suggestion_tool()]
 
             return messages, tools
 
@@ -215,6 +274,7 @@ class ChatServiceStreamingMixin:
             # an option button and the AI should generate concrete values first.
             # Strip the marker and skip save/apply flow interception.
             is_generate_request = bool(GENERATE_SUGGESTION_PATTERN.search(user_message or ""))
+            logger.debug("[MSG_FLOW] is_generate_request=%s message=%s...", is_generate_request, (user_message or "")[:60])
             if is_generate_request:
                 user_message = GENERATE_SUGGESTION_PATTERN.sub("", user_message).strip()
 
@@ -222,9 +282,14 @@ class ChatServiceStreamingMixin:
             has_apply_intent = _message_has_apply_intent(cleaned_message)
             has_save_intent = _message_has_save_intent(cleaned_message)
 
-            # If the user typed "1. secenegi sec" instead of clicking, treat it like a generate request
+            # If the user typed "1. secenegi sec" instead of clicking, resolve the
+            # option value from the last assistant message and enrich the message
+            # to match what the frontend would have sent.
             if not is_generate_request and _looks_like_option_selection(cleaned_message):
                 is_generate_request = True
+                resolved = _resolve_typed_option_selection(cleaned_message, self._history)
+                if resolved:
+                    cleaned_message = resolved
 
             # Force SEO agent for generate requests — always an SEO content task
             if is_generate_request and agent_type != "seo":
@@ -258,11 +323,13 @@ class ChatServiceStreamingMixin:
                     return single_apply_response
 
             # Optionally prefetch guided MCP data for live-data questions
+            # Skip guided MCP for generate requests — the AI needs to produce
+            # concrete SEO values via save_seo_suggestion, not summarise MCP data.
             guided_context = ""
             guided_tool_results: list[dict[str, Any]] = []
             guided_fallback = ""
             mcp_available = bool(self._mcp_initialized and self._mcp)
-            if allow_tools and mcp_available:
+            if allow_tools and mcp_available and not is_generate_request:
                 try:
                     guided_result = await self._maybe_run_guided_mcp_request()
                 except Exception as exc:
@@ -271,7 +338,7 @@ class ChatServiceStreamingMixin:
 
                 if guided_result:
                     guided_context, guided_tool_results, guided_fallback = guided_result
-                    if not has_apply_intent:
+                    if not has_apply_intent and not is_generate_request:
                         # Return the MCP result directly without a secondary AI call
                         guided_content = _append_operation_suggestion(
                             guided_fallback,
@@ -301,6 +368,7 @@ class ChatServiceStreamingMixin:
                 guided_context,
                 mcp_available,
                 include_save_seo_tool=(agent_type == "seo" or has_apply_intent or is_generate_request),
+                is_generate_request=is_generate_request,
             )
 
             response_text = ""
@@ -311,6 +379,8 @@ class ChatServiceStreamingMixin:
             pending_suggestion = self._get_session_pending_suggestion()
 
             try:
+                logger.debug("[CHAT_FLOW] entering completion, chunk_handler=%s tools=%d is_gen=%s",
+                    chunk_handler is not None, len(tools or []), is_generate_request)
                 if chunk_handler is None:
                     completion_result = await self._chat_completion(messages, tools)
                 else:
@@ -323,6 +393,7 @@ class ChatServiceStreamingMixin:
                         completion_result = await self._chat_completion_stream(
                             messages, tools, chunk_handler,
                         )
+                logger.debug("[CHAT_FLOW] completion done, result type=%s", type(completion_result).__name__)
                 response_text, thinking_text, completion_tool_results, meta, suggestion_saved = (
                     self._normalize_completion_result(completion_result)
                 )
@@ -425,9 +496,12 @@ class ChatServiceStreamingMixin:
         ) -> tuple[str, str, list[dict], dict, dict[str, Any] | None]:
             """Consume the streaming completion generator and forward text chunks."""
             final_event: dict[str, Any] | None = None
+            event_count = 0
 
+            logger.debug("[CHAT_STREAM] Starting completion stream, tools=%d", len(tools or []))
             async for event in self.async_stream_chat(messages, tools):
                 event_type = str(event.get("type") or "")
+                event_count += 1
                 if event_type in {"chunk", "thinking_chunk"}:
                     chunk = str(event.get("content") or "")
                     if chunk:
@@ -443,6 +517,7 @@ class ChatServiceStreamingMixin:
                 if event_type == "completion_result":
                     final_event = event
 
+            logger.debug("[CHAT_STREAM] Stream done, events=%d final=%s", event_count, final_event is not None)
             if final_event is None:
                 raise RuntimeError("Chat completion stream ended without a final result.")
 
@@ -782,7 +857,9 @@ class ChatServiceStreamingMixin:
             # before sending any SSE data (server-side buffering), so no chunks arrive until
             # generation is 100% complete.  The native /api/v1/chat endpoint flushes every
             # token immediately — use it instead for real-time streaming.
-            if self._config.ai_provider == "lm-studio":
+            # However, the native endpoint does NOT support tool calling, so when tools
+            # are present we fall through to the compat endpoint which handles tool calls.
+            if self._config.ai_provider == "lm-studio" and not tools:
                 model_name = self._config.ai_model_name or self._get_default_model()
                 try:
                     async for event in self._stream_lm_studio_native(messages, tools, model_name):
@@ -958,6 +1035,11 @@ class ChatServiceStreamingMixin:
 
                 last_message_content = message_content
                 last_meta = meta
+
+                logger.debug(
+                    "[CHAT_STREAM] round=%d finish=%s tool_calls=%d content_len=%d",
+                    _round, finish_reason, len(tool_calls), len(message_content),
+                )
 
                 if tool_calls:
                     messages.append({

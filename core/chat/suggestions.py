@@ -74,6 +74,8 @@ from core.chat.support import (
 from core.clients.ikas import IkasClient
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.clients.mcp import IkasMCPClient, MCPError
+from core.seo.analyzer import analyze_product
+from data.db import save_product as db_save_product, save_score as db_save_score
 
 logger = logging.getLogger(__name__)
 
@@ -715,16 +717,24 @@ class ChatServiceSuggestionMixin:
                 with contextlib.suppress(Exception):
                     await ikas_client.close()
 
-            # Verify by re-reading from ikas
+            # Verify by re-reading from ikas, update local data, re-run SEO analysis
             verification_note = ""
+            old_score = self._score
             try:
                 ikas_verify = IkasClient()
                 try:
-                    products = await ikas_verify.fetch_products()
-                    verified_product = next(
-                        (p for p in products if p.id == suggestion.product_id), None
-                    )
+                    verified_product = await ikas_verify.get_product_by_id(suggestion.product_id)
                     if verified_product:
+                        # Update local product reference and persist to DB
+                        self._product = verified_product
+                        await db_save_product(verified_product)
+
+                        # Re-run SEO analysis on the updated product
+                        keywords = self._config.seo_target_keywords or None
+                        new_score = analyze_product(verified_product, keywords)
+                        self._score = new_score
+                        await db_save_score(new_score)
+
                         verification_lines = ["", "**Dogrulama (ikas canli veri):**"]
                         if "meta_title" in updates and verified_product.meta_title:
                             verification_lines.append(f"- Meta Title: `{verified_product.meta_title}`")
@@ -734,6 +744,37 @@ class ChatServiceSuggestionMixin:
                             verification_lines.append(f"- Urun Adi: `{verified_product.name}`")
                         if len(verification_lines) > 2:
                             verification_note = "\n".join(verification_lines)
+
+                        # Show score comparison
+                        if old_score:
+                            delta = new_score.total_score - old_score.total_score
+                            direction = "📈" if delta > 0 else ("📉" if delta < 0 else "➡️")
+                            verification_note += (
+                                f"\n\n**SEO Skor Degisimi:** {direction} "
+                                f"{old_score.total_score}/100 → **{new_score.total_score}/100** "
+                                f"({'+' if delta > 0 else ''}{delta} puan)"
+                            )
+                            # Show per-field score breakdown if score changed
+                            if delta != 0:
+                                breakdown_parts: list[str] = []
+                                field_scores = [
+                                    ("Baslik", old_score.title_score, new_score.title_score, 15),
+                                    ("Aciklama", old_score.description_score, new_score.description_score, 20),
+                                    ("Meta Title", old_score.meta_score, new_score.meta_score, 15),
+                                    ("Meta Desc", old_score.meta_desc_score, new_score.meta_desc_score, 10),
+                                    ("Anahtar Kelime", old_score.keyword_score, new_score.keyword_score, 10),
+                                    ("Icerik Kalitesi", old_score.content_quality_score, new_score.content_quality_score, 10),
+                                ]
+                                for label, old_val, new_val, max_val in field_scores:
+                                    if old_val != new_val:
+                                        d = new_val - old_val
+                                        breakdown_parts.append(
+                                            f"  - {label}: {old_val}/{max_val} → {new_val}/{max_val} ({'+' if d > 0 else ''}{d})"
+                                        )
+                                if breakdown_parts:
+                                    verification_note += "\n" + "\n".join(breakdown_parts)
+                        else:
+                            verification_note += f"\n\n**Yeni SEO Skoru:** {new_score.total_score}/100"
                 finally:
                     with contextlib.suppress(Exception):
                         await ikas_verify.close()

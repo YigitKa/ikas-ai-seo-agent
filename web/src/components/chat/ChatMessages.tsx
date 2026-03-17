@@ -22,6 +22,7 @@ interface ChatMessagesProps {
   liveElapsedSeconds: number;
   onStarterPrompt: (prompt: StarterPrompt) => void;
   onApplyOption: (option: SuggestionOption, index: number) => void;
+  onRetry: () => void;
 }
 
 export function ChatMessages({
@@ -38,6 +39,7 @@ export function ChatMessages({
   liveElapsedSeconds,
   onStarterPrompt,
   onApplyOption,
+  onRetry,
 }: ChatMessagesProps) {
   return (
     <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-4">
@@ -61,6 +63,7 @@ export function ChatMessages({
           assistantLabel={assistantLabel}
           fallbackContextLength={liveContextLength}
           onApplyOption={onApplyOption}
+          onRetry={i === messages.length - 1 ? onRetry : undefined}
           applyDisabled={isLoading}
         />
       ))}
