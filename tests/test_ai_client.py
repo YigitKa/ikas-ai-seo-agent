@@ -112,7 +112,7 @@ def test_build_desc_tr_request_loads_prompt_from_prompt_store(monkeypatch):
             return "Aciklama promptu: {{name}} / {{keywords}}"
         raise AssertionError(f"unexpected prompt key: {key}")
 
-    monkeypatch.setattr("core.ai.client.load_prompt_template", fake_load_prompt_template)
+    monkeypatch.setattr("core.ai.requests.load_prompt_template", fake_load_prompt_template)
 
     request = build_field_rewrite_request(
         _build_config(ai_thinking_mode=False, seo_target_keywords=["mikroskop", "mercek"]),
@@ -134,7 +134,7 @@ def test_build_translation_request_loads_prompt_from_prompt_store(monkeypatch):
             return "Cevir: {{name}} => {{description}}"
         raise AssertionError(f"unexpected prompt key: {key}")
 
-    monkeypatch.setattr("core.ai.client.load_prompt_template", fake_load_prompt_template)
+    monkeypatch.setattr("core.ai.requests.load_prompt_template", fake_load_prompt_template)
 
     request = build_en_translation_request(_build_config(ai_thinking_mode=False), "lm-studio", _build_product())
 

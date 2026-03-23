@@ -42,7 +42,13 @@ ikas-ai-seo-agent/
 │   │
 │   ├── ai/                  # AI provider abstraction
 │   │   ├── __init__.py      # Re-exports: create_ai_client, BaseAIClient, etc.
-│   │   └── client.py        # Multi-provider AI abstraction (factory + adapters)
+│   │   ├── client.py        # Backward-compat facade — re-exports all symbols
+│   │   ├── constants.py     # Prompt templates, model defaults, field mappings
+│   │   ├── helpers.py       # Response parsing, thinking extraction, utilities
+│   │   ├── requests.py      # Request builder functions for all providers
+│   │   ├── base.py          # BaseAIClient + NoneAIClient
+│   │   ├── anthropic_client.py  # AnthropicAIClient (native Messages API)
+│   │   └── openai_compat.py # OpenAICompatibleClient (OpenAI, Gemini, Ollama, LM Studio, etc.)
 │   │
 │   ├── agent/               # Agent orchestration
 │   │   ├── __init__.py      # Re-exports: AgentOrchestrator, AgentToolkit, etc.
@@ -423,7 +429,17 @@ Scoring inspired by Ahrefs, Semrush, Yoast, Moz, and Screaming Frog.
 
 **Known AI crawlers tracked in `robots.txt` analysis:** GPTBot, ChatGPT-User, CCBot, ClaudeBot, Claude-Web, anthropic-ai, PerplexityBot, Google-Extended, GoogleOther, Bytespider, Amazonbot, Applebot-Extended, Meta-ExternalAgent, OAI-SearchBot.
 
-### `core/ai/client.py` — supported providers
+### `core/ai/` — AI provider module (split into 7 files)
+
+`client.py` is a backward-compatible facade that re-exports all symbols. Actual code lives in:
+- `constants.py` — prompt templates, model defaults, field mappings
+- `helpers.py` — response parsing, thinking extraction, utility functions
+- `requests.py` — request builder functions (`build_product_rewrite_request`, etc.)
+- `base.py` — `BaseAIClient` + `NoneAIClient`
+- `anthropic_client.py` — `AnthropicAIClient` (native Anthropic Messages API)
+- `openai_compat.py` — `OpenAICompatibleClient` (all OpenAI-compatible providers)
+
+**Supported providers:**
 | `AI_PROVIDER` value | SDK / Endpoint | Default model |
 |---|---|---|
 | `anthropic` | Native Anthropic Messages API (SDK) | `claude-haiku-4-5-20251001` |
