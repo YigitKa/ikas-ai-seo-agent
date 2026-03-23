@@ -588,6 +588,11 @@ class NoneAIClient(BaseAIClient):
         )
 
 class AnthropicAIClient(BaseAIClient):
+    """Claude AI client using the native Anthropic Messages API.
+
+    Supports extended thinking, request cancellation, and streaming.
+    """
+
     def __init__(self, config: AppConfig) -> None:
         import anthropic as _anthropic
 
@@ -596,8 +601,12 @@ class AnthropicAIClient(BaseAIClient):
         self._model = config.ai_model_name or DEFAULT_MODELS["anthropic"]
         self._max_tokens = config.ai_max_tokens
         self._config = config
+        self._thinking_mode = config.ai_thinking_mode
         self._total_input_tokens = 0
         self._total_output_tokens = 0
+        self._cancel_lock = threading.Lock()
+        self._active_stream = None
+        self._last_response_meta: dict = {}
 
     @property
     def total_tokens(self) -> dict:
@@ -606,6 +615,10 @@ class AnthropicAIClient(BaseAIClient):
             "output": self._total_output_tokens,
             "estimated_cost": self._estimate_cost(),
         }
+
+    @property
+    def last_response_meta(self) -> dict:
+        return self._last_response_meta
 
     def _estimate_cost(self) -> float:
         model = self._model.lower()
@@ -628,6 +641,84 @@ class AnthropicAIClient(BaseAIClient):
                 4,
             )
 
+    def _build_create_kwargs(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+    ) -> dict:
+        """Build kwargs for messages.create(), adding thinking params when enabled."""
+        kwargs: dict = {
+            "model": self._model,
+            "max_tokens": max_tokens,
+            "system": system_prompt,
+            "messages": [{"role": "user", "content": user_prompt}],
+        }
+        if self._thinking_mode:
+            # Extended thinking requires temperature=1 and uses a budget_tokens param
+            thinking_budget = max(1024, max_tokens)
+            kwargs["temperature"] = 1
+            kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": thinking_budget,
+            }
+            # Increase max_tokens to accommodate thinking + response
+            kwargs["max_tokens"] = max(max_tokens * 4, 8192)
+        return kwargs
+
+    def _extract_response(self, response) -> tuple[str, str]:
+        """Extract text and thinking content from an Anthropic response.
+
+        Returns (text_content, thinking_text).
+        """
+        text_parts: list[str] = []
+        thinking_parts: list[str] = []
+
+        for block in response.content:
+            if block.type == "thinking":
+                thinking_parts.append(block.thinking)
+            elif block.type == "text":
+                text_parts.append(block.text)
+
+        text = "\n".join(text_parts)
+        thinking = "\n\n".join(thinking_parts)
+
+        # Also extract <think> tags from text if not using native thinking
+        if not thinking:
+            parsed_thinking, cleaned_text = _extract_thinking(text)
+            if parsed_thinking:
+                return cleaned_text, parsed_thinking
+
+        return text, thinking
+
+    def _track_response(self, response, label: str = "API") -> None:
+        """Track token usage and log the response."""
+        self._total_input_tokens += response.usage.input_tokens
+        self._total_output_tokens += response.usage.output_tokens
+        self._last_response_meta = {
+            "model": response.model,
+            "stop_reason": response.stop_reason,
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+        }
+        logger.info(
+            f"Anthropic {label}: {response.usage.input_tokens} input, "
+            f"{response.usage.output_tokens} output tokens"
+        )
+
+    def cancel_active_request(self) -> bool:
+        """Cancel the active streaming request if one is in flight."""
+        with self._cancel_lock:
+            stream = self._active_stream
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+                self._active_stream = None
+                return True
+        return False
+
     def rewrite_product(
         self,
         product: Product,
@@ -635,25 +726,16 @@ class AnthropicAIClient(BaseAIClient):
         target_keywords: Optional[List[str]] = None,
     ) -> SeoSuggestion:
         request = build_product_rewrite_request(
-            self._config,
-            "anthropic",
-            product,
-            score,
-            target_keywords,
+            self._config, "anthropic", product, score, target_keywords,
         )
-        response = self._client.messages.create(
-            model=self._model,
-            max_tokens=request["max_tokens"],
-            system=request["system_prompt"],
-            messages=[{"role": "user", "content": request["user_prompt"]}],
+        kwargs = self._build_create_kwargs(
+            request["system_prompt"], request["user_prompt"], request["max_tokens"],
         )
-        self._total_input_tokens += response.usage.input_tokens
-        self._total_output_tokens += response.usage.output_tokens
-        logger.info(
-            f"Anthropic API call: {response.usage.input_tokens} input, "
-            f"{response.usage.output_tokens} output tokens"
-        )
-        result, thinking_text = _parse_response_text(response.content[0].text)
+        response = self._client.messages.create(**kwargs)
+        self._track_response(response, "rewrite")
+        raw_text, thinking_text = self._extract_response(response)
+        result, extra_thinking = _parse_response_text(raw_text)
+        thinking_text = _merge_thinking_text(thinking_text, extra_thinking)
         return _build_suggestion(product, result, thinking_text)
 
     def rewrite_field(
@@ -664,21 +746,16 @@ class AnthropicAIClient(BaseAIClient):
         target_keywords: Optional[List[str]] = None,
     ) -> str | tuple[str, str]:
         request = build_field_rewrite_request(
-            self._config,
-            "anthropic",
-            field,
-            product,
-            target_keywords,
+            self._config, "anthropic", field, product, target_keywords,
         )
-        response = self._client.messages.create(
-            model=self._model,
-            max_tokens=request["max_tokens"],
-            system=request["system_prompt"],
-            messages=[{"role": "user", "content": request["user_prompt"]}],
+        kwargs = self._build_create_kwargs(
+            request["system_prompt"], request["user_prompt"], request["max_tokens"],
         )
-        self._total_input_tokens += response.usage.input_tokens
-        self._total_output_tokens += response.usage.output_tokens
-        result, thinking_text = _parse_response_text(response.content[0].text)
+        response = self._client.messages.create(**kwargs)
+        self._track_response(response, f"field:{field}")
+        raw_text, thinking_text = self._extract_response(response)
+        result, extra_thinking = _parse_response_text(raw_text)
+        thinking_text = _merge_thinking_text(thinking_text, extra_thinking)
         result_key = FIELD_RESULT_KEYS.get(field, field)
         value = result.get(result_key, "")
         if thinking_text:
@@ -692,91 +769,73 @@ class AnthropicAIClient(BaseAIClient):
         target_keywords: Optional[List[str]] = None,
     ) -> SeoSuggestion:
         request = build_geo_rewrite_request(
-            self._config,
-            "anthropic",
-            product,
-            score,
-            target_keywords,
+            self._config, "anthropic", product, score, target_keywords,
         )
-        response = self._client.messages.create(
-            model=self._model,
-            max_tokens=request["max_tokens"],
-            system=request["system_prompt"],
-            messages=[{"role": "user", "content": request["user_prompt"]}],
+        kwargs = self._build_create_kwargs(
+            request["system_prompt"], request["user_prompt"], request["max_tokens"],
         )
-        self._total_input_tokens += response.usage.input_tokens
-        self._total_output_tokens += response.usage.output_tokens
-        logger.info(
-            f"Anthropic GEO API call: {response.usage.input_tokens} input, "
-            f"{response.usage.output_tokens} output tokens"
-        )
-        result, thinking_text = _parse_response_text(response.content[0].text)
+        response = self._client.messages.create(**kwargs)
+        self._track_response(response, "GEO rewrite")
+        raw_text, thinking_text = self._extract_response(response)
+        result, extra_thinking = _parse_response_text(raw_text)
+        thinking_text = _merge_thinking_text(thinking_text, extra_thinking)
         return _build_suggestion(product, result, thinking_text)
 
     def translate_description_to_en(self, product: Product) -> str | tuple[str, str]:
         request = build_en_translation_request(
-            self._config,
-            self._provider,
-            product,
+            self._config, "anthropic", product,
         )
-        thinking_mode = self._config.ai_thinking_mode
-        max_tokens = request["max_tokens"]
-        user_prompt = request["user_prompt"]
-        system_content = request["system_prompt"]
-
-        if self._provider == "lm-studio":
-            try:
-                raw_text, native_thinking = self._lm_studio_chat(
-                    system_prompt=system_content,
-                    user_prompt=user_prompt,
-                    max_tokens=max_tokens,
-                    thinking_mode=thinking_mode,
-                )
-                result, parsed_thinking = _parse_response_text(raw_text)
-                value = result.get("suggested_description_en", "")
-                thinking_text = _merge_thinking_text(native_thinking, parsed_thinking)
-                if thinking_text:
-                    return value, thinking_text
-                return value
-            except _LMStudioNativeUnavailable:
-                logger.warning(
-                    "LM Studio native REST API kullanilamadi; OpenAI-compatible /v1 yoluna geri dusuluyor"
-                )
-
-        create_kwargs = dict(
-            model=self._model,
-            max_tokens=max_tokens,
-            temperature=self._temperature,
-            messages=[
-                {"role": "system", "content": system_content},
-                {"role": "user", "content": user_prompt},
-            ],
+        kwargs = self._build_create_kwargs(
+            request["system_prompt"], request["user_prompt"], request["max_tokens"],
         )
-
-        try:
-            response = self._client.chat.completions.create(**create_kwargs)
-        except Exception as api_err:
-            logger.error(f"{self._provider} en translation failed: {api_err}")
-            raise
-
-        self._track_usage(response)
-        finish_reason = getattr(response.choices[0], "finish_reason", None) if response.choices else None
-        self._last_response_meta["finish_reason"] = finish_reason or ""
-        self._last_response_meta["model"] = self._model
-
-        if not response.choices:
-            raise ValueError(f"{self._provider} yanit dondurmedi (choices bos)")
-
-        message = response.choices[0].message
-        raw_text = (message.content or "") if message else ""
-        if not raw_text.strip():
-            raise ValueError(f"{self._provider} bos icerik dondu")
-
-        result, thinking_text = _parse_response_text(raw_text)
+        response = self._client.messages.create(**kwargs)
+        self._track_response(response, "EN translation")
+        raw_text, thinking_text = self._extract_response(response)
+        result, extra_thinking = _parse_response_text(raw_text)
+        thinking_text = _merge_thinking_text(thinking_text, extra_thinking)
         value = result.get("suggested_description_en", "")
         if thinking_text:
             return value, thinking_text
         return value
+
+    def stream_message(self, system_prompt: str, user_prompt: str, max_tokens: int | None = None):
+        """Stream a message response, yielding text chunks.
+
+        Yields tuples of (event_type, content) where event_type is
+        'text', 'thinking', or 'done'.
+        """
+        effective_max = max_tokens or self._max_tokens
+        kwargs = self._build_create_kwargs(system_prompt, user_prompt, effective_max)
+        kwargs["stream"] = True
+
+        with self._client.messages.stream(**{k: v for k, v in kwargs.items() if k != "stream"}) as stream:
+            with self._cancel_lock:
+                self._active_stream = stream
+
+            try:
+                for event in stream:
+                    if hasattr(event, "type"):
+                        if event.type == "content_block_start":
+                            block = event.content_block
+                            if hasattr(block, "type") and block.type == "thinking":
+                                yield ("thinking_start", "")
+                        elif event.type == "content_block_delta":
+                            delta = event.delta
+                            if hasattr(delta, "type"):
+                                if delta.type == "thinking_delta":
+                                    yield ("thinking", delta.thinking)
+                                elif delta.type == "text_delta":
+                                    yield ("text", delta.text)
+                        elif event.type == "message_stop":
+                            pass
+
+                final_message = stream.get_final_message()
+                self._track_response(final_message, "stream")
+                yield ("done", "")
+            finally:
+                with self._cancel_lock:
+                    if self._active_stream is stream:
+                        self._active_stream = None
 
 class OpenAICompatibleClient(BaseAIClient):
     """Handles OpenAI, Gemini (OpenAI-compat), OpenRouter, Ollama, and Custom endpoints."""
