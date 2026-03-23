@@ -3,9 +3,10 @@ import aiosqlite
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncIterator, Iterable, List, Optional, Sequence
+from typing import Any, AsyncIterator, Iterable, List, Optional, Sequence
+from uuid import uuid4
 
-from core.models import Product, SeoScore, SeoSuggestion
+from core.models import LlmsEntry, LlmsJob, Product, SeoScore, SeoSuggestion
 
 DB_PATH = Path(__file__).parent.parent / "seo_optimizer.db"
 
@@ -42,6 +43,33 @@ CREATE TABLE IF NOT EXISTS operation_log (
     created_at TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS llms_jobs (
+    id TEXT PRIMARY KEY,
+    status TEXT,
+    total_count INTEGER,
+    processed_count INTEGER DEFAULT 0,
+    failed_count INTEGER DEFAULT 0,
+    skipped_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    last_error TEXT,
+    options JSON
+);
+
+CREATE TABLE IF NOT EXISTS llms_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id TEXT,
+    product_id TEXT,
+    summary TEXT,
+    status TEXT,
+    error TEXT,
+    tokens_input INTEGER DEFAULT 0,
+    tokens_output INTEGER DEFAULT 0,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    FOREIGN KEY(job_id) REFERENCES llms_jobs(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_seo_scores_product_created_at
 ON seo_scores(product_id, created_at DESC);
 
@@ -53,6 +81,15 @@ ON suggestions(product_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_operation_log_created_at
 ON operation_log(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_llms_entries_status
+ON llms_entries(status);
+
+CREATE INDEX IF NOT EXISTS idx_llms_entries_product
+ON llms_entries(product_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_llms_entries_job_product
+ON llms_entries(job_id, product_id);
 
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -429,3 +466,394 @@ async def set_settings(values: dict[str, str]) -> None:
             [(k, v, now) for k, v in values.items()],
         )
         await conn.commit()
+
+
+# ── llms.txt storage helpers ───────────────────────────────────────────────────
+
+
+def _row_to_llms_job(row) -> LlmsJob:
+    return LlmsJob(
+        id=row["id"],
+        status=row["status"],
+        total_count=int(row["total_count"] or 0),
+        processed_count=int(row["processed_count"] or 0),
+        failed_count=int(row["failed_count"] or 0),
+        skipped_count=int(row["skipped_count"] or 0),
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
+        last_error=row["last_error"],
+        options=json.loads(row["options"] or "{}"),
+    )
+
+
+def _row_to_llms_entry(row) -> LlmsEntry:
+    return LlmsEntry(
+        id=int(row["id"]),
+        job_id=row["job_id"],
+        product_id=row["product_id"],
+        summary=row["summary"] or "",
+        status=row["status"],
+        error=row["error"] or "",
+        tokens_input=int(row["tokens_input"] or 0),
+        tokens_output=int(row["tokens_output"] or 0),
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
+    )
+
+
+async def get_llms_processed_product_ids() -> set[str]:
+    async with connection() as conn:
+        async with conn.execute(
+            "SELECT DISTINCT product_id FROM llms_entries WHERE status = 'done'"
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {row["product_id"] for row in rows}
+
+
+async def get_llms_latest_job(statuses: Sequence[str] | None = None) -> Optional[LlmsJob]:
+    query = "SELECT * FROM llms_jobs"
+    params: list[Any] = []
+    if statuses:
+        placeholders = ", ".join("?" for _ in statuses)
+        query += f" WHERE status IN ({placeholders})"
+        params.extend(statuses)
+    query += " ORDER BY created_at DESC LIMIT 1"
+
+    async with connection() as conn:
+        async with conn.execute(query, params) as cursor:
+            row = await cursor.fetchone()
+    return _row_to_llms_job(row) if row else None
+
+
+async def get_llms_job(job_id: str) -> Optional[LlmsJob]:
+    async with connection() as conn:
+        async with conn.execute("SELECT * FROM llms_jobs WHERE id = ?", (job_id,)) as cursor:
+            row = await cursor.fetchone()
+    return _row_to_llms_job(row) if row else None
+
+
+async def create_llms_job(product_ids: Sequence[str], options: dict[str, Any] | None = None) -> LlmsJob:
+    if not product_ids:
+        raise ValueError("No products to process for llms.txt")
+
+    now = _now_iso()
+    job_id = str(uuid4())
+    options_json = json.dumps(options or {})
+
+    entry_rows = [
+        (job_id, pid, "", "pending", "", 0, 0, now, now)
+        for pid in product_ids
+    ]
+
+    async with connection() as conn:
+        await conn.execute(
+            """
+            INSERT INTO llms_jobs (
+                id, status, total_count, processed_count, failed_count, skipped_count,
+                created_at, updated_at, last_error, options
+            ) VALUES (?, 'queued', ?, 0, 0, 0, ?, ?, NULL, ?)
+            """,
+            (job_id, len(product_ids), now, now, options_json),
+        )
+        await conn.executemany(
+            """
+            INSERT INTO llms_entries (
+                job_id, product_id, summary, status, error,
+                tokens_input, tokens_output, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            entry_rows,
+        )
+        await conn.commit()
+
+    return LlmsJob(
+        id=job_id,
+        status="queued",
+        total_count=len(product_ids),
+        processed_count=0,
+        failed_count=0,
+        skipped_count=0,
+        created_at=datetime.fromisoformat(now),
+        updated_at=datetime.fromisoformat(now),
+        last_error=None,
+        options=options or {},
+    )
+
+
+async def update_llms_job_status(job_id: str, status: str, last_error: str | None = None) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            "UPDATE llms_jobs SET status = ?, last_error = ?, updated_at = ? WHERE id = ?",
+            (status, last_error, _now_iso(), job_id),
+        )
+        await conn.commit()
+
+
+async def refresh_llms_job_counters(job_id: str) -> Optional[LlmsJob]:
+    async with connection() as conn:
+        async with conn.execute(
+            """
+            SELECT
+                SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS processed_count,
+                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count,
+                SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) AS processing_count,
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_count
+            FROM llms_entries
+            WHERE job_id = ?
+            """,
+            (job_id,),
+            ) as cursor:
+            row = await cursor.fetchone()
+
+        if row is None:
+            return None
+
+        processed = int(row["processed_count"] or 0)
+        failed = int(row["failed_count"] or 0)
+        skipped = 0
+        await conn.execute(
+            """
+            UPDATE llms_jobs
+            SET processed_count = ?, failed_count = ?, skipped_count = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (processed, failed, skipped, _now_iso(), job_id),
+        )
+        await conn.commit()
+
+    return await get_llms_job(job_id)
+
+
+async def claim_next_llms_entry(job_id: str) -> Optional[LlmsEntry]:
+    async with connection() as conn:
+        async with conn.execute(
+            """
+            SELECT * FROM llms_entries
+            WHERE job_id = ? AND status = 'pending'
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            (job_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+
+        if not row:
+            return None
+
+        now = _now_iso()
+        await conn.execute(
+            "UPDATE llms_entries SET status = 'processing', updated_at = ? WHERE id = ?",
+            (now, row["id"]),
+        )
+        await conn.commit()
+
+    entry = _row_to_llms_entry(row)
+    return entry.model_copy(update={"status": "processing"})
+
+
+async def reset_llms_processing_entries(job_id: str) -> None:
+    """Reset entries stuck in 'processing' back to 'pending' (e.g., after pause/stop)."""
+    async with connection() as conn:
+        await conn.execute(
+            "UPDATE llms_entries SET status = 'pending', updated_at = ? WHERE job_id = ? AND status = 'processing'",
+            (_now_iso(), job_id),
+        )
+        await conn.commit()
+
+
+async def save_llms_entry_success(entry_id: int, summary: str, tokens_input: int = 0, tokens_output: int = 0) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            """
+            UPDATE llms_entries
+            SET summary = ?, status = 'done', error = '', tokens_input = ?, tokens_output = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (summary, tokens_input, tokens_output, _now_iso(), entry_id),
+        )
+        await conn.commit()
+
+
+async def save_llms_entry_failure(entry_id: int, error: str) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            """
+            UPDATE llms_entries
+            SET status = 'failed', error = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (error[:400], _now_iso(), entry_id),
+        )
+        await conn.commit()
+
+
+async def get_llms_recent_entries(status: str, limit: int = 10) -> list[LlmsEntry]:
+    async with connection() as conn:
+        async with conn.execute(
+            """
+            SELECT * FROM llms_entries
+            WHERE status = ?
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """,
+            (status, limit),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [_row_to_llms_entry(row) for row in rows]
+
+
+async def ensure_manual_llms_job() -> str:
+    """Ensure a reusable 'manual' llms job exists (used for single re-generations)."""
+    job_id = "manual"
+    now = _now_iso()
+    async with connection() as conn:
+        async with conn.execute("SELECT id FROM llms_jobs WHERE id = ?", (job_id,)) as cursor:
+            row = await cursor.fetchone()
+        if row:
+            return job_id
+        await conn.execute(
+            """
+            INSERT INTO llms_jobs (
+                id, status, total_count, processed_count, failed_count, skipped_count,
+                created_at, updated_at, last_error, options
+            ) VALUES (?, 'completed', 0, 0, 0, 0, ?, ?, NULL, ?)
+            """,
+            (job_id, now, now, json.dumps({"source": "manual"})),
+        )
+        await conn.commit()
+    return job_id
+
+
+async def upsert_llms_entry_summary(
+    product_id: str,
+    summary: str,
+    job_id: str = "manual",
+    tokens_input: int = 0,
+    tokens_output: int = 0,
+) -> LlmsEntry:
+    """Insert or update a summary for a single product (manual regen)."""
+    now = _now_iso()
+    async with connection() as conn:
+        async with conn.execute(
+            """
+            SELECT * FROM llms_entries
+            WHERE product_id = ?
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (product_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+
+        if row:
+            await conn.execute(
+                """
+                UPDATE llms_entries
+                SET summary = ?, status = 'done', error = '', tokens_input = ?, tokens_output = ?, updated_at = ?, job_id = ?
+                WHERE id = ?
+                """,
+                (summary, tokens_input, tokens_output, now, job_id, row["id"]),
+            )
+            entry_id = int(row["id"])
+        else:
+            await conn.execute(
+                """
+                INSERT INTO llms_entries (
+                    job_id, product_id, summary, status, error,
+                    tokens_input, tokens_output, created_at, updated_at
+                ) VALUES (?, ?, ?, 'done', '', ?, ?, ?, ?)
+                """,
+                (job_id, product_id, summary, tokens_input, tokens_output, now, now),
+            )
+            async with conn.execute("SELECT last_insert_rowid() AS id") as cur:
+                entry_id = int((await cur.fetchone())["id"])
+
+        await conn.commit()
+
+    # return latest stored row
+    async with connection() as conn:
+        async with conn.execute("SELECT * FROM llms_entries WHERE id = ?", (entry_id,)) as cursor:
+            stored = await cursor.fetchone()
+    return _row_to_llms_entry(stored)
+
+
+async def get_llms_entries(status: str, limit: int | None = None) -> list[LlmsEntry]:
+    query = """
+        SELECT * FROM llms_entries
+        WHERE status = ?
+        ORDER BY updated_at DESC
+    """
+    params: list[Any] = [status]
+    if limit is not None:
+        query += " LIMIT ?"
+        params.append(limit)
+
+    async with connection() as conn:
+        async with conn.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+    return [_row_to_llms_entry(row) for row in rows]
+
+
+async def get_llms_latest_summaries_map() -> dict[str, LlmsEntry]:
+    """Return latest completed summary per product."""
+    async with connection() as conn:
+        async with conn.execute(
+            "SELECT * FROM llms_entries WHERE status = 'done' ORDER BY updated_at DESC"
+        ) as cursor:
+            rows = await cursor.fetchall()
+    latest: dict[str, LlmsEntry] = {}
+    for row in rows:
+        product_id = row["product_id"]
+        if product_id not in latest:
+            latest[product_id] = _row_to_llms_entry(row)
+    return latest
+
+
+async def get_llms_unprocessed_products(limit: int = 20) -> list[Product]:
+    processed_ids = await get_llms_processed_product_ids()
+    placeholders = ", ".join("?" for _ in processed_ids) if processed_ids else ""
+    query = "SELECT data FROM products"
+    params: list[Any] = []
+    if processed_ids:
+        query += f" WHERE id NOT IN ({placeholders})"
+        params.extend(processed_ids)
+    query += " ORDER BY fetched_at DESC"
+    if limit:
+        query += " LIMIT ?"
+        params.append(limit)
+
+    async with connection() as conn:
+        async with conn.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+    return [Product.model_validate_json(row["data"]) for row in rows]
+
+
+async def get_llms_dashboard_counts() -> dict[str, int]:
+    async with connection() as conn:
+        async with conn.execute("SELECT COUNT(*) AS count FROM products") as cursor:
+            total_row = await cursor.fetchone()
+        async with conn.execute(
+            "SELECT COUNT(DISTINCT product_id) AS count FROM llms_entries WHERE status = 'done'"
+        ) as cursor:
+            processed_row = await cursor.fetchone()
+        async with conn.execute(
+            "SELECT COUNT(*) AS count FROM llms_entries WHERE status IN ('pending','processing')"
+        ) as cursor:
+            pending_row = await cursor.fetchone()
+        async with conn.execute(
+            "SELECT COUNT(*) AS count FROM llms_entries WHERE status = 'failed'"
+        ) as cursor:
+            failed_row = await cursor.fetchone()
+
+    total = int(total_row["count"] or 0) if total_row else 0
+    processed = int(processed_row["count"] or 0) if processed_row else 0
+    pending = int(pending_row["count"] or 0) if pending_row else 0
+    failed = int(failed_row["count"] or 0) if failed_row else 0
+    unprocessed = max(total - processed, 0)
+    return {
+        "total_products": total,
+        "processed": processed,
+        "pending": pending,
+        "failed": failed,
+        "unprocessed": unprocessed,
+    }

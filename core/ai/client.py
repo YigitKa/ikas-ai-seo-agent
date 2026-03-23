@@ -445,6 +445,42 @@ def build_geo_rewrite_request(
     }
 
 
+def build_llms_summary_request(
+    config: AppConfig,
+    provider: str,
+    product: Product,
+) -> dict:
+    """Build prompt for llms.txt product summary."""
+    is_local = provider in ("ollama", "lm-studio")
+    desc_limit = 1200 if is_local else 1800
+    raw_desc, _ = _prepare_prompt_descriptions(product, desc_limit)
+
+    system_content = load_prompt_template("llms_summary_system")
+    if is_local and not config.ai_thinking_mode:
+        system_content += (
+            "\n\nONEMLI: Dusunme surecini YAZMA. SADECE JSON ver. /no_think"
+        )
+
+    user_prompt = render_prompt_template(
+        load_prompt_template("llms_summary_user"),
+        {
+            "store_name": config.ikas_store_name or "Magaza",
+            "name": product.name,
+            "description": raw_desc or "Belirtilmemis",
+            "category": product.category or "Belirtilmemis",
+            "price": f"{product.price:.2f} TL" if product.price is not None else "Belirsiz",
+            "tags": ", ".join(product.tags) if getattr(product, "tags", None) else "Etiket yok",
+        },
+    )
+
+    max_tokens = min(512, max(128, config.ai_max_tokens))
+    return {
+        "system_prompt": system_content,
+        "user_prompt": user_prompt,
+        "max_tokens": max_tokens,
+    }
+
+
 def build_field_rewrite_request(
     config: AppConfig,
     provider: str,
@@ -538,6 +574,10 @@ class BaseAIClient:
     ) -> SeoSuggestion:
         raise NotImplementedError
 
+    def summarize_for_llms(self, product: Product) -> str | tuple[str, str]:
+        """Produce an information-dense summary for llms.txt."""
+        raise NotImplementedError
+
     def rewrite_products_batch(
         self,
         products: List[tuple[Product, SeoScore]],
@@ -587,6 +627,11 @@ class NoneAIClient(BaseAIClient):
             "AI provider 'none' secildi. GEO yeniden yazma icin Ayarlar'dan bir provider secin."
         )
 
+    def summarize_for_llms(self, product):
+        raise RuntimeError(
+            "AI provider 'none' secildi. llms.txt ozetleri icin Ayarlar'dan bir provider secin."
+        )
+
 class AnthropicAIClient(BaseAIClient):
     def __init__(self, config: AppConfig) -> None:
         import anthropic as _anthropic
@@ -598,6 +643,9 @@ class AnthropicAIClient(BaseAIClient):
         self._config = config
         self._total_input_tokens = 0
         self._total_output_tokens = 0
+        self._last_input_tokens = 0
+        self._last_output_tokens = 0
+        self._last_response_meta: dict = {}
 
     @property
     def total_tokens(self) -> dict:
@@ -605,6 +653,13 @@ class AnthropicAIClient(BaseAIClient):
             "input": self._total_input_tokens,
             "output": self._total_output_tokens,
             "estimated_cost": self._estimate_cost(),
+        }
+
+    @property
+    def last_usage(self) -> dict:
+        return {
+            "input": self._last_input_tokens,
+            "output": self._last_output_tokens,
         }
 
     def _estimate_cost(self) -> float:
@@ -647,6 +702,8 @@ class AnthropicAIClient(BaseAIClient):
             system=request["system_prompt"],
             messages=[{"role": "user", "content": request["user_prompt"]}],
         )
+        self._last_input_tokens = response.usage.input_tokens
+        self._last_output_tokens = response.usage.output_tokens
         self._total_input_tokens += response.usage.input_tokens
         self._total_output_tokens += response.usage.output_tokens
         logger.info(
@@ -676,6 +733,8 @@ class AnthropicAIClient(BaseAIClient):
             system=request["system_prompt"],
             messages=[{"role": "user", "content": request["user_prompt"]}],
         )
+        self._last_input_tokens = response.usage.input_tokens
+        self._last_output_tokens = response.usage.output_tokens
         self._total_input_tokens += response.usage.input_tokens
         self._total_output_tokens += response.usage.output_tokens
         result, thinking_text = _parse_response_text(response.content[0].text)
@@ -704,6 +763,8 @@ class AnthropicAIClient(BaseAIClient):
             system=request["system_prompt"],
             messages=[{"role": "user", "content": request["user_prompt"]}],
         )
+        self._last_input_tokens = response.usage.input_tokens
+        self._last_output_tokens = response.usage.output_tokens
         self._total_input_tokens += response.usage.input_tokens
         self._total_output_tokens += response.usage.output_tokens
         logger.info(
@@ -712,6 +773,24 @@ class AnthropicAIClient(BaseAIClient):
         )
         result, thinking_text = _parse_response_text(response.content[0].text)
         return _build_suggestion(product, result, thinking_text)
+
+    def summarize_for_llms(self, product: Product) -> str | tuple[str, str]:
+        request = build_llms_summary_request(self._config, "anthropic", product)
+        response = self._client.messages.create(
+            model=self._model,
+            max_tokens=request["max_tokens"],
+            system=request["system_prompt"],
+            messages=[{"role": "user", "content": request["user_prompt"]}],
+        )
+        self._last_input_tokens = response.usage.input_tokens
+        self._last_output_tokens = response.usage.output_tokens
+        self._total_input_tokens += response.usage.input_tokens
+        self._total_output_tokens += response.usage.output_tokens
+        result, thinking_text = _parse_response_text(response.content[0].text)
+        summary = result.get("summary") or result.get("llms_summary") or result.get("content") or ""
+        if thinking_text:
+            return summary, thinking_text
+        return summary
 
     def translate_description_to_en(self, product: Product) -> str | tuple[str, str]:
         request = build_en_translation_request(
@@ -1107,6 +1186,54 @@ class OpenAICompatibleClient(BaseAIClient):
         logger.debug(f"{self._provider} raw response: {raw_text[:500]}")
         result, thinking_text = _parse_response_text(raw_text)
         return _build_suggestion(product, result, thinking_text)
+
+    def summarize_for_llms(self, product: Product) -> str | tuple[str, str]:
+        request = build_llms_summary_request(self._config, self._provider, product)
+        thinking_mode = self._config.ai_thinking_mode
+        max_tokens = request["max_tokens"]
+        user_prompt = request["user_prompt"]
+        system_content = request["system_prompt"]
+
+        if self._provider == "lm-studio":
+            try:
+                raw_text, native_thinking = self._lm_studio_chat(
+                    system_prompt=system_content,
+                    user_prompt=user_prompt,
+                    max_tokens=max_tokens,
+                    thinking_mode=thinking_mode,
+                )
+                result, parsed_thinking = _parse_response_text(raw_text)
+                summary = result.get("summary") or result.get("llms_summary") or result.get("content") or ""
+                return summary, _merge_thinking_text(native_thinking, parsed_thinking)
+            except _LMStudioNativeUnavailable:
+                logger.warning("LM Studio native REST API kullanilamadi; OpenAI-compatible /v1 yoluna geciliyor")
+
+        create_kwargs = dict(
+            model=self._model,
+            max_tokens=max_tokens,
+            temperature=self._temperature,
+            messages=[
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+
+        response = self._client.chat.completions.create(**create_kwargs)
+        self._track_usage(response)
+
+        if not response.choices:
+            raise ValueError(f"{self._provider} yanit dondurmedi (choices bos)")
+
+        message = response.choices[0].message
+        raw_text = (message.content or "") if message else ""
+        if not raw_text.strip():
+            raise ValueError(f"{self._provider} bos icerik dondu")
+
+        result, thinking_text = _parse_response_text(raw_text)
+        summary = result.get("summary") or result.get("llms_summary") or result.get("content") or ""
+        if thinking_mode and thinking_text:
+            return summary, thinking_text
+        return summary
 
     def rewrite_product_for_geo(
         self,

@@ -13,8 +13,9 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.dependencies import close_manager
-from api.routers import products, seo, suggestions, settings, chat
+from api.routers import products, seo, suggestions, settings, chat, llms
 from data import db
+from core.llms.service import llms_service
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class SPAStaticFiles(StaticFiles):
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting ikas AI SEO Agent API")
     await db.init_db()
+    await llms_service.bootstrap()
     yield
     await close_manager()
     logger.info("Shut down ikas AI SEO Agent API")
@@ -61,6 +63,7 @@ app.include_router(products.router, prefix="/api/products", tags=["products"])
 app.include_router(seo.router, prefix="/api/seo", tags=["seo"])
 app.include_router(suggestions.router, prefix="/api/suggestions", tags=["suggestions"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
+app.include_router(llms.router, prefix="/api/llms", tags=["llms"])
 app.include_router(chat.router, tags=["chat"])
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
@@ -10,7 +11,6 @@ from fastapi.responses import PlainTextResponse
 from api.dependencies import get_manager
 from api.schemas import GeoAuditRequest, GeoAuditResponse, MessageResponse, ScoreResponse
 from config.settings import get_config
-from core.utils.html import html_to_plain_text
 from core.seo.geo_audit import GeoAuditor
 from core.product_manager import ProductManager
 from data import db
@@ -58,20 +58,25 @@ async def get_score(
 
 @router.get("/generate-llms-txt", response_class=PlainTextResponse)
 async def generate_llms_txt() -> str:
-    """Generate a llms.txt file for the store, grouped by category."""
+    """Generate a llms.txt file for the store, using saved AI summaries."""
     config = get_config()
     store_name = config.ikas_store_name or "Magaza"
 
     products = await db.get_all_products()
+    summaries = await db.get_llms_latest_summaries_map()
+    processed_ids = set(summaries.keys())
 
     by_category: dict[str, list] = defaultdict(list)
     for product in products:
+        if product.id not in processed_ids:
+            continue
         category = product.category or "Genel"
         by_category[category].append(product)
 
     lines: list[str] = [
-        f"# {store_name}",
-        "> Bu dosya yapay zeka asistanlari icin optimize edilmistir.",
+        f"# {store_name} llms.txt",
+        f"> Ozette {len(processed_ids)}/{len(products)} urun var. Son uretim: {datetime.now().isoformat(timespec='seconds')}",
+        "> Bilgi yogun, pazarlama dilinden arinmis ozetler içerir.",
         "",
         "## Kategoriler ve Urunler",
     ]
@@ -79,15 +84,18 @@ async def generate_llms_txt() -> str:
     for category in sorted(by_category.keys()):
         lines.append(f"\n### {category}")
         for product in by_category[category]:
-            plain_desc = html_to_plain_text(product.description).strip()
-            short_desc = plain_desc[:100] if plain_desc else ""
+            summary_entry = summaries.get(product.id)
+            if not summary_entry:
+                continue
             price_str = f"{product.price:.2f} TL" if product.price is not None else ""
-            entry = f"- {product.name}"
-            if short_desc:
-                entry += f": {short_desc}"
+            parts = [f"- {product.name}"]
             if price_str:
-                entry += f" - {price_str}"
-            lines.append(entry)
+                parts.append(f"Fiyat: {price_str}")
+            parts.append(summary_entry.summary.strip())
+            lines.append(" | ".join(parts))
+
+    if len(processed_ids) == 0:
+        lines.append("# Henüz ozetlenmis urun yok. llms.txt islerini baslatin.")
 
     return "\n".join(lines) + "\n"
 

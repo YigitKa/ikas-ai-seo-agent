@@ -15,6 +15,8 @@ PROMPT_FILES = {
     "translation_user": "translation_en.user.txt",
     "geo_rewrite_system": "geo_rewrite.system.txt",
     "geo_rewrite_user": "geo_rewrite.user.txt",
+    "llms_summary_system": "llms_summary.system.txt",
+    "llms_summary_user": "llms_summary.user.txt",
 }
 
 PROMPT_EDITOR_GROUPS = [
@@ -37,6 +39,13 @@ PROMPT_EDITOR_GROUPS = [
         (
             "geo_rewrite_system",
             "geo_rewrite_user",
+        ),
+    ),
+    (
+        "llms.txt Ozet",
+        (
+            "llms_summary_system",
+            "llms_summary_user",
         ),
     ),
 ]
@@ -98,6 +107,24 @@ Hedef Keywordler: {{keywords}}
 Bu urunu GEO (Generative Engine Optimization) icin yeniden yaz. AI botlarinin kolayca anlayip alintilayabilecegi, objektif ve bilgi yogun bir icerik olustur.
 SADECE JSON dondur:
 {"suggested_description": "..."}""",
+    "llms_summary_system": """Sen AI botlari icin llms.txt dosyasi hazirlayan bir ozet motorusun.
+
+Kurallar:
+- Pazarlama tonu kullanma; nesnel, bilgi yogun yaz
+- 70-110 kelime arasi tek paragrafa + gerekirse 2-4 madde imine sigdir
+- Urunun en net ozelliklerini, materyal/olcu/uyumluluk gibi scan edilebilir bilgilerle sun
+- Fiyat, sku veya kategori bilgisi verilirse ekle ama tahmin etme
+- HTML veya markdown kullanma; yalnizca duz metin
+- Cikti SADECE JSON olsun: {"summary": "..."}""",
+    "llms_summary_user": """Magaza: {{store_name}}
+Urun Adi: {{name}}
+Kategori: {{category}}
+Fiyat: {{price}}
+Etiketler: {{tags}}
+Ham Aciklama: {{description}}
+
+Bu urunu llms.txt icin ozetle. Kurallara uy, veri uydurma. Yalnizca JSON dondur:
+{"summary": "..."}""",
 }
 
 AGENT_SEO_EXPERT_PROMPT_TR = """Sen ikas e-ticaret altyapısı için uzman bir SEO Metin Yazarısın. Amacın ürün başlıklarını, açıklamalarını ve meta etiketlerini satış odaklı ve yaratıcı bir dille optimize etmektir. Teknik mağaza verileriyle (stok, sipariş) ilgilenmezsin. Yanıtların yaratıcı, ikna edici ve SEO kurallarına (keyword yoğunluğu vb.) %100 uygun olmalıdır.
@@ -245,6 +272,18 @@ PROMPT_EDITOR_META = {
         "variables": ("name", "description", "category", "issues", "keywords"),
         "height": 170,
     },
+    "llms_summary_system": {
+        "title": "llms.txt System Prompt",
+        "description": "AI botlari icin bilgi yogun ozetin tonunu ve kurallarini belirler.",
+        "variables": (),
+        "height": 140,
+    },
+    "llms_summary_user": {
+        "title": "llms.txt User Prompt",
+        "description": "Tek tek urunlerden llms.txt icin ozet uretir.",
+        "variables": ("store_name", "name", "description", "category", "price", "tags"),
+        "height": 200,
+    },
 }
 
 README_TEXT = """Bu klasordeki prompt dosyalari uygulama tarafindan her AI isteginde yeniden okunur.
@@ -254,10 +293,13 @@ Ozellestirebilecegin dosyalar:
 - description_rewrite.user.txt
 - translation_en.system.txt
 - translation_en.user.txt
+- llms_summary.system.txt
+- llms_summary.user.txt
 
 Kullanilabilir degiskenler:
 - description_rewrite.user.txt: {{name}}, {{description}}, {{category}}, {{keywords}}
 - translation_en.user.txt: {{name}}, {{description}}, {{category}}
+- llms_summary.user.txt: {{store_name}}, {{name}}, {{description}}, {{category}}, {{price}}, {{tags}}
 
 Notlar:
 - JSON orneklerini normal sekilde yazabilirsin. Cift kacis gerekmiyor.

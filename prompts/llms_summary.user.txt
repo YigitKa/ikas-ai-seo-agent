@@ -1,0 +1,9 @@
+Magaza: {{store_name}}
+Urun Adi: {{name}}
+Kategori: {{category}}
+Fiyat: {{price}}
+Etiketler: {{tags}}
+Ham Aciklama: {{description}}
+
+Bu urunu llms.txt icin ozetle. Kurallara uy, veri uydurma. Yalnizca JSON dondur:
+{"summary": "..."}

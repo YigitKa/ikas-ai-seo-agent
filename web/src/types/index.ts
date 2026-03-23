@@ -196,3 +196,47 @@ export interface ChatWsMessage {
   suggestion_saved?: SuggestionSavedInfo;
   pending_suggestion?: SeoSuggestion | null;
 }
+
+export interface LlmsJob {
+  id: string;
+  status: string;
+  total_count: number;
+  processed_count: number;
+  failed_count: number;
+  skipped_count: number;
+  created_at: string;
+  updated_at: string;
+  last_error?: string | null;
+  options?: Record<string, unknown>;
+}
+
+export interface LlmsEntrySummary {
+  product_id: string;
+  product_name: string;
+  category: string | null;
+  summary: string;
+  status: string;
+  updated_at: string;
+}
+
+export interface LlmsStatus {
+  job: LlmsJob | null;
+  counts: {
+    total_products: number;
+    processed: number;
+    pending: number;
+    failed: number;
+    unprocessed: number;
+  };
+  current: {
+    product_id: string;
+    product_name: string;
+    category: string | null;
+  } | null;
+  latest_processed: LlmsEntrySummary[];
+  unprocessed: {
+    product_id: string;
+    product_name: string;
+    category: string | null;
+  }[];
+}

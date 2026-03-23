@@ -173,3 +173,32 @@ class AgentResult(BaseModel):
     iterations: int = 0
     meta: dict[str, Any] = Field(default_factory=dict)
     suggestion_saved: dict[str, Any] | None = None
+
+
+# ── llms.txt generation models ─────────────────────────────────────────────────
+
+
+class LlmsJob(BaseModel):
+    id: str
+    status: str
+    total_count: int
+    processed_count: int = 0
+    failed_count: int = 0
+    skipped_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+    last_error: str | None = None
+    options: dict[str, Any] = Field(default_factory=dict)
+
+
+class LlmsEntry(BaseModel):
+    id: int
+    job_id: str
+    product_id: str
+    summary: str = ""
+    status: str = "pending"  # pending | processing | done | failed
+    error: str = ""
+    tokens_input: int = 0
+    tokens_output: int = 0
+    created_at: datetime
+    updated_at: datetime

@@ -116,6 +116,20 @@ export default function DashboardHeader({
       </div>
 
       <div className="flex items-center gap-3">
+        <Link
+          to="/llms"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold text-white transition-all hover:translate-y-[-1px]"
+          style={{
+            background: 'linear-gradient(135deg, #06b6d4, #6366f1)',
+            boxShadow: '0 10px 30px rgba(99,102,241,0.28)',
+          }}
+        >
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h10M4 17h7" />
+          </svg>
+          llms Studio
+        </Link>
+
         <span className="text-[10px] tabular-nums" style={{ color: 'var(--color-text-muted)', opacity: 0.6 }}>
           build {new Date(__BUILD_TIME__).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
         </span>

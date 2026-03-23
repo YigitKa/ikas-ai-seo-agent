@@ -26,6 +26,9 @@ import type {
   SeoSuggestion,
   SeoScore,
   MCPStatus,
+  LlmsStatus,
+  LlmsJob,
+  LlmsEntrySummary,
 } from '../types';
 
 export async function fetchProducts(
@@ -59,6 +62,42 @@ export async function generateLlmsTxt(): Promise<string> {
     throw new Error(body.detail || `HTTP ${res.status}`);
   }
   return res.text();
+}
+
+// ── llms.txt pipeline ─────────────────────────────────────────────────────────
+
+export async function getLlmsStatus(): Promise<LlmsStatus> {
+  return request('/api/llms/status');
+}
+
+export async function startLlmsJob(): Promise<{ job: LlmsJob }> {
+  return request('/api/llms/start', { method: 'POST' });
+}
+
+export async function pauseLlmsJob(): Promise<{ message: string }> {
+  return request('/api/llms/pause', { method: 'POST' });
+}
+
+export async function resumeLlmsJob(): Promise<{ job: LlmsJob }> {
+  return request('/api/llms/resume', { method: 'POST' });
+}
+
+export async function stopLlmsJob(): Promise<{ message: string }> {
+  return request('/api/llms/stop', { method: 'POST' });
+}
+
+export async function listLlmsProcessed(limit?: number): Promise<{ items: LlmsEntrySummary[] }> {
+  const params = typeof limit === 'number' ? `?limit=${limit}` : '';
+  return request(`/api/llms/processed${params}`);
+}
+
+export async function listLlmsPending(limit?: number): Promise<{ items: LlmsEntrySummary[] }> {
+  const params = typeof limit === 'number' ? `?limit=${limit}` : '';
+  return request(`/api/llms/pending${params}`);
+}
+
+export async function regenerateLlmsSummary(productId: string): Promise<{ item: LlmsEntrySummary }> {
+  return request(`/api/llms/regenerate/${productId}`, { method: 'POST' });
 }
 
 export async function analyzeAll(): Promise<{ message: string }> {
