@@ -280,7 +280,7 @@ def test_cost_estimation_haiku():
     client._total_input_tokens = 1_000_000
     client._total_output_tokens = 1_000_000
     cost = client._estimate_cost()
-    assert cost == round(0.80 + 4.0, 4)
+    assert cost == round(1.0 + 5.0, 6)
 
 
 def test_cost_estimation_sonnet():
@@ -289,7 +289,7 @@ def test_cost_estimation_sonnet():
     client._total_input_tokens = 1_000_000
     client._total_output_tokens = 1_000_000
     cost = client._estimate_cost()
-    assert cost == round(3.0 + 15.0, 4)
+    assert cost == round(3.0 + 15.0, 6)
 
 
 def test_cost_estimation_opus():
@@ -298,7 +298,7 @@ def test_cost_estimation_opus():
     client._total_input_tokens = 1_000_000
     client._total_output_tokens = 1_000_000
     cost = client._estimate_cost()
-    assert cost == round(15.0 + 75.0, 4)
+    assert cost == round(15.0 + 75.0, 6)
 
 
 # ── rewrite_product ──────────────────────────────────────────────────────

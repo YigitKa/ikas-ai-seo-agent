@@ -98,10 +98,17 @@ class SuggestionUpdateRequest(BaseModel):
     fields: list[SuggestionFieldUpdate]
 
 
+class TokenUsage(BaseModel):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    estimated_cost: float = 0.0
+
+
 class RewriteResponse(BaseModel):
     suggestion: Optional[SeoSuggestion] = None
     field_value: str = ""
     thinking_text: str = ""
+    token_usage: Optional[TokenUsage] = None
 
 
 class ApplyResponse(BaseModel):

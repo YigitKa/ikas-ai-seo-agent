@@ -12,7 +12,7 @@ import httpx
 
 from core.models import AppConfig, Product, SeoScore, SeoSuggestion
 from core.ai.base import BaseAIClient
-from core.ai.constants import DEFAULT_MODELS, PROVIDER_BASE_URLS, FIELD_RESULT_KEYS
+from core.ai.constants import DEFAULT_MODELS, PROVIDER_BASE_URLS, FIELD_RESULT_KEYS, estimate_cost
 from core.ai.helpers import (
     _parse_response_text,
     _merge_thinking_text,
@@ -81,7 +81,7 @@ class OpenAICompatibleClient(BaseAIClient):
         return {
             "input": self._total_input_tokens,
             "output": self._total_output_tokens,
-            "estimated_cost": 0.0,
+            "estimated_cost": estimate_cost(self._model, self._total_input_tokens, self._total_output_tokens),
         }
 
     @property

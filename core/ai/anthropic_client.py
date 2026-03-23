@@ -9,7 +9,7 @@ from typing import List, Optional
 
 from core.models import AppConfig, Product, SeoScore, SeoSuggestion
 from core.ai.base import BaseAIClient
-from core.ai.constants import DEFAULT_MODELS, FIELD_RESULT_KEYS
+from core.ai.constants import DEFAULT_MODELS, FIELD_RESULT_KEYS, estimate_cost
 from core.ai.helpers import _extract_thinking, _parse_response_text, _merge_thinking_text
 from core.ai.requests import (
     build_product_rewrite_request,
@@ -56,25 +56,7 @@ class AnthropicAIClient(BaseAIClient):
         return self._last_response_meta
 
     def _estimate_cost(self) -> float:
-        model = self._model.lower()
-        if "opus" in model:
-            return round(
-                self._total_input_tokens * 15.0 / 1_000_000
-                + self._total_output_tokens * 75.0 / 1_000_000,
-                4,
-            )
-        elif "sonnet" in model:
-            return round(
-                self._total_input_tokens * 3.0 / 1_000_000
-                + self._total_output_tokens * 15.0 / 1_000_000,
-                4,
-            )
-        else:  # haiku
-            return round(
-                self._total_input_tokens * 0.80 / 1_000_000
-                + self._total_output_tokens * 4.0 / 1_000_000,
-                4,
-            )
+        return estimate_cost(self._model, self._total_input_tokens, self._total_output_tokens)
 
     def _build_create_kwargs(
         self,

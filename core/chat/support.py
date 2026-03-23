@@ -32,6 +32,7 @@ from core.clients.ikas import IkasClient
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.clients.mcp import IkasMCPClient, MCPError
 from core.prompt_store import AGENT_SYSTEM_PROMPTS_TR
+from core.ai.constants import estimate_cost
 from core.chat import guidance as op_guidance
 
 logger = logging.getLogger(__name__)
@@ -1162,6 +1163,11 @@ def _build_completion_meta(data: dict[str, Any], model: str, finish_reason: str)
             meta[key] = value
         elif isinstance(value, str) and value:
             meta[key] = value
+
+    # Estimate cost from model name and token counts
+    cost = estimate_cost(str(meta.get("model", "")), meta["input_tokens"], meta["output_tokens"])
+    if cost > 0:
+        meta["estimated_cost"] = cost
 
     return meta
 

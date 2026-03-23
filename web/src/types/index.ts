@@ -138,6 +138,8 @@ export interface ChatResponseMeta extends Record<string, unknown> {
   input_tokens?: number;
   output_tokens?: number;
   total_tokens?: number;
+  estimated_cost?: number;
+  session_total_cost?: number;
   elapsed_seconds?: number;
   tokens_per_second?: number;
   time_to_first_token_seconds?: number;

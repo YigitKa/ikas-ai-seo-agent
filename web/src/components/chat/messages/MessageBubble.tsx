@@ -7,6 +7,7 @@ import SuggestionSavedCard from './SuggestionSavedCard';
 import ThinkingBlock from './ThinkingBlock';
 import AssistantMessageContent from './AssistantContent';
 import ContextUsageCard from './ContextUsageCard';
+import CostCard from './CostCard';
 
 const FAILED_RESPONSE_MARKER = 'Model nihai cevap uretmedi';
 
@@ -143,7 +144,10 @@ function MessageBubble({
       ) : null}
 
       {isAssistant ? (
-        <ContextUsageCard meta={msg.meta} fallbackContextLength={fallbackContextLength} />
+        <>
+          <CostCard meta={msg.meta} />
+          <ContextUsageCard meta={msg.meta} fallbackContextLength={fallbackContextLength} />
+        </>
       ) : null}
     </div>
   );

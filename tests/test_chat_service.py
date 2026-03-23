@@ -77,7 +77,7 @@ def test_chat_service_init():
     assert not service.has_mcp
     assert not service.mcp_initialized
     assert service.history == []
-    assert service.total_tokens == {"input": 0, "output": 0}
+    assert service.total_tokens == {"input": 0, "output": 0, "estimated_cost": 0.0}
 
 
 def test_chat_service_has_mcp_with_token():
@@ -814,7 +814,9 @@ async def test_async_stream_chat_yields_content_chunks_from_sse(monkeypatch):
     assert [event["content"] for event in events[:2]] == ["Mer", "haba"]
     assert events[-1]["content"] == "Merhaba"
     assert events[-1]["meta"]["model"] == "gpt-test"
-    assert service.total_tokens == {"input": 3, "output": 2}
+    assert service.total_tokens["input"] == 3
+    assert service.total_tokens["output"] == 2
+    assert "estimated_cost" in service.total_tokens
 
 
 @pytest.mark.anyio

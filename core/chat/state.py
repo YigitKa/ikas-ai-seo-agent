@@ -89,7 +89,7 @@ class ChatServiceStateMixin:
             self._product: Product | None = None
             self._score: SeoScore | None = None
             self._session_pending_suggestions: dict[str, SeoSuggestion] = {}
-            self._total_tokens = {"input": 0, "output": 0}
+            self._total_tokens: dict[str, int | float] = {"input": 0, "output": 0, "estimated_cost": 0.0}
             self._active_request_lock = threading.Lock()
             self._active_http_client: httpx.AsyncClient | None = None
 
@@ -126,7 +126,7 @@ class ChatServiceStateMixin:
             return list(self._history)
 
         @property
-        def total_tokens(self) -> dict[str, int]:
+        def total_tokens(self) -> dict[str, int | float]:
             return dict(self._total_tokens)
 
         @property

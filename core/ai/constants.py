@@ -129,3 +129,46 @@ FIELD_MAX_OUTPUT_TOKENS = {
     "desc_tr": 1024,
     "desc_en": 1024,
 }
+
+# ── Model pricing (USD per 1M tokens) ───────────────────────────────────
+# Keys are substrings matched against the model name (case-insensitive).
+# Order matters: first match wins. More specific patterns should come first.
+
+MODEL_PRICING: dict[str, tuple[float, float]] = {
+    # Anthropic Claude — (input_per_1M, output_per_1M)
+    "opus": (15.0, 75.0),
+    "sonnet": (3.0, 15.0),
+    "haiku": (1.0, 5.0),
+    # OpenAI
+    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-4o": (2.50, 10.0),
+    "gpt-4-turbo": (10.0, 30.0),
+    "gpt-4": (30.0, 60.0),
+    "gpt-3.5": (0.50, 1.50),
+    "o3-mini": (1.10, 4.40),
+    "o3": (10.0, 40.0),
+    "o1-mini": (3.0, 12.0),
+    "o1": (15.0, 60.0),
+    # Google Gemini
+    "gemini-2.0-flash": (0.10, 0.40),
+    "gemini-2.5-flash": (0.15, 0.60),
+    "gemini-2.5-pro": (1.25, 10.0),
+    "gemini-1.5-flash": (0.075, 0.30),
+    "gemini-1.5-pro": (1.25, 5.0),
+}
+
+
+def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    """Estimate USD cost based on model name and token counts.
+
+    Returns 0.0 if the model is not recognized.
+    """
+    model_lower = model.lower()
+    for pattern, (inp_price, out_price) in MODEL_PRICING.items():
+        if pattern in model_lower:
+            return round(
+                input_tokens * inp_price / 1_000_000
+                + output_tokens * out_price / 1_000_000,
+                6,
+            )
+    return 0.0
