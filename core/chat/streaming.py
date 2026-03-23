@@ -1032,6 +1032,11 @@ class ChatServiceStreamingMixin:
                 meta = _build_completion_meta(meta_payload, model, finish_reason)
                 self._total_tokens["input"] += int(meta.get("input_tokens", 0) or 0)
                 self._total_tokens["output"] += int(meta.get("output_tokens", 0) or 0)
+                self._total_tokens["estimated_cost"] = round(
+                    float(self._total_tokens.get("estimated_cost", 0.0))
+                    + float(meta.get("estimated_cost", 0.0)),
+                    6,
+                )
 
                 last_message_content = message_content
                 last_meta = meta
@@ -1106,6 +1111,8 @@ class ChatServiceStreamingMixin:
                         "content": response_text,
                     }
 
+                if meta:
+                    meta["session_total_cost"] = round(float(self._total_tokens.get("estimated_cost", 0.0)), 6)
                 yield {
                     "type": "completion_result",
                     "content": response_text,
@@ -1116,6 +1123,8 @@ class ChatServiceStreamingMixin:
                 }
                 return
 
+            if last_meta:
+                last_meta["session_total_cost"] = round(float(self._total_tokens.get("estimated_cost", 0.0)), 6)
             yield {
                 "type": "completion_result",
                 "content": last_message_content or "Maksimum arac cagrisi sayisina ulasildi.",
