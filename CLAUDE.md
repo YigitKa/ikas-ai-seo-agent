@@ -140,6 +140,7 @@ ikas-ai-seo-agent/
     │   └── sample_products.json    # 4 sample products for unit tests
     ├── test_seo_analyzer.py
     ├── test_ai_client.py
+    ├── test_anthropic_client.py  # 47 tests: Claude API, thinking, streaming, cancel, cost
     ├── test_ikas_client.py
     ├── test_db.py
     ├── test_settings.py
@@ -251,7 +252,7 @@ All configuration is loaded from `.env` via `config/settings.py`. The `AppConfig
 | `AI_BASE_URL` | Provider default | For custom/local endpoints |
 | `AI_TEMPERATURE` | `0.7` | AI generation temperature |
 | `AI_MAX_TOKENS` | `2000` | Max tokens per AI response |
-| `AI_THINKING_MODE` | `false` | Enable extended thinking (Anthropic only) |
+| `AI_THINKING_MODE` | `false` | Enable native extended thinking (Anthropic only — forces `temperature=1`, auto-calculates thinking budget) |
 | `IKAS_MCP_TOKEN` | — | ikas MCP token for AI chat with live store data |
 | `STORE_LANGUAGES` | `tr,en` | Comma-separated language codes |
 | `SEO_TARGET_KEYWORDS` | — | Comma-separated keywords for scoring |
@@ -425,7 +426,7 @@ Scoring inspired by Ahrefs, Semrush, Yoast, Moz, and Screaming Frog.
 ### `core/ai/client.py` — supported providers
 | `AI_PROVIDER` value | SDK / Endpoint | Default model |
 |---|---|---|
-| `anthropic` | Anthropic Python SDK | `claude-haiku-4-5-20251001` |
+| `anthropic` | Native Anthropic Messages API (SDK) | `claude-haiku-4-5-20251001` |
 | `openai` | OpenAI Python SDK | `gpt-4o-mini` |
 | `gemini` | OpenAI-compat endpoint | `gemini-1.5-flash` |
 | `openrouter` | OpenAI-compat endpoint | `openai/gpt-4o-mini` |
@@ -435,7 +436,13 @@ Scoring inspired by Ahrefs, Semrush, Yoast, Moz, and Screaming Frog.
 | `none` | No AI — scoring only | — |
 
 Key implementations:
-- `AnthropicAIClient` — Direct Anthropic SDK with extended thinking support and token/cost tracking
+- `AnthropicAIClient` — Native Anthropic Messages API with full feature support:
+  - **Extended thinking**: `_build_create_kwargs()` adds `thinking` param with `budget_tokens` and forces `temperature=1` when `ai_thinking_mode=True`
+  - **Streaming**: `stream_message()` yields `(event_type, content)` tuples — types: `thinking_start`, `thinking`, `text`, `done`
+  - **Request cancellation**: `cancel_active_request()` — thread-safe with `_cancel_lock`
+  - **Token tracking**: `_track_response()` accumulates input/output tokens across calls; `_estimate_cost()` uses model-specific pricing (Haiku/Sonnet/Opus)
+  - **Response extraction**: `_extract_response()` handles both native thinking blocks (`block.type == "thinking"`) and `<think>` tag fallback
+  - **All methods**: `rewrite_product()`, `rewrite_field()`, `rewrite_product_for_geo()`, `translate_description_to_en()` — all use `self._client.messages.create()` (Anthropic SDK), not OpenAI-compat
 - `OpenAICompatibleClient` — Unified handler for all OpenAI-compatible providers
 - `NoneAIClient` — Placeholder that raises errors if rewrite is attempted
 - `build_geo_rewrite_request()` — Helper that loads `geo_rewrite` prompt templates and builds the LLM request for GEO rewrites
