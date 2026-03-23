@@ -9,6 +9,7 @@ from core.ai.client import (
     build_field_rewrite_request,
     build_product_rewrite_request,
 )
+from core.ai.constants import estimate_cost, MODEL_PRICING
 from core.prompt_store import render_prompt_template, validate_prompt_template
 from core.models import AppConfig, Product, SeoScore
 
@@ -112,7 +113,7 @@ def test_build_desc_tr_request_loads_prompt_from_prompt_store(monkeypatch):
             return "Aciklama promptu: {{name}} / {{keywords}}"
         raise AssertionError(f"unexpected prompt key: {key}")
 
-    monkeypatch.setattr("core.ai.client.load_prompt_template", fake_load_prompt_template)
+    monkeypatch.setattr("core.ai.requests.load_prompt_template", fake_load_prompt_template)
 
     request = build_field_rewrite_request(
         _build_config(ai_thinking_mode=False, seo_target_keywords=["mikroskop", "mercek"]),
@@ -134,7 +135,7 @@ def test_build_translation_request_loads_prompt_from_prompt_store(monkeypatch):
             return "Cevir: {{name}} => {{description}}"
         raise AssertionError(f"unexpected prompt key: {key}")
 
-    monkeypatch.setattr("core.ai.client.load_prompt_template", fake_load_prompt_template)
+    monkeypatch.setattr("core.ai.requests.load_prompt_template", fake_load_prompt_template)
 
     request = build_en_translation_request(_build_config(ai_thinking_mode=False), "lm-studio", _build_product())
 
@@ -260,3 +261,50 @@ def test_lm_studio_retries_without_reasoning_if_native_api_rejects_it(monkeypatc
     assert len(calls) == 2
     assert calls[0]["reasoning"] == "off"
     assert "reasoning" not in calls[1]
+
+
+# ── estimate_cost ────────────────────────────────────────────────────────
+
+
+def test_estimate_cost_haiku():
+    cost = estimate_cost("claude-haiku-4-5-20251001", 1_000_000, 1_000_000)
+    assert cost == round(1.0 + 5.0, 6)
+
+
+def test_estimate_cost_sonnet():
+    cost = estimate_cost("claude-sonnet-4-20250514", 1_000_000, 1_000_000)
+    assert cost == round(3.0 + 15.0, 6)
+
+
+def test_estimate_cost_opus():
+    cost = estimate_cost("claude-opus-4-20250514", 1_000_000, 1_000_000)
+    assert cost == round(15.0 + 75.0, 6)
+
+
+def test_estimate_cost_gpt4o_mini():
+    cost = estimate_cost("gpt-4o-mini", 1_000_000, 1_000_000)
+    assert cost == round(0.15 + 0.60, 6)
+
+
+def test_estimate_cost_gemini_flash():
+    cost = estimate_cost("gemini-1.5-flash", 1_000_000, 1_000_000)
+    assert cost == round(0.075 + 0.30, 6)
+
+
+def test_estimate_cost_unknown_model_returns_zero():
+    assert estimate_cost("some-unknown-model", 1_000_000, 1_000_000) == 0.0
+
+
+def test_estimate_cost_zero_tokens():
+    assert estimate_cost("claude-haiku-4-5-20251001", 0, 0) == 0.0
+
+
+def test_openai_compat_total_tokens_includes_cost(monkeypatch):
+    """OpenAICompatibleClient.total_tokens should include estimated_cost for known models."""
+    monkeypatch.setattr("openai.OpenAI", lambda **kw: None)
+    client = OpenAICompatibleClient(_build_config(ai_model_name="gpt-4o-mini"), "openai")
+    client._client = None  # not needed for this test
+    client._total_input_tokens = 1_000_000
+    client._total_output_tokens = 1_000_000
+    tokens = client.total_tokens
+    assert tokens["estimated_cost"] == round(0.15 + 0.60, 6)

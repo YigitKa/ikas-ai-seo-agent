@@ -13,6 +13,7 @@ from api.schemas import (
     RewriteResponse,
     SuggestionActionRequest,
     SuggestionUpdateRequest,
+    TokenUsage,
 )
 from core.models import SeoSuggestion
 from core.product_manager import ProductManager
@@ -37,9 +38,15 @@ async def generate_suggestion(
         score = await manager.analyze_product(product)
 
     suggestion = await manager.rewrite_product(product, score)
+    usage = manager.get_token_usage()
     return RewriteResponse(
         suggestion=suggestion,
         thinking_text=suggestion.thinking_text,
+        token_usage=TokenUsage(
+            input_tokens=usage.get("input", 0),
+            output_tokens=usage.get("output", 0),
+            estimated_cost=usage.get("estimated_cost", 0.0),
+        ),
     )
 
 
@@ -76,7 +83,16 @@ async def generate_field_rewrite(
     else:
         value, thinking = manager.rewrite_field(body.field, product, score)
 
-    return RewriteResponse(field_value=value, thinking_text=thinking)
+    usage = manager.get_token_usage()
+    return RewriteResponse(
+        field_value=value,
+        thinking_text=thinking,
+        token_usage=TokenUsage(
+            input_tokens=usage.get("input", 0),
+            output_tokens=usage.get("output", 0),
+            estimated_cost=usage.get("estimated_cost", 0.0),
+        ),
+    )
 
 
 @router.get("/{product_id}", response_model=list[SeoSuggestion])

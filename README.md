@@ -238,27 +238,26 @@ Tek kod tabanı, **8 AI sağlayıcı**:
 
 ```mermaid
 graph TD
-    APP["🏗️ ikas AI SEO Agent"] --> UNIFIED["🔌 Birleşik OpenAI-Compatible Arayüz"]
+    APP["🏗️ ikas AI SEO Agent"] --> UNIFIED["🔌 Birleşik AI Arayüzü"]
 
-    UNIFIED --> CLOUD["☁️ Bulut API'ler"]
-    UNIFIED --> LOCAL["🏠 Yerel Modeller"]
+    UNIFIED --> NATIVE["🎯 Native SDK"]
+    UNIFIED --> COMPAT["🔌 OpenAI-Compatible"]
     UNIFIED --> OTHER["⚡ Diğer"]
 
-    CLOUD --> C1["Anthropic<br/><i>claude-haiku-4-5</i>"]
-    CLOUD --> C2["OpenAI<br/><i>gpt-4o-mini</i>"]
-    CLOUD --> C3["Gemini<br/><i>gemini-1.5-flash</i>"]
-    CLOUD --> C4["OpenRouter<br/><i>openai/gpt-4o-mini</i>"]
-
-    LOCAL --> L1["Ollama<br/><i>llama3.2</i>"]
-    LOCAL --> L2["LM Studio<br/><i>ilk mevcut model</i>"]
+    NATIVE --> C1["Anthropic Claude<br/><i>Native Messages API<br/>Extended Thinking + Streaming</i>"]
+    COMPAT --> C2["OpenAI<br/><i>gpt-4o-mini</i>"]
+    COMPAT --> C3["Gemini<br/><i>gemini-1.5-flash</i>"]
+    COMPAT --> C4["OpenRouter<br/><i>openai/gpt-4o-mini</i>"]
+    COMPAT --> L1["Ollama<br/><i>llama3.2</i>"]
+    COMPAT --> L2["LM Studio<br/><i>ilk mevcut model</i>"]
 
     OTHER --> O1["Custom<br/><i>herhangi bir endpoint</i>"]
     OTHER --> O2["None<br/><i>yalnızca skorlama</i>"]
 
     style APP fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
     style UNIFIED fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
-    style CLOUD fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0
-    style LOCAL fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style NATIVE fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0
+    style COMPAT fill:#0f172a,stroke:#10b981,color:#e2e8f0
     style OTHER fill:#0f172a,stroke:#64748b,color:#e2e8f0
     style C1 fill:#1e293b,stroke:#d97706,color:#e2e8f0
     style C2 fill:#1e293b,stroke:#d97706,color:#e2e8f0
@@ -270,7 +269,7 @@ graph TD
     style O2 fill:#1e293b,stroke:#475569,color:#e2e8f0
 ```
 
-Tüm sağlayıcılar (`none` hariç) birleşik OpenAI-compatible arayüz üzerinden tool calling destekler. Bir ortam değişkeni değiştirin — tüm agentic pipeline, chat sistemi ve streaming aynı şekilde çalışır.
+**Anthropic Claude**, native Messages API ile tam entegre: extended thinking (derin akıl yürütme), streaming yanıtlar, istek iptali ve model bazlı maliyet takibi. Diğer sağlayıcılar birleşik OpenAI-compatible arayüz üzerinden tool calling destekler. Bir ortam değişkeni değiştirin — tüm agentic pipeline, chat sistemi ve streaming aynı şekilde çalışır.
 
 ### Varsayılan Olarak Güvenli
 
@@ -567,7 +566,7 @@ python -m pytest tests/ -v
 | `AI_MODEL_NAME` | Provider varsayılanı | Model seçimini geçersiz kıl |
 | `AI_TEMPERATURE` | `0.7` | Üretim yaratıcılığı |
 | `AI_MAX_TOKENS` | `2000` | Maks çıktı token |
-| `AI_THINKING_MODE` | `false` | Genişletilmiş düşünme (Anthropic) |
+| `AI_THINKING_MODE` | `false` | Native extended thinking (Anthropic Claude - `temperature=1` zorunlu, budget otomatik ayarlanir) |
 | `IKAS_MCP_TOKEN` | — | Chat'te canlı mağaza sorgularını etkinleştirir |
 | `STORE_LANGUAGES` | `tr,en` | Desteklenen içerik dilleri |
 | `SEO_TARGET_KEYWORDS` | — | Virgülle ayrılmış hedef anahtar kelimeler |
@@ -756,6 +755,44 @@ python -m pytest tests/test_seo_analyzer.py -v
 ```
 
 Testler mock ve fixture kullanır — canlı API çağrısı yapılmaz. Örnek ürünler: `tests/fixtures/sample_products.json`.
+
+---
+
+## Anthropic Claude Entegrasyonu
+
+Bu proje **Anthropic Claude** ile en iyi deneyim icin optimize edilmistir. `AI_PROVIDER=anthropic` sectigenizde:
+
+### Native Messages API
+Diger saglayicilar OpenAI-compatible endpoint kullanirken, Claude **native Anthropic SDK** (`anthropic` Python paketi) ile entegre olur. Bu sayede:
+- **Extended Thinking**: `AI_THINKING_MODE=true` ile Claude'un derin akil yurutme yetenegi aktive olur. Otomatik olarak `temperature=1` ayarlanir ve thinking budget hesaplanir
+- **Streaming**: Gercek zamanli yanitlar — hem dusunme bloklari hem metin parcalari anlik iletilir
+- **Istek Iptali**: Uzun suren istekler `cancel_active_request()` ile aninda iptal edilebilir
+- **Token Takibi**: Her API cagrisi icin input/output token sayimi ve model bazli maliyet tahmini
+
+### Desteklenen Modeller
+| Model | Kullanim | Maliyet (1M token) |
+|---|---|---|
+| `claude-haiku-4-5-20251001` | Varsayilan — hizli ve ekonomik | $0.80 input / $4.0 output |
+| `claude-sonnet-4-20250514` | Dengeli performans | $3.0 input / $15.0 output |
+| `claude-opus-4-20250514` | Maksimum kalite | $15.0 input / $75.0 output |
+
+### Hizli Baslangic
+```bash
+# .env dosyaniza ekleyin:
+AI_PROVIDER=anthropic
+AI_API_KEY=sk-ant-api03-...  # Anthropic Console'dan alin
+AI_MODEL_NAME=claude-haiku-4-5-20251001  # Opsiyonel, varsayilan zaten bu
+AI_THINKING_MODE=false  # Derin dusunme icin true yapin
+```
+
+### Agentic Pipeline ile Claude
+Claude'un tool calling yetenegi sayesinde **otonom SEO optimizasyonu** calisir:
+1. `seo_score_product` — urunu skorlar
+2. `validate_rewrite` — yeniden yazimlari dogrular
+3. `save_suggestion` — oneriyi kaydeder
+4. Maks 8 iterasyon ile iyilestirme dongusu
+
+Chat modunda uc uzman ajan (SEO Uzmani, Magaza Operatoru, Genel Asistan) Claude uzerinden calisir ve semantik yonlendirme ile otomatik secilir.
 
 ---
 
