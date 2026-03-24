@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { EnterpriseButton } from '../../shared/ui/EnterprisePrimitives';
 
 function SpinnerIcon() {
   return (
@@ -23,7 +24,6 @@ interface ActionButtonProps {
   label: string;
   pendingLabel: string;
   pending: boolean;
-  gradient: string;
   onClick: () => void;
   children: ReactNode;
 }
@@ -32,20 +32,19 @@ function ActionButton({
   label,
   pendingLabel,
   pending,
-  gradient,
   onClick,
   children,
 }: ActionButtonProps) {
   return (
-    <button
+    <EnterpriseButton
       onClick={onClick}
       disabled={pending}
-      className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-      style={{ background: gradient }}
+      tone="primary"
+      className="flex items-center gap-1.5 text-white"
     >
       {pending ? <SpinnerIcon /> : children}
       {pending ? pendingLabel : label}
-    </button>
+    </EnterpriseButton>
   );
 }
 
@@ -64,8 +63,8 @@ export default function DashboardHeader({
     <header
       className="flex items-center justify-between px-5 py-3"
       style={{
-        background: 'var(--color-bg-surface)',
-        borderBottom: '1px solid var(--color-border)',
+        background: 'linear-gradient(180deg, rgba(15,23,42,0.92), rgba(2,6,23,0.86))',
+        borderBottom: '1px solid rgba(148,163,184,0.16)',
       }}
     >
       <div className="flex items-center gap-4">
@@ -87,7 +86,6 @@ export default function DashboardHeader({
           label="Tum Urunleri Cek"
           pendingLabel="Senkronlaniyor..."
           pending={syncPending}
-          gradient="linear-gradient(135deg, #6366f1, #8b5cf6)"
           onClick={onSync}
         >
           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -105,10 +103,10 @@ export default function DashboardHeader({
       <div className="flex items-center gap-3">
         <Link
           to="/batch"
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors hover:bg-[var(--color-bg-hover)]"
+          className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110"
           style={{
             color: 'var(--color-text-secondary)',
-            border: '1px solid var(--color-border-light)',
+            border: '1px solid rgba(148,163,184,0.22)',
           }}
         >
           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -119,10 +117,11 @@ export default function DashboardHeader({
 
         <Link
           to="/llms"
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold text-white transition-all hover:translate-y-[-1px]"
+          className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110"
           style={{
-            background: 'linear-gradient(135deg, #06b6d4, #6366f1)',
-            boxShadow: '0 10px 30px rgba(99,102,241,0.28)',
+            background: 'linear-gradient(135deg, rgba(14,165,233,0.85), rgba(79,70,229,0.88))',
+            border: '1px solid rgba(125,211,252,0.34)',
+            boxShadow: '0 12px 28px rgba(59,130,246,0.24)',
           }}
         >
           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -143,10 +142,10 @@ export default function DashboardHeader({
 
         <Link
           to="/settings"
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors hover:bg-[var(--color-bg-hover)]"
+          className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110"
           style={{
             color: 'var(--color-text-secondary)',
-            border: '1px solid var(--color-border-light)',
+            border: '1px solid rgba(148,163,184,0.22)',
           }}
         >
           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

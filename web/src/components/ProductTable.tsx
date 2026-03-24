@@ -56,7 +56,7 @@ export default function ProductTable({ items, selectedId, onSelect }: Props) {
   }
 
   return (
-    <div className="py-1">
+    <div className="space-y-1 px-2 py-2">
       {items.map(({ product, score }) => {
         const thumb = product.image_url || product.image_urls[0];
         const isSelected = product.id === selectedId;
@@ -65,14 +65,16 @@ export default function ProductTable({ items, selectedId, onSelect }: Props) {
           <button
             key={product.id}
             onClick={() => onSelect(product.id)}
-            className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
-              isSelected ? '' : 'hover:bg-[var(--color-bg-hover)]'
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all duration-200 ${
+              isSelected ? 'shadow-lg shadow-indigo-950/40' : 'hover:-translate-y-[1px] hover:shadow-md hover:shadow-slate-950/40'
             }`}
             style={{
-              background: isSelected ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
-              borderLeft: isSelected
-                ? '2px solid var(--color-primary)'
-                : '2px solid transparent',
+              background: isSelected
+                ? 'linear-gradient(135deg, rgba(99,102,241,0.2), rgba(59,130,246,0.12))'
+                : 'rgba(15,23,42,0.45)',
+              border: isSelected
+                ? '1px solid rgba(99,102,241,0.45)'
+                : '1px solid rgba(148,163,184,0.14)',
             }}
           >
             {thumb ? (

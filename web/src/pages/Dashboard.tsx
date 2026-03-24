@@ -13,6 +13,7 @@ import DashboardSidebar from '../components/dashboard/DashboardSidebar';
 import type { FilterTab } from '../components/dashboard/constants';
 import { buildIkasProductUrl } from '../components/dashboard/productUrl';
 import { useToast } from '../shared/ui/Toast';
+import { EnterpriseButton, EnterpriseSurface } from '../shared/ui/EnterprisePrimitives';
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
@@ -142,11 +143,11 @@ export default function Dashboard() {
             <section className="min-w-0 flex flex-1 flex-col overflow-hidden p-6">
               {/* "Analiz bitince gec" banner */}
               {bannerProductName && (
-                <div
-                  className="mb-3 flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm"
+                <EnterpriseSurface
+                  className="mb-3 flex items-center gap-2 px-4 py-2.5 text-sm"
                   style={{
-                    background: 'rgba(99,102,241,0.12)',
-                    border: '1px solid rgba(99,102,241,0.3)',
+                    background: 'linear-gradient(135deg, rgba(99,102,241,0.22), rgba(59,130,246,0.14))',
+                    border: '1px solid rgba(99,102,241,0.38)',
                     color: 'var(--color-primary-light)',
                   }}
                 >
@@ -173,7 +174,7 @@ export default function Dashboard() {
                     Analiz tamamlaninca <strong>{bannerProductName}</strong> urününe otomatik
                     gecilecek.
                   </span>
-                </div>
+                </EnterpriseSurface>
               )}
 
               <div className="min-h-0 flex flex-1 flex-col gap-5 overflow-hidden">
@@ -203,12 +204,12 @@ export default function Dashboard() {
           className="fixed inset-0 z-50 flex items-center justify-center"
           style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
         >
-          <div
-            className="mx-4 w-full max-w-sm rounded-2xl p-6"
+          <EnterpriseSurface
+            className="mx-4 w-full max-w-sm p-6"
             style={{
-              background: 'var(--color-bg-surface)',
-              border: '1px solid rgba(148,163,184,0.18)',
-              boxShadow: '0 24px 48px rgba(2,6,23,0.6)',
+              background: 'linear-gradient(180deg, rgba(15,23,42,0.95), rgba(2,6,23,0.92))',
+              border: '1px solid rgba(148,163,184,0.22)',
+              boxShadow: '0 24px 48px rgba(2,6,23,0.65)',
             }}
           >
             <div className="mb-1 flex items-center gap-2">
@@ -242,53 +243,41 @@ export default function Dashboard() {
 
             <div className="flex flex-col gap-2">
               {/* Stop and switch immediately */}
-              <button
+              <EnterpriseButton
                 onClick={() => {
                   const nextId = pendingClickId;
                   setPendingClickId(null);
                   setSelectedId(nextId);
                 }}
-                className="w-full rounded-xl px-4 py-2.5 text-[13px] font-medium transition-colors hover:opacity-80"
-                style={{
-                  background: 'rgba(239,68,68,0.12)',
-                  border: '1px solid rgba(239,68,68,0.3)',
-                  color: '#f87171',
-                }}
+                tone="danger"
+                className="w-full"
               >
                 Durdur ve Gec
-              </button>
+              </EnterpriseButton>
 
               {/* Wait for the response then switch */}
-              <button
+              <EnterpriseButton
                 onClick={() => {
                   setAfterLoadSwitchId(pendingClickId);
                   afterLoadSwitchIdRef.current = pendingClickId;
                   setPendingClickId(null);
                 }}
-                className="w-full rounded-xl px-4 py-2.5 text-[13px] font-medium transition-colors hover:opacity-80"
-                style={{
-                  background: 'rgba(99,102,241,0.12)',
-                  border: '1px solid rgba(99,102,241,0.3)',
-                  color: 'var(--color-primary-light)',
-                }}
+                tone="primary"
+                className="w-full"
               >
                 Analiz Bitince Gec
-              </button>
+              </EnterpriseButton>
 
               {/* Stay on current product */}
-              <button
+              <EnterpriseButton
                 onClick={() => setPendingClickId(null)}
-                className="w-full rounded-xl px-4 py-2.5 text-[13px] font-medium transition-colors hover:opacity-80"
-                style={{
-                  background: 'transparent',
-                  border: '1px solid rgba(148,163,184,0.15)',
-                  color: 'var(--color-text-muted)',
-                }}
+                tone="neutral"
+                className="w-full"
               >
                 Iptal
-              </button>
+              </EnterpriseButton>
             </div>
-          </div>
+          </EnterpriseSurface>
         </div>
       )}
     </div>
