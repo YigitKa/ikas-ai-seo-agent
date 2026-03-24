@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.dependencies import close_manager
-from api.routers import products, seo, suggestions, settings, chat, llms
+from api.routers import products, seo, suggestions, settings, chat, llms, batch
 from data import db
 from core.llms.service import llms_service
 
@@ -64,6 +64,7 @@ app.include_router(seo.router, prefix="/api/seo", tags=["seo"])
 app.include_router(suggestions.router, prefix="/api/suggestions", tags=["suggestions"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(llms.router, prefix="/api/llms", tags=["llms"])
+app.include_router(batch.router, prefix="/api/batch", tags=["batch"])
 app.include_router(chat.router, tags=["chat"])
 
 

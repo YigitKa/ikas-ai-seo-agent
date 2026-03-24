@@ -242,3 +242,75 @@ export interface LlmsStatus {
     category: string | null;
   }[];
 }
+
+// ── Batch Operations ──────────────────────────────────────────────────────────
+
+export interface BatchConfig {
+  score_threshold: number;
+  category_filter: string;
+  in_stock_only: boolean;
+  preserve_specs: boolean;
+  prevent_cannibalization: boolean;
+  max_title_change_pct: number;
+  sample_size: number;
+}
+
+export type BatchJobStatus =
+  | 'idle'
+  | 'calibrating'
+  | 'running'
+  | 'paused'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export interface BatchJob {
+  id: string;
+  status: BatchJobStatus;
+  config: BatchConfig;
+  total_count: number;
+  processed_count: number;
+  skipped_count: number;
+  failed_count: number;
+  avg_score_before: number;
+  avg_score_after: number;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  error: string | null;
+}
+
+export type BatchItemStatus =
+  | 'calibration'
+  | 'pending'
+  | 'processing'
+  | 'approved'
+  | 'rejected'
+  | 'applied'
+  | 'skipped'
+  | 'failed'
+  | 'rolled_back';
+
+export interface BatchItem {
+  id: number;
+  job_id: string;
+  product_id: string;
+  product_name: string;
+  status: BatchItemStatus;
+  score_before: number | null;
+  score_after: number | null;
+  skip_reason: string | null;
+  has_rollback: boolean;
+}
+
+export interface BatchJobDetail {
+  job: BatchJob;
+  items: BatchItem[];
+}
+
+export interface BatchStats {
+  total_jobs: number;
+  total_processed: number;
+  avg_score_improvement: number;
+  active_job: BatchJob | null;
+}

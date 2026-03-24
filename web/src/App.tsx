@@ -7,6 +7,7 @@ import { ToastProvider } from './shared/ui/Toast';
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Settings = lazy(() => import('./pages/settings/SettingsPage'));
 const LlmsLab = lazy(() => import('./pages/LlmsLab'));
+const BatchOperations = lazy(() => import('./pages/BatchOperations'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,6 +36,7 @@ export default function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/llms" element={<LlmsLab />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/batch" element={<BatchOperations />} />
             </Routes>
           </Suspense>
         </BrowserRouter>

@@ -29,6 +29,11 @@ import type {
   LlmsStatus,
   LlmsJob,
   LlmsEntrySummary,
+  BatchConfig,
+  BatchJob,
+  BatchJobDetail,
+  BatchItem,
+  BatchStats,
 } from '../types';
 
 export async function fetchProducts(
@@ -241,4 +246,59 @@ export async function initializeMcp(): Promise<MCPStatus> {
 
 export async function clearChat(): Promise<{ message: string }> {
   return request('/api/chat/clear', { method: 'POST' });
+}
+
+// ── Batch Operations ─────────────────────────────────────────────────────────
+
+export async function getBatchStats(): Promise<BatchStats> {
+  return request('/api/batch/stats');
+}
+
+export async function listBatchJobs(): Promise<BatchJob[]> {
+  return request('/api/batch/jobs');
+}
+
+export async function getBatchJob(jobId: string): Promise<BatchJobDetail> {
+  return request(`/api/batch/jobs/${jobId}`);
+}
+
+export async function startBatchJob(
+  config: BatchConfig,
+  runCalibrationFirst = true,
+): Promise<BatchJob> {
+  return request('/api/batch/jobs', {
+    method: 'POST',
+    body: JSON.stringify({ config, run_calibration_first: runCalibrationFirst }),
+  });
+}
+
+export async function startFullBatchRun(jobId: string): Promise<BatchJob> {
+  return request(`/api/batch/jobs/${jobId}/start`, { method: 'POST' });
+}
+
+export async function stopBatchJob(jobId: string): Promise<BatchJob> {
+  return request(`/api/batch/jobs/${jobId}/stop`, { method: 'POST' });
+}
+
+export async function rollbackBatchJob(jobId: string): Promise<{ rolled_back: number; total: number }> {
+  return request(`/api/batch/jobs/${jobId}/rollback`, { method: 'POST' });
+}
+
+export async function rollbackBatchItem(itemId: number): Promise<{ ok: boolean; product_id: string }> {
+  return request(`/api/batch/items/${itemId}/rollback`, { method: 'POST' });
+}
+
+export async function updateBatchItem(
+  itemId: number,
+  decision: 'approved' | 'rejected' | 'revised',
+  revisedData?: Record<string, unknown>,
+): Promise<BatchItem> {
+  return request(`/api/batch/items/${itemId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ decision, revised_data: revisedData }),
+  });
+}
+
+export function createBatchJobStream(jobId: string): EventSource {
+  return new EventSource(`/api/batch/jobs/${jobId}/stream`);
 }
