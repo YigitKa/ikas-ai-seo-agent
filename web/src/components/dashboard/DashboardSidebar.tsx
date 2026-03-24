@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import ProductTable from '../ProductTable';
 import { FILTER_LABELS, FILTER_TABS, type FilterTab } from './constants';
 import type { ProductWithScore } from '../../types';
+import { EnterpriseButton, EnterpriseInput } from '../../shared/ui/EnterprisePrimitives';
 
 interface DashboardSidebarProps {
   items: ProductWithScore[];
@@ -42,12 +43,12 @@ export default function DashboardSidebar({
     <aside
       className="flex w-[340px] flex-col"
       style={{
-        background: 'var(--color-bg-surface)',
-        borderRight: '1px solid var(--color-border)',
+        background: 'linear-gradient(180deg, rgba(15,23,42,0.82), rgba(2,6,23,0.86))',
+        borderRight: '1px solid rgba(148,163,184,0.16)',
       }}
     >
       {/* Search */}
-      <div className="px-3 pt-2.5 pb-1.5" style={{ borderBottom: '1px solid var(--color-border)' }}>
+      <div className="px-3 pt-3 pb-2" style={{ borderBottom: '1px solid rgba(148,163,184,0.16)' }}>
         <div className="relative">
           <svg
             className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
@@ -59,17 +60,11 @@ export default function DashboardSidebar({
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
-          <input
-            type="text"
+          <EnterpriseInput
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={setSearchQuery}
             placeholder="Urun ara..."
-            className="w-full rounded-lg py-1.5 pl-8 pr-3 text-xs outline-none transition-colors placeholder:text-[var(--color-text-muted)]"
-            style={{
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              color: 'var(--color-text-primary)',
-            }}
+            className="py-2 pl-8 pr-8"
           />
           {searchQuery && (
             <button
@@ -93,12 +88,13 @@ export default function DashboardSidebar({
               <button
                 key={tabKey}
                 onClick={() => onFilterChange(tabKey)}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  active ? '' : 'hover:text-[var(--color-text-secondary)]'
+                className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${
+                  active ? '' : 'hover:text-[var(--color-text-secondary)] hover:bg-white/3'
                 }`}
                 style={{
-                  background: active ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
-                  color: active ? 'var(--color-primary-light)' : 'var(--color-text-muted)',
+                  background: active ? 'linear-gradient(135deg, rgba(99,102,241,0.24), rgba(59,130,246,0.16))' : 'transparent',
+                  border: active ? '1px solid rgba(99,102,241,0.34)' : '1px solid transparent',
+                  color: active ? '#e0e7ff' : 'var(--color-text-muted)',
                 }}
               >
                 {FILTER_LABELS[tabKey]}
@@ -139,18 +135,13 @@ export default function DashboardSidebar({
                 Farklı bir arama deneyin
               </p>
             </div>
-            <button
-              type="button"
+            <EnterpriseButton
               onClick={() => setSearchQuery('')}
-              className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors hover:opacity-80"
-              style={{
-                background: 'rgba(99, 102, 241, 0.12)',
-                border: '1px solid rgba(99, 102, 241, 0.25)',
-                color: 'var(--color-primary-light)',
-              }}
+              tone="primary"
+              className="text-[12px]"
             >
               Aramayı Temizle
-            </button>
+            </EnterpriseButton>
           </div>
         ) : (
           <ProductTable items={filteredItems} selectedId={selectedId} onSelect={onSelect} />
@@ -161,7 +152,7 @@ export default function DashboardSidebar({
         <div
           className="flex items-center justify-between px-3 py-2 text-xs"
           style={{
-            borderTop: '1px solid var(--color-border)',
+            borderTop: '1px solid rgba(148,163,184,0.16)',
             color: 'var(--color-text-muted)',
           }}
         >

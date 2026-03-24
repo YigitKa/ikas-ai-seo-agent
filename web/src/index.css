@@ -206,6 +206,27 @@ body {
 .html-content li { margin-bottom: 0.25em; }
 .html-content strong, .html-content b { color: var(--color-text-primary); font-weight: 600; }
 
+
+
+/* ── Enterprise shell primitives ─────────────────────────────────────────── */
+.enterprise-surface {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.74), rgba(2, 6, 23, 0.8));
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 14px 36px rgba(2, 6, 23, 0.45);
+  backdrop-filter: blur(14px);
+}
+
+.enterprise-input {
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: var(--color-text-primary);
+}
+
+.enterprise-input:focus {
+  border-color: rgba(99, 102, 241, 0.66);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
 /* ── Toast notification animation ───────────────────────────────────────── */
 @keyframes toast-in {
   from {

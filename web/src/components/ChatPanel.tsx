@@ -224,11 +224,11 @@ export default function ChatPanel({
 
   return (
     <div
-      className="flex h-full flex-col overflow-hidden rounded-2xl"
+      className="enterprise-surface flex h-full flex-col overflow-hidden rounded-2xl"
       style={{
-        background: "radial-gradient(circle at top left, rgba(99,102,241,0.12), transparent 28%), linear-gradient(180deg, rgba(15,23,42,0.96), rgba(10,14,27,0.98))",
-        border: "1px solid rgba(148,163,184,0.18)",
-        boxShadow: "0 22px 48px rgba(2, 6, 23, 0.5)",
+        background: "linear-gradient(180deg, rgba(15,23,42,0.92), rgba(2,6,23,0.95))",
+        border: "1px solid rgba(148,163,184,0.2)",
+        boxShadow: "0 24px 52px rgba(2, 6, 23, 0.52)",
       }}
     >
       <ChatHeader
