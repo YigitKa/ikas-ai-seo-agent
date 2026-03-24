@@ -41,10 +41,9 @@ export default function DashboardSidebar({
 
   return (
     <aside
-      className="flex w-[340px] flex-col"
+      className="enterprise-panel-divider flex w-[340px] flex-col"
       style={{
-        background: 'linear-gradient(180deg, rgba(15,23,42,0.82), rgba(2,6,23,0.86))',
-        borderRight: '1px solid rgba(148,163,184,0.16)',
+        background: 'linear-gradient(180deg, rgba(2,6,23,0.92), rgba(15,23,42,0.88))',
       }}
     >
       {/* Search */}
@@ -88,13 +87,11 @@ export default function DashboardSidebar({
               <button
                 key={tabKey}
                 onClick={() => onFilterChange(tabKey)}
-                className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${
-                  active ? '' : 'hover:text-[var(--color-text-secondary)] hover:bg-white/3'
-                }`}
+                className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${active ? '' : 'hover:text-[var(--color-text-secondary)]'}`}
                 style={{
-                  background: active ? 'linear-gradient(135deg, rgba(99,102,241,0.24), rgba(59,130,246,0.16))' : 'transparent',
-                  border: active ? '1px solid rgba(99,102,241,0.34)' : '1px solid transparent',
-                  color: active ? '#e0e7ff' : 'var(--color-text-muted)',
+                  background: active ? 'linear-gradient(135deg, rgba(30,64,175,0.42), rgba(67,56,202,0.3))' : 'rgba(15,23,42,0.35)',
+                  border: active ? '1px solid rgba(96,165,250,0.36)' : '1px solid rgba(148,163,184,0.12)',
+                  color: active ? '#dbeafe' : 'var(--color-text-muted)',
                 }}
               >
                 {FILTER_LABELS[tabKey]}
