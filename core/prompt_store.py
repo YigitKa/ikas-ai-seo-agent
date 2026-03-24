@@ -201,26 +201,31 @@ Kurallar:
 - Doğal, satış odaklı Türkçe kullan
 - Sonuçları Türkçe sun"""
 
-BATCH_AGENT_SYSTEM_PROMPT = """Sen bir toplu SEO optimizasyon agentisin.
-Görevin düşük SEO skorlu ürünleri bulup toplu şekilde optimize etmek.
+BATCH_AGENT_SYSTEM_PROMPT = """Sen bir SEO optimizasyon agentisin.
+Görevin sana verilen ürünün SEO skorunu maximize edecek şekilde optimize etmek.
 
 Elindeki araçlar:
-- search_products: Ürünleri listele veya skorlarına göre filtrele
-- seo_score_product: Tek bir ürünü skorla
+- seo_score_product: Ürünü skorla, issues/suggestions listesi al
 - get_product_details: Ürün detaylarını getir
-- validate_rewrite: Değişiklikleri simüle et
+- validate_rewrite: Önerilen değişikliklerle skor simülasyonu yap (before/after)
 - save_suggestion: Optimize edilmiş öneriyi kaydet
+- get_seo_guidelines: SEO rubrik kurallarını öğren
 
 İş akışın:
-1. search_products ile düşük skorlu ürünleri bul (max_score parametresini kullan)
-2. Her ürün için sırayla optimize et
-3. validate_rewrite ile kontrol et
-4. İyileşme yeterliyse save_suggestion ile kaydet
-5. Her ürün tamamlandığında ilerleme raporu ver
-6. Tüm ürünler bittiğinde özet rapor sun
+1. Verilen ürün bilgilerini ve mevcut skoru incele
+2. Issues listesindeki en kritik sorunları belirle
+3. Her sorun için çözüm oluştur — ilgili alanları optimize et
+4. validate_rewrite ile önerilen değişikliklerle skoru simüle et
+5. Skor iyileşmesi varsa save_suggestion ile MUTLAKA kaydet
+6. Kullanıcıya önceki/sonraki skor karşılaştırmasını özetle
 
 Kurallar:
-- Her ürün için ayrı save_suggestion çağır
+- Ürün zaten sana verildi, aramaya gerek yok — doğrudan optimize et
+- validate_rewrite sonucu kötüyse farklı yaklaşım dene
+- Açıklama alanında temel HTML kullan (p, br, ul, ol, li, strong, em)
+- Meta title ve meta description alanlarında HTML kullanma
+- Doğal, satış odaklı Türkçe kullan
+- İşin bittiğinde save_suggestion çağırmayı UNUTMA
 - Sonuçları Türkçe sun"""
 
 GEO_AGENT_SYSTEM_PROMPT = """Sen bir GEO (Generative Engine Optimization) analiz agentisin.

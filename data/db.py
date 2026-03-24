@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS batch_items (
     score_before INTEGER,
     score_after INTEGER,
     rollback_data JSON,
+    suggestion_data JSON,
     skip_reason TEXT,
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
@@ -191,6 +192,11 @@ async def _load_suggestions(query: str, params: Sequence[object] = ()) -> List[S
 async def init_db() -> None:
     async with aiosqlite.connect(str(DB_PATH), timeout=30) as conn:
         await conn.executescript(SCHEMA)
+        # Migrations for existing databases
+        try:
+            await conn.execute("ALTER TABLE batch_items ADD COLUMN suggestion_data JSON")
+        except Exception:
+            pass  # Column already exists
         await conn.commit()
 
 
@@ -915,6 +921,12 @@ def _row_to_batch_job(row) -> dict:
 
 
 def _row_to_batch_item(row) -> dict:
+    sd = None
+    try:
+        if row["suggestion_data"]:
+            sd = json.loads(row["suggestion_data"])
+    except (KeyError, json.JSONDecodeError):
+        pass
     return {
         "id": int(row["id"]),
         "job_id": row["job_id"],
@@ -925,6 +937,7 @@ def _row_to_batch_item(row) -> dict:
         "score_after": int(row["score_after"]) if row["score_after"] is not None else None,
         "has_rollback": bool(row["rollback_data"]),
         "skip_reason": row["skip_reason"],
+        "suggestion_data": sd,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -999,11 +1012,29 @@ async def update_batch_item(item_id: int, **kwargs) -> None:
     # rollback_data dict → JSON string
     if "rollback_data" in kwargs and isinstance(kwargs["rollback_data"], dict):
         kwargs["rollback_data"] = json.dumps(kwargs["rollback_data"], ensure_ascii=False)
+    # suggestion_data dict → JSON string
+    if "suggestion_data" in kwargs and isinstance(kwargs["suggestion_data"], dict):
+        kwargs["suggestion_data"] = json.dumps(kwargs["suggestion_data"], ensure_ascii=False)
     set_clause = ", ".join(f"{k} = ?" for k in kwargs)
     values = list(kwargs.values()) + [item_id]
     async with connection() as conn:
         await conn.execute(f"UPDATE batch_items SET {set_clause} WHERE id = ?", values)
         await conn.commit()
+
+
+async def bulk_update_batch_item_status(item_ids: list[int], status: str) -> int:
+    """Update status for multiple batch items in a single transaction."""
+    if not item_ids:
+        return 0
+    now = _now_iso()
+    placeholders = ",".join("?" for _ in item_ids)
+    async with connection() as conn:
+        cursor = await conn.execute(
+            f"UPDATE batch_items SET status = ?, updated_at = ? WHERE id IN ({placeholders})",
+            [status, now, *item_ids],
+        )
+        await conn.commit()
+        return cursor.rowcount
 
 
 async def get_batch_items(job_id: str) -> list[dict]:
@@ -1043,6 +1074,20 @@ async def get_batch_item_by_product(job_id: str, product_id: str) -> dict | None
     return _row_to_batch_item(row) if row else None
 
 
+async def delete_batch_job(job_id: str) -> bool:
+    async with connection() as conn:
+        async with conn.execute("SELECT status FROM batch_jobs WHERE id = ?", (job_id,)) as cur:
+            row = await cur.fetchone()
+            if not row:
+                return False
+            if row["status"] in ("running",):
+                return False
+        await conn.execute("DELETE FROM batch_items WHERE job_id = ?", (job_id,))
+        await conn.execute("DELETE FROM batch_jobs WHERE id = ?", (job_id,))
+        await conn.commit()
+    return True
+
+
 async def get_batch_stats() -> dict:
     async with connection() as conn:
         async with conn.execute("SELECT COUNT(*) AS c FROM batch_jobs") as cur:
@@ -1061,7 +1106,7 @@ async def get_batch_stats() -> dict:
             row = await cur.fetchone()
             avg_improvement = float(row["delta"] or 0)
         async with conn.execute(
-            "SELECT * FROM batch_jobs WHERE status IN ('calibrating','running') ORDER BY created_at DESC LIMIT 1"
+            "SELECT * FROM batch_jobs WHERE status IN ('analyzing','running') ORDER BY created_at DESC LIMIT 1"
         ) as cur:
             active_row = await cur.fetchone()
 

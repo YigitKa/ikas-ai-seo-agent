@@ -8,7 +8,6 @@ import {
   loadHistory,
   saveHistory,
   clearHistory as clearStoredHistory,
-  hasHistory,
   markRead,
 } from './chat/chatHistory';
 

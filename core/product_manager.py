@@ -11,7 +11,7 @@ from core.ai.client import (
     create_ai_client,
 )
 from core.agent.orchestrator import AgentOrchestrator, supports_tool_calling
-from core.agent.tools import create_seo_rewrite_toolkit, create_batch_toolkit
+from core.agent.tools import create_seo_rewrite_toolkit
 from core.utils.html import html_to_plain_text
 from core.chat import ChatService
 from core.clients.ikas import IkasClient
@@ -28,6 +28,14 @@ from core.seo.analyzer import analyze_product
 from data import db
 
 logger = logging.getLogger(__name__)
+
+TARGET_FIELD_LABELS = {
+    "meta_title": "Meta Başlık",
+    "meta_description": "Meta Açıklama",
+    "name": "Ürün Başlığı",
+    "description": "Açıklama (TR)",
+    "description_en": "Açıklama (EN)",
+}
 
 TScore = TypeVar("TScore")
 
@@ -400,6 +408,13 @@ class ProductManager:
                 f"Başlık (title) etiketinde maksimum %{pct} değişiklik yap; "
                 "mevcut ana anahtar kelimeyi koru."
             )
+        target_fields = getattr(config, "target_fields", None)
+        if target_fields:
+            field_labels = [TARGET_FIELD_LABELS.get(f, f) for f in target_fields]
+            rules.append(
+                "SADECE şu alanları güncelle: " + ", ".join(field_labels) + ". "
+                "Diğer alanlara dokunma, save_suggestion çağrısında diğer alanlara boş string ver."
+            )
         if not rules:
             return BATCH_AGENT_SYSTEM_PROMPT
         constraints_block = "\n\nKISITLAMALAR (Bu kurallara kesinlikle uy):\n" + "\n".join(
@@ -407,122 +422,209 @@ class ProductManager:
         )
         return BATCH_AGENT_SYSTEM_PROMPT + constraints_block
 
-    async def run_calibration(self, job_id: str, config: Any) -> list[dict]:
-        """
-        Pick a sample of products matching config filters, run agentic rewrites,
-        and save each as a batch_item with status='calibration'.
-        Returns a list of item dicts (id, product_id, product_name, score_before).
-        """
-        from api.schemas import BatchConfig  # avoid circular at module level
+    async def _run_agent_for_product(
+        self, product: Product, score: SeoScore, system_prompt: str,
+    ) -> SeoSuggestion | None:
+        """Run the agentic rewrite and return the saved suggestion, or None."""
+        toolkit = create_seo_rewrite_toolkit()
+        orchestrator = AgentOrchestrator(
+            config=self._config,
+            toolkit=toolkit,
+            system_prompt=system_prompt,
+            max_iterations=8,
+        )
+        product_context = {
+            "product_id": product.id,
+            "name": product.name,
+            "description": (product.description or "")[:1000],
+            "meta_title": product.meta_title or "",
+            "meta_description": product.meta_description or "",
+            "category": product.category or "",
+            "tags": product.tags or [],
+            "current_score": score.total_score,
+            "issues": score.issues[:10],
+            "suggestions": score.suggestions[:10],
+        }
+        user_msg = (
+            f"Bu ürünün SEO'sunu optimize et ve save_suggestion ile kaydet.\n"
+            f"Ürün: {product.name} (ID: {product.id})\n"
+            f"Mevcut skor: {score.total_score}/100\n"
+            f"Sorunlar: {', '.join(score.issues[:5]) if score.issues else 'Yok'}"
+        )
+        result = await orchestrator.run(user_message=user_msg, context=product_context)
+        logger.info(
+            "Agent result for %s: iterations=%s, tool_calls=%s, content_len=%d",
+            product.id,
+            result.iterations,
+            [tc.name for tc in result.tool_calls_made],
+            len(result.content),
+        )
+        return await db.get_latest_suggestion_by_product(product.id)
 
+    async def _fallback_rewrite(
+        self, product: Product, score: SeoScore, config: Any,
+    ) -> SeoSuggestion | None:
+        """Direct AI rewrite as fallback when the agent loop fails to save."""
+        try:
+            suggestion = self._ai.rewrite_product(product, score)
+        except Exception as exc:
+            logger.warning("Fallback rewrite failed for %s: %s", product.id, exc)
+            return None
+
+        # Filter by target_fields: blank out non-target suggested fields
+        target_fields = getattr(config, "target_fields", None)
+        if target_fields:
+            field_to_attr = {
+                "name": "suggested_name",
+                "description": "suggested_description",
+                "description_en": "suggested_description_en",
+                "meta_title": "suggested_meta_title",
+                "meta_description": "suggested_meta_description",
+            }
+            blanks = {}
+            for field_key, attr in field_to_attr.items():
+                if field_key not in target_fields:
+                    blanks[attr] = ""
+            if blanks:
+                suggestion = suggestion.model_copy(update=blanks)
+
+        await db.save_or_update_pending_suggestion(suggestion)
+        return suggestion
+
+    async def run_analysis(self, job_id: str, product_ids: list[str], config: Any) -> None:
+        """
+        Generate AI suggestions for each selected product.
+        Creates batch_items with suggestion_data and scores.
+        Transitions job to 'analyzed' when done.
+        """
         all_products = await db.get_all_products()
-        scored = await self.score_products(all_products)
-
-        # Apply targeting filters
-        threshold = getattr(config, "score_threshold", 70)
-        category_filter = (getattr(config, "category_filter", "") or "").strip().lower()
-        sample_size = getattr(config, "sample_size", 10)
-
-        candidates: list[tuple] = []
-        for product, score in scored:
-            if score.total_score >= threshold:
-                continue
-            if category_filter and category_filter not in (product.category or "").lower():
-                continue
-            candidates.append((product, score))
-
-        import random
-        sample = random.sample(candidates, min(sample_size, len(candidates)))
+        product_map = {p.id: p for p in all_products}
 
         system_prompt = self._build_batch_system_prompt(config)
-        results: list[dict] = []
+        processed = 0
+        skipped = 0
+        score_befores: list[float] = []
+        score_afters: list[float] = []
 
-        for product, score in sample:
+        def _avg(vals: list[float]) -> float:
+            return sum(vals) / len(vals) if vals else 0
+
+        for pid in product_ids:
+            # Check cancellation
+            current_job = await db.get_batch_job(job_id)
+            if not current_job or current_job["status"] == "cancelled":
+                logger.info("Analysis job %s cancelled at %d/%d", job_id, processed, len(product_ids))
+                break
+
+            product = product_map.get(pid)
+            if not product:
+                continue
+
+            score = analyze_product(product, self._config.seo_target_keywords)
+
             item_id = await db.create_batch_item(
                 job_id=job_id,
                 product_id=product.id,
                 product_name=product.name,
-                status="calibration",
+                status="pending",
                 score_before=score.total_score,
             )
+
             try:
-                toolkit = create_batch_toolkit()
-                orchestrator = AgentOrchestrator(
-                    config=self._config,
-                    toolkit=toolkit,
-                    system_prompt=system_prompt,
-                    max_iterations=6,
-                )
-                await orchestrator.run(
-                    user_message=f"Bu urunun SEO'sunu optimize et: {product.name} (ID: {product.id})",
-                    context={"product_id": product.id, "current_score": score.model_dump()},
-                )
-                suggestion = await db.get_latest_suggestion_by_product(product.id)
-                after_score = None
-                if suggestion:
-                    from core.seo.analyzer import analyze_product as _analyze
+                suggestion = await self._run_agent_for_product(product, score, system_prompt)
+
+                # Fallback: if agent didn't save, use direct AI rewrite
+                if suggestion is None:
+                    logger.warning(
+                        "Agent did not save suggestion for %s; falling back to direct rewrite",
+                        product.id,
+                    )
+                    suggestion = await self._fallback_rewrite(product, score, config)
+
+                if suggestion is None:
+                    target_fields = getattr(config, "target_fields", None)
+                    if target_fields:
+                        field_labels = [TARGET_FIELD_LABELS.get(f, f) for f in target_fields]
+                        skip_reason = f"Öneri oluşturulamadı (hedef alanlar: {', '.join(field_labels)})"
+                    else:
+                        skip_reason = "Öneri oluşturulamadı"
+                    await db.update_batch_item(item_id, status="skipped", skip_reason=skip_reason)
+                    skipped += 1
+                else:
                     updated = product.model_copy(update={
                         "name": suggestion.suggested_name or product.name,
                         "description": suggestion.suggested_description or product.description,
                         "meta_title": suggestion.suggested_meta_title or product.meta_title,
                         "meta_description": suggestion.suggested_meta_description or product.meta_description,
                     })
-                    after_score = _analyze(updated, self._config.seo_target_keywords).total_score
-                await db.update_batch_item(item_id, score_after=after_score)
-                results.append({
-                    "id": item_id,
-                    "product_id": product.id,
-                    "product_name": product.name,
-                    "score_before": score.total_score,
-                    "score_after": after_score,
-                })
+                    after_score = analyze_product(updated, self._config.seo_target_keywords).total_score
+                    suggestion_data = {
+                        "original_name": product.name,
+                        "suggested_name": suggestion.suggested_name or "",
+                        "original_meta_title": product.meta_title or "",
+                        "suggested_meta_title": suggestion.suggested_meta_title or "",
+                        "original_meta_description": product.meta_description or "",
+                        "suggested_meta_description": suggestion.suggested_meta_description or "",
+                        "original_description": (product.description or "")[:500],
+                        "suggested_description": (suggestion.suggested_description or "")[:500],
+                    }
+                    await db.update_batch_item(
+                        item_id,
+                        status="analyzed",
+                        score_after=after_score,
+                        suggestion_data=suggestion_data,
+                    )
+                    score_befores.append(score.total_score)
+                    score_afters.append(after_score)
+                    processed += 1
             except Exception as exc:
-                logger.warning("Calibration failed for %s: %s", product.id, exc)
+                logger.warning("Analysis failed for %s: %s", product.id, exc)
                 await db.update_batch_item(item_id, status="failed", skip_reason=str(exc)[:200])
-        return results
+                skipped += 1
 
-    async def run_batch_job(self, job_id: str, config: Any) -> None:
-        """
-        Process all products matching config filters.
-        Saves rollback_data BEFORE applying, then applies if dry_run=False.
-        Updates batch_job counters throughout.
-        """
-        all_products = await db.get_all_products()
-        scored = await self.score_products(all_products)
-
-        threshold = getattr(config, "score_threshold", 70)
-        category_filter = (getattr(config, "category_filter", "") or "").strip().lower()
-
-        candidates = [
-            (p, s) for p, s in scored
-            if s.total_score < threshold
-            and (not category_filter or category_filter in (p.category or "").lower())
-        ]
-
-        await db.update_batch_job(job_id, total_count=len(candidates))
-        system_prompt = self._build_batch_system_prompt(config)
-
-        processed = 0
-        skipped = 0
-        score_befores: list[float] = []
-        score_afters: list[float] = []
-
-        for product, score in candidates:
-            # Check if job was cancelled
-            current_job = await db.get_batch_job(job_id)
-            if not current_job or current_job["status"] == "cancelled":
-                logger.info("Batch job %s was cancelled, stopping at %d/%d", job_id, processed, len(candidates))
-                break
-
-            item_id = await db.create_batch_item(
-                job_id=job_id,
-                product_id=product.id,
-                product_name=product.name,
-                status="processing",
-                score_before=score.total_score,
+            await db.update_batch_job(
+                job_id,
+                processed_count=processed,
+                skipped_count=skipped,
+                avg_score_before=_avg(score_befores),
+                avg_score_after=_avg(score_afters),
             )
 
-            # Save rollback data BEFORE any changes
+        await db.update_batch_job(
+            job_id,
+            status="analyzed",
+            processed_count=processed,
+            skipped_count=skipped,
+            avg_score_before=_avg(score_befores),
+            avg_score_after=_avg(score_afters),
+        )
+        logger.info("Analysis job %s done: %d analyzed, %d skipped", job_id, processed, skipped)
+
+    async def apply_batch_job(self, job_id: str, config: Any) -> None:
+        """Apply approved suggestions to ikas for items with status='approved'."""
+        items = await db.get_batch_items(job_id)
+        approved = [i for i in items if i["status"] == "approved"]
+        target_fields = set(getattr(config, "target_fields", []) or [])
+
+        all_products = await db.get_all_products()
+        product_map = {p.id: p for p in all_products}
+
+        applied = 0
+        for item in approved:
+            current_job = await db.get_batch_job(job_id)
+            if not current_job or current_job["status"] == "cancelled":
+                break
+
+            product_id = item["product_id"]
+            suggestion = await db.get_latest_suggestion_by_product(product_id)
+            if not suggestion:
+                await db.update_batch_item(item["id"], status="skipped", skip_reason="Öneri bulunamadı")
+                continue
+
+            product = product_map.get(product_id)
+            if not product:
+                continue
+
             rollback_data = {
                 "name": product.name,
                 "description": product.description or "",
@@ -531,98 +633,36 @@ class ProductManager:
                 "meta_description": product.meta_description or "",
             }
 
-            try:
-                toolkit = create_batch_toolkit()
-                orchestrator = AgentOrchestrator(
-                    config=self._config,
-                    toolkit=toolkit,
-                    system_prompt=system_prompt,
-                    max_iterations=6,
-                )
-                await orchestrator.run(
-                    user_message=f"Bu urunun SEO'sunu optimize et: {product.name} (ID: {product.id})",
-                    context={"product_id": product.id, "current_score": score.model_dump()},
-                )
-                suggestion = await db.get_latest_suggestion_by_product(product.id)
-                if suggestion is None:
-                    await db.update_batch_item(item_id, status="skipped", skip_reason="Agent öneri oluşturmadı")
-                    skipped += 1
-                    continue
+            if not self._config.dry_run:
+                updates: dict[str, Any] = {}
+                if (not target_fields or "name" in target_fields) and suggestion.suggested_name:
+                    updates["name"] = suggestion.suggested_name
+                if (not target_fields or "description" in target_fields) and suggestion.suggested_description:
+                    updates["description"] = suggestion.suggested_description
+                desc_translations = {}
+                if (not target_fields or "description" in target_fields) and suggestion.suggested_description:
+                    desc_translations["tr"] = suggestion.suggested_description
+                if (not target_fields or "description_en" in target_fields) and suggestion.suggested_description_en:
+                    desc_translations["en"] = suggestion.suggested_description_en
+                if desc_translations:
+                    updates["description_translations"] = desc_translations
+                if (not target_fields or "meta_title" in target_fields) and suggestion.suggested_meta_title:
+                    updates["meta_title"] = suggestion.suggested_meta_title
+                if (not target_fields or "meta_description" in target_fields) and suggestion.suggested_meta_description:
+                    updates["meta_description"] = suggestion.suggested_meta_description
+                if updates:
+                    await self._ikas.update_product(product_id, updates)
+                    await db.log_operation("batch_apply", product_id, updates, True)
 
-                from core.seo.analyzer import analyze_product as _analyze
-                updated_product = product.model_copy(update={
-                    "name": suggestion.suggested_name or product.name,
-                    "description": suggestion.suggested_description or product.description,
-                    "meta_title": suggestion.suggested_meta_title or product.meta_title,
-                    "meta_description": suggestion.suggested_meta_description or product.meta_description,
-                })
-                after_score = _analyze(updated_product, self._config.seo_target_keywords).total_score
-
-                if not self._config.dry_run:
-                    updates: dict[str, Any] = {}
-                    if suggestion.suggested_name:
-                        updates["name"] = suggestion.suggested_name
-                    if suggestion.suggested_description:
-                        updates["description"] = suggestion.suggested_description
-                    desc_translations = {}
-                    if suggestion.suggested_description:
-                        desc_translations["tr"] = suggestion.suggested_description
-                    if suggestion.suggested_description_en:
-                        desc_translations["en"] = suggestion.suggested_description_en
-                    if desc_translations:
-                        updates["description_translations"] = desc_translations
-                    if suggestion.suggested_meta_title:
-                        updates["meta_title"] = suggestion.suggested_meta_title
-                    if suggestion.suggested_meta_description:
-                        updates["meta_description"] = suggestion.suggested_meta_description
-                    await self._ikas.update_product(product.id, updates)
-                    await db.update_batch_item(
-                        item_id,
-                        status="applied",
-                        score_after=after_score,
-                        rollback_data=rollback_data,
-                    )
-                    await db.log_operation("batch_apply", product.id, updates, True)
-                else:
-                    await db.update_batch_item(
-                        item_id,
-                        status="approved",
-                        score_after=after_score,
-                        rollback_data=rollback_data,
-                    )
-
-                score_befores.append(score.total_score)
-                score_afters.append(after_score)
-                processed += 1
-
-            except Exception as exc:
-                logger.warning("Batch item failed for %s: %s", product.id, exc)
-                await db.update_batch_item(item_id, status="failed", skip_reason=str(exc)[:200])
-                skipped += 1
-
-            # Update job counters after each product
-            avg_before = sum(score_befores) / len(score_befores) if score_befores else 0
-            avg_after = sum(score_afters) / len(score_afters) if score_afters else 0
-            await db.update_batch_job(
-                job_id,
-                processed_count=processed,
-                skipped_count=skipped,
-                avg_score_before=avg_before,
-                avg_score_after=avg_after,
+            await db.update_batch_item(
+                item["id"],
+                status="applied" if not self._config.dry_run else "approved",
+                rollback_data=rollback_data,
             )
+            applied += 1
 
-        avg_before = sum(score_befores) / len(score_befores) if score_befores else 0
-        avg_after = sum(score_afters) / len(score_afters) if score_afters else 0
-        await db.update_batch_job(
-            job_id,
-            status="completed",
-            processed_count=processed,
-            skipped_count=skipped,
-            failed_count=skipped,
-            avg_score_before=avg_before,
-            avg_score_after=avg_after,
-        )
-        logger.info("Batch job %s completed: %d processed, %d skipped", job_id, processed, skipped)
+        await db.update_batch_job(job_id, status="completed")
+        logger.info("Batch apply %s done: %d applied", job_id, applied)
 
     async def rollback_product(self, product_id: str, rollback_data: dict) -> bool:
         """Restore original product fields to ikas."""

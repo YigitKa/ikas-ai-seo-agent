@@ -2,7 +2,8 @@ import type { BatchJob } from '../../types';
 
 const STATUS_LABELS: Record<string, string> = {
   idle: 'Boşta',
-  calibrating: 'Kalibrasyon',
+  analyzing: 'Analiz Ediliyor',
+  analyzed: 'Analiz Tamamlandı',
   running: 'Çalışıyor',
   paused: 'Duraklatıldı',
   completed: 'Tamamlandı',
@@ -11,7 +12,8 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_BG: Record<string, string> = {
-  calibrating: 'rgba(245,158,11,0.15)',
+  analyzing: 'rgba(245,158,11,0.15)',
+  analyzed: 'rgba(99,102,241,0.15)',
   running: 'rgba(34,197,94,0.15)',
   completed: 'rgba(99,102,241,0.15)',
   failed: 'rgba(239,68,68,0.15)',
@@ -21,7 +23,8 @@ const STATUS_BG: Record<string, string> = {
 };
 
 const STATUS_TEXT: Record<string, string> = {
-  calibrating: '#f59e0b',
+  analyzing: '#f59e0b',
+  analyzed: '#818cf8',
   running: '#22c55e',
   completed: '#818cf8',
   failed: '#ef4444',
@@ -32,7 +35,8 @@ const STATUS_TEXT: Record<string, string> = {
 
 interface Props {
   jobs: BatchJob[];
-  onSelect: (jobId: string) => void;
+  onSelect: (jobId: string, status: string) => void;
+  onDelete?: (jobId: string) => void;
 }
 
 function formatDate(iso: string): string {
@@ -62,7 +66,7 @@ function ScoreDelta({ before, after }: { before: number; after: number }) {
   );
 }
 
-export default function BatchHistory({ jobs, onSelect }: Props) {
+export default function BatchHistory({ jobs, onSelect, onDelete }: Props) {
   return (
     <div
       className="rounded-xl"
@@ -114,14 +118,29 @@ export default function BatchHistory({ jobs, onSelect }: Props) {
                   )}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => onSelect(job.id)}
-                className="flex-shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors hover:bg-[var(--color-bg-hover)]"
-                style={{ color: 'var(--color-primary-light)', border: '1px solid rgba(99,102,241,0.25)' }}
-              >
-                Detay
-              </button>
+              <div className="flex flex-shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onSelect(job.id, job.status)}
+                  className="rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors hover:bg-[var(--color-bg-hover)]"
+                  style={{ color: 'var(--color-primary-light)', border: '1px solid rgba(99,102,241,0.25)' }}
+                >
+                  Detay
+                </button>
+                {onDelete && job.status !== 'running' && job.status !== 'analyzing' && (
+                  <button
+                    type="button"
+                    onClick={() => onDelete(job.id)}
+                    className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors hover:bg-[rgba(239,68,68,0.1)]"
+                    style={{ color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}
+                    title="Sil"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>

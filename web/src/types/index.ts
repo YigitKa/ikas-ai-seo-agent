@@ -252,12 +252,13 @@ export interface BatchConfig {
   preserve_specs: boolean;
   prevent_cannibalization: boolean;
   max_title_change_pct: number;
-  sample_size: number;
+  target_fields: string[];
 }
 
 export type BatchJobStatus =
   | 'idle'
-  | 'calibrating'
+  | 'analyzing'
+  | 'analyzed'
   | 'running'
   | 'paused'
   | 'completed'
@@ -281,8 +282,8 @@ export interface BatchJob {
 }
 
 export type BatchItemStatus =
-  | 'calibration'
   | 'pending'
+  | 'analyzed'
   | 'processing'
   | 'approved'
   | 'rejected'
@@ -301,6 +302,7 @@ export interface BatchItem {
   score_after: number | null;
   skip_reason: string | null;
   has_rollback: boolean;
+  suggestion_data: Record<string, string> | null;
 }
 
 export interface BatchJobDetail {

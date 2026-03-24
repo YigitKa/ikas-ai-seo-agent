@@ -52,6 +52,14 @@ async def list_products(
     )
 
 
+@router.get("/categories")
+async def list_categories() -> list[str]:
+    """Return distinct category names from cached products."""
+    products = await db.get_all_products()
+    cats = sorted({p.category for p in products if p.category})
+    return cats
+
+
 @router.post("/fetch", response_model=ProductListResponse)
 async def fetch_products(
     body: FetchProductsRequest,

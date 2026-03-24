@@ -12,6 +12,7 @@ interface Toast {
 
 interface ToastContextValue {
   show: (message: string, tone?: ToastTone) => void;
+  addToast: (opts: { message: string; tone?: ToastTone }) => void;
   success: (message: string) => void;
   error: (message: string) => void;
   info: (message: string) => void;
@@ -135,13 +136,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     [dismiss],
   );
 
+  const addToast = useCallback(
+    (opts: { message: string; tone?: ToastTone }) => show(opts.message, opts.tone),
+    [show],
+  );
   const success = useCallback((msg: string) => show(msg, 'success'), [show]);
   const error = useCallback((msg: string) => show(msg, 'error'), [show]);
   const info = useCallback((msg: string) => show(msg, 'info'), [show]);
   const warning = useCallback((msg: string) => show(msg, 'warning'), [show]);
 
   return (
-    <ToastContext.Provider value={{ show, success, error, info, warning }}>
+    <ToastContext.Provider value={{ show, addToast, success, error, info, warning }}>
       {children}
       {/* Toast container — fixed bottom-right, above everything */}
       {toasts.length > 0 && (

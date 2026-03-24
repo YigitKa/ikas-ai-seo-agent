@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { BatchJob, BatchItem } from '../../types';
+import type { BatchJob } from '../../types';
 import ProgressBar from '../../shared/ui/ProgressBar';
 import ConfirmDialog from '../../shared/ui/ConfirmDialog';
 import { createBatchJobStream } from '../../api/client';
@@ -32,7 +32,6 @@ function DeltaBadge({ delta }: { delta: number | null }) {
 
 export default function BatchProgressView({ job, onStop, onJobComplete }: Props) {
   const [liveJob, setLiveJob] = useState<BatchJob>(job);
-  const [eventLog, setEventLog] = useState<BatchItem[]>([]);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const esRef = useRef<EventSource | null>(null);
 
@@ -71,7 +70,7 @@ export default function BatchProgressView({ job, onStop, onJobComplete }: Props)
     ? Math.round((liveJob.processed_count / liveJob.total_count) * 100)
     : 0;
 
-  const isRunning = liveJob.status === 'running' || liveJob.status === 'calibrating';
+  const isRunning = liveJob.status === 'running' || liveJob.status === 'analyzing';
 
   return (
     <div className="space-y-5">
@@ -149,56 +148,6 @@ export default function BatchProgressView({ job, onStop, onJobComplete }: Props)
           </div>
         )}
       </div>
-
-      {/* Event log */}
-      {eventLog.length > 0 && (
-        <div
-          className="rounded-xl overflow-hidden"
-          style={{
-            background: 'var(--color-bg-surface)',
-            border: '1px solid var(--color-border)',
-          }}
-        >
-          <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--color-border)' }}>
-            <p className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
-              Canlı Akış
-            </p>
-          </div>
-          <div className="divide-y" style={{ borderColor: 'var(--color-border)' }}>
-            {eventLog.slice(0, 20).map((item) => (
-              <div key={item.id} className="flex items-center gap-3 px-4 py-2.5">
-                <span
-                  className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                  style={{
-                    background: item.status === 'applied' || item.status === 'approved'
-                      ? '#22c55e'
-                      : item.status === 'failed' || item.status === 'skipped'
-                      ? '#ef4444'
-                      : '#94a3b8',
-                  }}
-                />
-                <span className="min-w-0 flex-1 truncate text-[12px]" style={{ color: 'var(--color-text-primary)' }}>
-                  {item.product_name}
-                </span>
-                <div className="flex flex-shrink-0 items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                  {item.score_before !== null && <span className="tabular-nums">{item.score_before}</span>}
-                  {item.score_after !== null && (
-                    <>
-                      <span>→</span>
-                      <span className="tabular-nums font-medium" style={{ color: 'var(--color-text-primary)' }}>
-                        {item.score_after}
-                      </span>
-                    </>
-                  )}
-                  {item.score_before !== null && item.score_after !== null && (
-                    <DeltaBadge delta={item.score_after - item.score_before} />
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Completion state */}
       {liveJob.status === 'completed' && (

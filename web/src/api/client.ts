@@ -264,16 +264,16 @@ export async function getBatchJob(jobId: string): Promise<BatchJobDetail> {
 
 export async function startBatchJob(
   config: BatchConfig,
-  runCalibrationFirst = true,
+  productIds: string[],
 ): Promise<BatchJob> {
   return request('/api/batch/jobs', {
     method: 'POST',
-    body: JSON.stringify({ config, run_calibration_first: runCalibrationFirst }),
+    body: JSON.stringify({ config, product_ids: productIds }),
   });
 }
 
-export async function startFullBatchRun(jobId: string): Promise<BatchJob> {
-  return request(`/api/batch/jobs/${jobId}/start`, { method: 'POST' });
+export async function applyBatchJob(jobId: string): Promise<BatchJob> {
+  return request(`/api/batch/jobs/${jobId}/apply`, { method: 'POST' });
 }
 
 export async function stopBatchJob(jobId: string): Promise<BatchJob> {
@@ -299,6 +299,24 @@ export async function updateBatchItem(
   });
 }
 
+export async function bulkUpdateBatchItems(
+  itemIds: number[],
+  decision: 'approved' | 'rejected',
+): Promise<{ updated: number }> {
+  return request('/api/batch/items/bulk-decision', {
+    method: 'POST',
+    body: JSON.stringify({ item_ids: itemIds, decision }),
+  });
+}
+
 export function createBatchJobStream(jobId: string): EventSource {
   return new EventSource(`/api/batch/jobs/${jobId}/stream`);
+}
+
+export async function deleteBatchJob(jobId: string): Promise<{ ok: boolean }> {
+  return request(`/api/batch/jobs/${jobId}`, { method: 'DELETE' });
+}
+
+export async function getCategories(): Promise<string[]> {
+  return request('/api/products/categories');
 }

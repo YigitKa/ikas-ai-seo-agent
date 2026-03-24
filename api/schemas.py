@@ -227,6 +227,9 @@ class ChatMessageSchema(BaseModel):
 
 # ── Batch Operations ──────────────────────────────────────────────────────────
 
+ALL_TARGET_FIELDS = ["meta_title", "meta_description", "name", "description", "description_en"]
+
+
 class BatchConfig(BaseModel):
     score_threshold: int = Field(default=70, ge=0, le=100)
     category_filter: str = ""
@@ -234,7 +237,7 @@ class BatchConfig(BaseModel):
     preserve_specs: bool = True
     prevent_cannibalization: bool = True
     max_title_change_pct: int = Field(default=20, ge=0, le=100)
-    sample_size: int = Field(default=10, ge=1, le=20)
+    target_fields: list[str] = Field(default_factory=lambda: list(ALL_TARGET_FIELDS))
 
 
 class BatchJobResponse(BaseModel):
@@ -263,6 +266,7 @@ class BatchItemResponse(BaseModel):
     score_after: Optional[int] = None
     skip_reason: Optional[str] = None
     has_rollback: bool = False
+    suggestion_data: Optional[dict[str, Any]] = None
 
 
 class BatchJobDetailResponse(BaseModel):
@@ -279,7 +283,7 @@ class BatchStatsResponse(BaseModel):
 
 class StartBatchRequest(BaseModel):
     config: BatchConfig
-    run_calibration_first: bool = True
+    product_ids: list[str] = Field(default_factory=list)
 
 
 class BatchItemDecisionRequest(BaseModel):

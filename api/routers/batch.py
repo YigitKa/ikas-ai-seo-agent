@@ -1,4 +1,4 @@
-"""Batch SEO optimization endpoints — job lifecycle, calibration, rollback."""
+"""Batch SEO optimization endpoints — select → analyze → review → apply."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def _item_to_response(item: dict) -> BatchItemResponse:
 
 @router.get("/stats", response_model=BatchStatsResponse)
 async def get_batch_stats() -> BatchStatsResponse:
-    """Aggregate stats for the Command Center dashboard."""
+    """Aggregate stats for the dashboard."""
     stats = await db.get_batch_stats()
     active = BatchJobResponse(**stats["active_job"]) if stats["active_job"] else None
     return BatchStatsResponse(
@@ -63,22 +63,18 @@ async def create_batch_job(
     body: StartBatchRequest,
     manager: ProductManager = Depends(get_manager),
 ) -> BatchJobResponse:
-    """Create a new batch job. Starts calibration or runs directly based on flag."""
+    """Create a new batch job with explicit product_ids.  Starts analysis in background."""
+    if not body.product_ids:
+        raise HTTPException(status_code=400, detail="En az bir ürün seçmelisiniz.")
+
     job_id = str(uuid4())
     config_json = body.config.model_dump_json()
     await db.create_batch_job(job_id, config_json)
+    await db.update_batch_job(job_id, status="analyzing", total_count=len(body.product_ids))
 
-    if body.run_calibration_first:
-        await db.update_batch_job(job_id, status="calibrating")
-        # Run calibration in background — creates batch_items with status='calibration'
-        asyncio.create_task(
-            _run_calibration_task(job_id, body.config, manager)
-        )
-    else:
-        await db.update_batch_job(job_id, status="running")
-        asyncio.create_task(
-            _run_batch_task(job_id, body.config, manager)
-        )
+    asyncio.create_task(
+        _run_analysis_task(job_id, body.product_ids, body.config, manager)
+    )
 
     job = await db.get_batch_job(job_id)
     if not job:
@@ -100,7 +96,7 @@ async def get_batch_job(job_id: str) -> BatchJobDetailResponse:
 
 @router.get("/jobs/{job_id}/stream")
 async def stream_batch_job(job_id: str) -> StreamingResponse:
-    """SSE stream for real-time batch progress updates."""
+    """SSE stream for real-time progress updates."""
     job = await db.get_batch_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -114,7 +110,7 @@ async def stream_batch_job(job_id: str) -> StreamingResponse:
             if current["processed_count"] != last_processed:
                 last_processed = current["processed_count"]
                 yield f"data: {json.dumps({'type': 'progress', 'job': current})}\n\n"
-            if current["status"] in ("completed", "failed", "cancelled"):
+            if current["status"] in ("analyzed", "completed", "failed", "cancelled"):
                 yield f"data: {json.dumps({'type': 'completed', 'job': current})}\n\n"
                 break
             await asyncio.sleep(1)
@@ -124,21 +120,21 @@ async def stream_batch_job(job_id: str) -> StreamingResponse:
 
 # ── Job lifecycle ─────────────────────────────────────────────────────────────
 
-@router.post("/jobs/{job_id}/start", response_model=BatchJobResponse)
-async def start_full_batch_run(
+@router.post("/jobs/{job_id}/apply", response_model=BatchJobResponse)
+async def apply_batch_job(
     job_id: str,
     manager: ProductManager = Depends(get_manager),
 ) -> BatchJobResponse:
-    """Start the full batch run after calibration is approved."""
+    """Apply approved suggestions to ikas (transitions analyzed → running)."""
     job = await db.get_batch_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] != "calibrating":
-        raise HTTPException(status_code=400, detail="Job is not in calibration state")
+    if job["status"] != "analyzed":
+        raise HTTPException(status_code=400, detail="İş henüz analiz aşamasında değil.")
 
     config = BatchConfig(**job["config"])
     await db.update_batch_job(job_id, status="running")
-    asyncio.create_task(_run_batch_task(job_id, config, manager))
+    asyncio.create_task(_run_apply_task(job_id, config, manager))
 
     updated = await db.get_batch_job(job_id)
     return _job_to_response(updated)
@@ -149,11 +145,19 @@ async def stop_batch_job(job_id: str) -> BatchJobResponse:
     job = await db.get_batch_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] not in ("calibrating", "running"):
-        raise HTTPException(status_code=400, detail="Job is not running")
+    if job["status"] not in ("analyzing", "running"):
+        raise HTTPException(status_code=400, detail="İş çalışmıyor.")
     await db.update_batch_job(job_id, status="cancelled")
     updated = await db.get_batch_job(job_id)
     return _job_to_response(updated)
+
+
+@router.delete("/jobs/{job_id}")
+async def delete_batch_job_endpoint(job_id: str):
+    deleted = await db.delete_batch_job(job_id)
+    if not deleted:
+        raise HTTPException(status_code=400, detail="Aktif veya bulunamayan iş silinemez.")
+    return {"ok": True}
 
 
 # ── Rollback ──────────────────────────────────────────────────────────────────
@@ -198,14 +202,14 @@ async def rollback_batch_item(
     return {"ok": success, "product_id": product_id}
 
 
-# ── Calibration item decisions ────────────────────────────────────────────────
+# ── Item decisions ────────────────────────────────────────────────────────────
 
 @router.patch("/items/{item_id}", response_model=BatchItemResponse)
 async def update_batch_item_decision(
     item_id: int,
     body: BatchItemDecisionRequest,
 ) -> BatchItemResponse:
-    """Approve, reject, or revise a calibration sample item."""
+    """Approve or reject an analyzed item."""
     if body.decision not in ("approved", "rejected", "revised"):
         raise HTTPException(status_code=400, detail="decision must be approved, rejected, or revised")
 
@@ -217,35 +221,44 @@ async def update_batch_item_decision(
     return _item_to_response(item)
 
 
+@router.post("/items/bulk-decision")
+async def bulk_update_item_decisions(
+    body: dict,
+) -> dict:
+    """Approve or reject multiple items at once."""
+    item_ids: list[int] = body.get("item_ids", [])
+    decision: str = body.get("decision", "")
+    if not item_ids or decision not in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail="item_ids and decision (approved/rejected) required")
+    status = decision
+    updated = await db.bulk_update_batch_item_status(item_ids, status)
+    return {"updated": updated}
+
+
 # ── Background task helpers ───────────────────────────────────────────────────
 
-async def _run_calibration_task(
+async def _run_analysis_task(
     job_id: str,
+    product_ids: list[str],
     config: BatchConfig,
     manager: ProductManager,
 ) -> None:
-    """Background task: pick sample products, generate rewrites, save as calibration items."""
+    """Background: generate AI suggestions for each selected product."""
     try:
-        items = await manager.run_calibration(job_id, config)
-        await db.update_batch_job(
-            job_id,
-            total_count=len(items),
-            status="calibrating",
-        )
-        logger.info("Calibration complete for job %s: %d samples", job_id, len(items))
+        await manager.run_analysis(job_id, product_ids, config)
     except Exception as exc:
-        logger.exception("Calibration failed for job %s", job_id)
+        logger.exception("Analysis failed for job %s", job_id)
         await db.update_batch_job(job_id, status="failed", error=str(exc))
 
 
-async def _run_batch_task(
+async def _run_apply_task(
     job_id: str,
     config: BatchConfig,
     manager: ProductManager,
 ) -> None:
-    """Background task: process all matching products and save results."""
+    """Background: apply approved suggestions to ikas."""
     try:
-        await manager.run_batch_job(job_id, config)
+        await manager.apply_batch_job(job_id, config)
     except Exception as exc:
-        logger.exception("Batch job %s failed", job_id)
+        logger.exception("Batch apply %s failed", job_id)
         await db.update_batch_job(job_id, status="failed", error=str(exc))

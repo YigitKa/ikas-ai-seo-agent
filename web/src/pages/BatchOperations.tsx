@@ -1,39 +1,60 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import type { BatchConfig, BatchJob, BatchItem } from '../types';
+import type { BatchConfig, BatchItem } from '../types';
+import type { QueryClient } from '@tanstack/react-query';
 import {
   getBatchStats,
   listBatchJobs,
   getBatchJob,
   startBatchJob,
-  startFullBatchRun,
+  applyBatchJob,
   stopBatchJob,
   rollbackBatchJob,
   rollbackBatchItem,
   updateBatchItem,
+  bulkUpdateBatchItems,
+  deleteBatchJob,
 } from '../api/client';
 import { useToast } from '../shared/ui/Toast';
-import BatchCommandCenter from '../components/batch/BatchCommandCenter';
-import CalibrationReview from '../components/batch/CalibrationReview';
+import ProductSelector from '../components/batch/ProductSelector';
+import AnalysisReview from '../components/batch/AnalysisReview';
 import BatchProgressView from '../components/batch/BatchProgressView';
 import BatchJobDetail from '../components/batch/BatchJobDetail';
+import BatchHistory from '../components/batch/BatchHistory';
 
-type View = 'command' | 'calibrating' | 'running' | 'detail';
+type View = 'select' | 'analyzing' | 'review' | 'running' | 'detail';
+
+function invalidateBatch(qc: QueryClient, jobId?: string | null) {
+  qc.invalidateQueries({ queryKey: ['batchJobs'] });
+  qc.invalidateQueries({ queryKey: ['batchStats'] });
+  if (jobId) qc.invalidateQueries({ queryKey: ['batchJob', jobId] });
+}
+
+const DEFAULT_CONFIG: BatchConfig = {
+  score_threshold: 70,
+  category_filter: '',
+  in_stock_only: false,
+  preserve_specs: true,
+  prevent_cannibalization: true,
+  max_title_change_pct: 40,
+  target_fields: ['name', 'description', 'meta_title', 'meta_description'],
+};
 
 export default function BatchOperations() {
   const qc = useQueryClient();
   const { addToast } = useToast();
 
-  const [view, setView] = useState<View>('command');
+  const [view, setView] = useState<View>('select');
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [config, setConfig] = useState<BatchConfig>(DEFAULT_CONFIG);
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
   const { data: stats } = useQuery({
     queryKey: ['batchStats'],
     queryFn: getBatchStats,
-    refetchInterval: view === 'running' ? 3000 : 10000,
+    refetchInterval: view === 'running' || view === 'analyzing' ? 3000 : 10000,
   });
 
   const { data: jobs = [] } = useQuery({
@@ -46,102 +67,111 @@ export default function BatchOperations() {
     queryKey: ['batchJob', activeJobId],
     queryFn: () => getBatchJob(activeJobId!),
     enabled: !!activeJobId,
-    refetchInterval: view === 'calibrating' || view === 'running' ? 4000 : false,
+    refetchInterval: view === 'analyzing' || view === 'running' ? 4000 : false,
   });
 
   const activeJob = activeDetail?.job ?? null;
   const activeItems: BatchItem[] = activeDetail?.items ?? [];
 
   // Sync view with job status when polling updates come in
-  const syncView = useCallback((job: BatchJob) => {
-    if (job.status === 'calibrating') setView('calibrating');
-    else if (job.status === 'running') setView('running');
-    else if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') setView('detail');
-  }, []);
-
-  if (activeJob) {
-    syncView(activeJob);
-  }
+  const prevStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeJob) return;
+    const st = activeJob.status;
+    if (st === prevStatusRef.current) return;
+    prevStatusRef.current = st;
+    if (st === 'analyzing') setView('analyzing');
+    else if (st === 'analyzed') setView('review');
+    else if (st === 'running') setView('running');
+    else if (st === 'completed' || st === 'failed' || st === 'cancelled') setView('detail');
+  }, [activeJob?.status]);
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
   const startMutation = useMutation({
-    mutationFn: ({ config, calibrate }: { config: BatchConfig; calibrate: boolean }) =>
-      startBatchJob(config, calibrate),
+    mutationFn: (productIds: string[]) => startBatchJob(config, productIds),
     onSuccess: (job) => {
       setActiveJobId(job.id);
-      setView(job.status === 'calibrating' ? 'calibrating' : 'running');
-      qc.invalidateQueries({ queryKey: ['batchJobs'] });
-      qc.invalidateQueries({ queryKey: ['batchStats'] });
-      addToast({ tone: 'success', message: 'Toplu işlem başlatıldı.' });
+      setView('analyzing');
+      prevStatusRef.current = job.status;
+      invalidateBatch(qc);
+      addToast({ tone: 'success', message: 'Analiz başlatıldı.' });
     },
-    onError: (err: Error) => {
-      addToast({ tone: 'error', message: err.message });
-    },
+    onError: (err: Error) => addToast({ tone: 'error', message: err.message }),
   });
 
-  const confirmRunMutation = useMutation({
-    mutationFn: () => startFullBatchRun(activeJobId!),
+  const applyMutation = useMutation({
+    mutationFn: () => applyBatchJob(activeJobId!),
     onSuccess: () => {
       setView('running');
-      qc.invalidateQueries({ queryKey: ['batchJob', activeJobId] });
-      addToast({ tone: 'success', message: 'Toplu optimizasyon başlatıldı.' });
+      prevStatusRef.current = 'running';
+      invalidateBatch(qc, activeJobId);
+      addToast({ tone: 'success', message: 'Uygulama başlatıldı.' });
     },
-    onError: (err: Error) => {
-      addToast({ tone: 'error', message: err.message });
-    },
+    onError: (err: Error) => addToast({ tone: 'error', message: err.message }),
   });
 
   const stopMutation = useMutation({
     mutationFn: () => stopBatchJob(activeJobId!),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['batchJob', activeJobId] });
-      qc.invalidateQueries({ queryKey: ['batchStats'] });
+      invalidateBatch(qc, activeJobId);
       addToast({ tone: 'info', message: 'İşlem durduruldu.' });
     },
   });
 
   const rollbackItemMutation = useMutation({
     mutationFn: (itemId: number) => rollbackBatchItem(itemId),
-    onSuccess: (_, itemId) => {
-      qc.invalidateQueries({ queryKey: ['batchJob', activeJobId] });
+    onSuccess: () => {
+      invalidateBatch(qc, activeJobId);
       addToast({ tone: 'success', message: 'Ürün önceki sürüme döndürüldü.' });
     },
-    onError: (err: Error) => {
-      addToast({ tone: 'error', message: err.message });
-    },
+    onError: (err: Error) => addToast({ tone: 'error', message: err.message }),
   });
 
   const rollbackAllMutation = useMutation({
     mutationFn: () => rollbackBatchJob(activeJobId!),
     onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ['batchJob', activeJobId] });
+      invalidateBatch(qc, activeJobId);
       addToast({ tone: 'success', message: `${res.rolled_back} ürün geri alındı.` });
     },
-    onError: (err: Error) => {
-      addToast({ tone: 'error', message: err.message });
-    },
+    onError: (err: Error) => addToast({ tone: 'error', message: err.message }),
   });
 
   const decisionMutation = useMutation({
-    mutationFn: ({ itemId, decision }: { itemId: number; decision: 'approved' | 'rejected' | 'revised' }) =>
+    mutationFn: ({ itemId, decision }: { itemId: number; decision: 'approved' | 'rejected' }) =>
       updateBatchItem(itemId, decision),
+    onSuccess: () => invalidateBatch(qc, activeJobId),
+  });
+
+  const bulkDecisionMutation = useMutation({
+    mutationFn: ({ itemIds, decision }: { itemIds: number[]; decision: 'approved' | 'rejected' }) =>
+      bulkUpdateBatchItems(itemIds, decision),
+    onSuccess: () => invalidateBatch(qc, activeJobId),
+  });
+
+  const deleteJobMutation = useMutation({
+    mutationFn: (jobId: string) => deleteBatchJob(jobId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['batchJob', activeJobId] });
+      invalidateBatch(qc);
+      addToast({ tone: 'success', message: 'İş silindi.' });
     },
+    onError: (err: Error) => addToast({ tone: 'error', message: err.message }),
   });
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   const defaultStats = stats ?? { total_jobs: 0, total_processed: 0, avg_score_improvement: 0, active_job: null };
-  const isDisabled = view !== 'command' || startMutation.isPending;
 
   const handleJobComplete = useCallback((jobId: string) => {
-    qc.invalidateQueries({ queryKey: ['batchJob', jobId] });
-    qc.invalidateQueries({ queryKey: ['batchJobs'] });
-    qc.invalidateQueries({ queryKey: ['batchStats'] });
+    invalidateBatch(qc, jobId);
     setView('detail');
   }, [qc]);
+
+  const handleBackToSelect = useCallback(() => {
+    setView('select');
+    setActiveJobId(null);
+    prevStatusRef.current = null;
+  }, []);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -172,17 +202,17 @@ export default function BatchOperations() {
           </h1>
         </div>
         <div className="flex items-center gap-3">
-          {view !== 'command' && (
+          {view !== 'select' && (
             <button
               type="button"
-              onClick={() => { setView('command'); setActiveJobId(null); }}
+              onClick={handleBackToSelect}
               className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors hover:bg-[var(--color-bg-hover)]"
               style={{
                 border: '1px solid var(--color-border-light)',
                 color: 'var(--color-text-secondary)',
               }}
             >
-              Kontrol Paneli
+              Ürün Seçimi
             </button>
           )}
         </div>
@@ -192,62 +222,103 @@ export default function BatchOperations() {
       <main className="flex-1 overflow-auto px-6 py-5">
         <div className="mx-auto max-w-6xl">
 
-          {/* COMMAND CENTER */}
-          {view === 'command' && (
-            <BatchCommandCenter
-              stats={defaultStats}
-              jobs={jobs}
-              onStartCalibration={(config) => startMutation.mutate({ config, calibrate: true })}
-              onStartDirect={(config) => startMutation.mutate({ config, calibrate: false })}
-              onViewJob={(jobId) => { setActiveJobId(jobId); setView('detail'); }}
-              disabled={isDisabled || startMutation.isPending}
-            />
-          )}
-
-          {/* CALIBRATING — waiting for samples to be processed */}
-          {view === 'calibrating' && activeJob && (
-            <div>
-              {activeItems.some((i) => i.status === 'approved' || i.status === 'rejected') ||
-              activeJob.status === 'calibrating' ? (
-                <CalibrationReview
-                  job={activeJob}
-                  items={activeItems.filter((i) => i.status === 'calibration' ||
-                    i.status === 'approved' || i.status === 'rejected' || i.status === 'failed' || i.status === 'skipped')}
-                  onDecision={(itemId, decision) => decisionMutation.mutate({ itemId, decision })}
-                  onConfirmRun={() => confirmRunMutation.mutate()}
-                  isMutating={confirmRunMutation.isPending}
-                />
-              ) : (
-                /* Still processing calibration samples */
-                <div
-                  className="rounded-xl p-8 text-center"
-                  style={{
-                    background: 'var(--color-bg-surface)',
-                    border: '1px solid var(--color-border)',
-                  }}
-                >
-                  <svg
-                    className="mx-auto mb-4 h-10 w-10 animate-spin"
-                    style={{ color: 'var(--color-primary-light)' }}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  <p className="text-[15px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                    Kalibrasyon örnekleri işleniyor...
-                  </p>
-                  <p className="mt-1.5 text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
-                    {(activeJob.config?.sample_size as number | undefined) ?? 10} ürün için SEO optimizasyon taslakları oluşturuluyor.
-                  </p>
+          {/* PRODUCT SELECTION */}
+          {view === 'select' && (
+            <div className="space-y-6">
+              {/* Stats summary */}
+              {defaultStats.total_jobs > 0 && (
+                <div className="grid grid-cols-3 gap-4">
+                  {[
+                    { label: 'Toplam İş', value: defaultStats.total_jobs },
+                    { label: 'İşlenen Ürün', value: defaultStats.total_processed },
+                    { label: 'Ort. Skor Artışı', value: `+${defaultStats.avg_score_improvement.toFixed(1)}`, color: '#22c55e' },
+                  ].map(({ label, value, color }) => (
+                    <div
+                      key={label}
+                      className="rounded-xl p-4"
+                      style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)' }}
+                    >
+                      <p className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+                        {label}
+                      </p>
+                      <p className="mt-1 text-[20px] font-bold tabular-nums" style={{ color: color ?? 'var(--color-text-primary)' }}>
+                        {value}
+                      </p>
+                    </div>
+                  ))}
                 </div>
+              )}
+
+              {/* Active job banner */}
+              {defaultStats.active_job && (
+                <div
+                  className="flex items-center justify-between rounded-xl px-5 py-3"
+                  style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.25)' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: '#6366f1' }} />
+                    <span className="text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                      Aktif bir iş çalışıyor
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const aj = defaultStats.active_job!;
+                      setActiveJobId(aj.id);
+                      const st = aj.status;
+                      if (st === 'analyzed') setView('review');
+                      else if (st === 'running') setView('running');
+                      else if (st === 'completed' || st === 'failed' || st === 'cancelled') setView('detail');
+                      else setView('analyzing');
+                    }}
+                    className="rounded-lg px-3 py-1 text-[12px] font-medium"
+                    style={{ color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}
+                  >
+                    Görüntüle
+                  </button>
+                </div>
+              )}
+
+              <ProductSelector
+                config={config}
+                onChange={setConfig}
+                onStartAnalysis={(productIds) => startMutation.mutate(productIds)}
+                disabled={startMutation.isPending}
+              />
+
+              {/* Job history */}
+              {jobs.length > 0 && (
+                <BatchHistory
+                  jobs={jobs}
+                  onSelect={(jobId, status) => {
+                    setActiveJobId(jobId);
+                    if (status === 'analyzing') setView('analyzing');
+                    else if (status === 'analyzed') setView('review');
+                    else if (status === 'running') setView('running');
+                    else setView('detail');
+                  }}
+                  onDelete={(jobId) => deleteJobMutation.mutate(jobId)}
+                />
               )}
             </div>
           )}
 
-          {/* RUNNING — live progress */}
+          {/* ANALYZING / REVIEW — shared AnalysisReview for both phases */}
+          {(view === 'analyzing' || view === 'review') && activeJob && (
+            <AnalysisReview
+              job={activeJob}
+              items={activeItems}
+              onDecision={(itemId, decision) => decisionMutation.mutate({ itemId, decision })}
+              onBulkDecision={(itemIds, decision) => bulkDecisionMutation.mutate({ itemIds, decision })}
+              onApplyAll={() => applyMutation.mutate()}
+              onStop={() => stopMutation.mutate()}
+              onBack={handleBackToSelect}
+              isMutating={applyMutation.isPending}
+            />
+          )}
+
+          {/* RUNNING — applying approved items */}
           {view === 'running' && activeJob && (
             <BatchProgressView
               job={activeJob}
@@ -263,13 +334,13 @@ export default function BatchOperations() {
               items={activeItems}
               onRollbackItem={(itemId) => rollbackItemMutation.mutate(itemId)}
               onRollbackAll={() => rollbackAllMutation.mutate()}
-              onBack={() => { setView('command'); setActiveJobId(null); }}
+              onBack={handleBackToSelect}
               isRollingBack={rollbackItemMutation.isPending || rollbackAllMutation.isPending}
             />
           )}
 
           {/* Loading state when job ID is set but detail not yet loaded */}
-          {view === 'detail' && activeJobId && !activeJob && (
+          {(view === 'analyzing' || view === 'review' || view === 'detail') && activeJobId && !activeJob && (
             <div className="flex items-center justify-center py-20">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
             </div>

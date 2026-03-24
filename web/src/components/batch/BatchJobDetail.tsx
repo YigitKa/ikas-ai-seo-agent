@@ -3,8 +3,8 @@ import type { BatchItem, BatchJob } from '../../types';
 import ConfirmDialog from '../../shared/ui/ConfirmDialog';
 
 const ITEM_STATUS_LABELS: Record<string, string> = {
-  calibration: 'Kalibrasyon',
   pending: 'Bekliyor',
+  analyzed: 'Analiz Edildi',
   processing: 'İşleniyor',
   approved: 'Onaylandı',
   rejected: 'Reddedildi',
@@ -17,13 +17,13 @@ const ITEM_STATUS_LABELS: Record<string, string> = {
 const ITEM_STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   applied: { bg: 'rgba(34,197,94,0.15)', text: '#22c55e' },
   approved: { bg: 'rgba(99,102,241,0.15)', text: '#818cf8' },
+  analyzed: { bg: 'rgba(245,158,11,0.15)', text: '#f59e0b' },
   skipped: { bg: 'rgba(245,158,11,0.15)', text: '#f59e0b' },
   failed: { bg: 'rgba(239,68,68,0.15)', text: '#ef4444' },
   rolled_back: { bg: 'rgba(100,116,139,0.15)', text: '#94a3b8' },
   pending: { bg: 'rgba(100,116,139,0.1)', text: '#94a3b8' },
   processing: { bg: 'rgba(99,102,241,0.15)', text: '#818cf8' },
   rejected: { bg: 'rgba(239,68,68,0.12)', text: '#ef4444' },
-  calibration: { bg: 'rgba(245,158,11,0.12)', text: '#f59e0b' },
 };
 
 interface Props {

@@ -315,6 +315,14 @@ class AgentOrchestrator:
         if not isinstance(tool_calls, list):
             tool_calls = []
 
+        logger.info(
+            "LLM response: model=%s, finish=%s, tool_calls=%d, content_len=%d",
+            data.get("model", model),
+            finish_reason,
+            len(tool_calls),
+            len(content),
+        )
+
         thinking_text = _extract_thinking(content)
 
         # Build meta from usage
