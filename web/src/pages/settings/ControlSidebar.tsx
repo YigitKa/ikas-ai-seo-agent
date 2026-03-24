@@ -10,9 +10,11 @@ interface ControlSidebarProps {
   onSave: () => void;
   onTest: () => void;
   onMcpInit: () => void;
+  onResetDb: () => void;
   isSaving: boolean;
   isTesting: boolean;
   isMcpConnecting: boolean;
+  isResettingDb: boolean;
   mcpDisabled: boolean;
   banner: BannerState;
   testResult?: { message: string } | null;
@@ -22,9 +24,11 @@ export default function ControlSidebar({
   onSave,
   onTest,
   onMcpInit,
+  onResetDb,
   isSaving,
   isTesting,
   isMcpConnecting,
+  isResettingDb,
   mcpDisabled,
   banner,
   testResult,
@@ -85,6 +89,28 @@ export default function ControlSidebar({
           <p className="mt-2 leading-6">{testResult.message}</p>
         </div>
       )}
+
+      <div className="mt-6 border-t border-slate-800 pt-5">
+        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-red-400/70">
+          Tehlikeli Islemler
+        </div>
+        <button
+          onClick={onResetDb}
+          disabled={isResettingDb}
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-2xl border border-red-500/25 bg-red-500/8 text-sm font-medium text-red-300 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isResettingDb && (
+            <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          )}
+          {isResettingDb ? 'Sifirlaniyor...' : 'DB Sifirla'}
+        </button>
+        <p className="mt-1.5 text-center text-[11px] text-slate-500">
+          Urun onbellegi, skorlar ve oneriler silinir
+        </p>
+      </div>
     </SectionCard>
   );
 }

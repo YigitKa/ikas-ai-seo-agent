@@ -271,6 +271,34 @@ graph TD
 
 **Anthropic Claude**, native Messages API ile tam entegre: extended thinking (derin akıl yürütme), streaming yanıtlar, istek iptali ve model bazlı maliyet takibi. Diğer sağlayıcılar birleşik OpenAI-compatible arayüz üzerinden tool calling destekler. Bir ortam değişkeni değiştirin — tüm agentic pipeline, chat sistemi ve streaming aynı şekilde çalışır.
 
+### Ürün Başına Chat Geçmişi
+
+Her ürünün sohbet geçmişi tarayıcının `localStorage` alanına ayrı ayrı kaydedilir. Farklı bir ürüne geçip geri döndüğünüzde konuşmadan kaldığınız yerden devam edersiniz. Sayfa yenilemelerinde geçmiş korunur; son 50 mesaj saklanır.
+
+```mermaid
+graph LR
+    PROD_A["Ürün A"] -->|seç| LOAD_A["localStorage'dan yükle<br/><i>chatHistory.ts</i>"]
+    LOAD_A --> CHAT_A["Chat paneliyle devam et"]
+
+    PROD_B["Ürün B"] -->|seç| GUARD{"AI analiz<br/>devam ediyor mu?"}
+    GUARD -->|Hayır| LOAD_B["localStorage'dan yükle"]
+    GUARD -->|Evet| MODAL["Modal: ne yapmak istersiniz?"]
+    MODAL -->|"Durdur ve Geç"| LOAD_B
+    MODAL -->|"Analiz Bitince Geç"| WAIT["Analiz tamamlansın<br/>sonra geç"]
+    MODAL -->|İptal| STAY["Mevcut üründe kal"]
+
+    style PROD_A fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style PROD_B fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style GUARD fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style MODAL fill:#1e293b,stroke:#ef4444,color:#e2e8f0
+    style LOAD_A fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style LOAD_B fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style WAIT fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0
+    style STAY fill:#0f172a,stroke:#64748b,color:#e2e8f0
+```
+
+Bir AI analizi devam ederken başka bir ürüne tıklanırsa **ürün-geçiş koruma modali** açılır: analizi durdurup geç, bitmesini bekle veya iptal et seçenekleri sunulur.
+
 ### Varsayılan Olarak Güvenli
 
 `DRY_RUN=true` varsayılandır. Siz açıkça izin vermeden ikas mağazanıza hiçbir şey yazılmaz. Her öneri, uygulanmadan önce bir insan onay adımından geçer.
@@ -583,7 +611,8 @@ python -m pytest tests/ -v
 graph LR
     SYNC["1. 🔄 Senkronize Et<br/><i>ikas'tan ürünleri çek</i>"] --> BROWSE["2. 📋 Listele<br/><i>Skor rozetleri ile</i>"]
     BROWSE --> SELECT["3. 🎯 Seç<br/><i>Skor kırılımı + chat</i>"]
-    SELECT --> CHAT["4. 💬 Chat / AI Öner<br/><i>Otonom yeniden yazım</i>"]
+    SELECT --> HIST["3b. 📂 Geçmiş Yükle<br/><i>localStorage — ürün başına</i>"]
+    HIST --> CHAT["4. 💬 Chat / AI Öner<br/><i>Otonom yeniden yazım</i>"]
     CHAT --> REVIEW["5. 🔍 İncele<br/><i>Önce/sonra diff</i>"]
     REVIEW --> APPLY["6. ✅ Onayla<br/><i>ikas'a uygula</i>"]
     APPLY --> VERIFY["7. 📊 Doğrula<br/><i>Skor karşılaştırması</i>"]
@@ -591,6 +620,7 @@ graph LR
     style SYNC fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
     style BROWSE fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
     style SELECT fill:#1e293b,stroke:#6366f1,color:#e2e8f0
+    style HIST fill:#1e293b,stroke:#64748b,color:#e2e8f0
     style CHAT fill:#1e293b,stroke:#10b981,color:#e2e8f0
     style REVIEW fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
     style APPLY fill:#1e293b,stroke:#10b981,color:#e2e8f0
@@ -696,14 +726,16 @@ ikas-ai-seo-agent/
 │
 ├── web/src/                    # React/TypeScript SPA
 │   ├── pages/                  # Dashboard, Settings, LlmsLab
-│   ├── components/             # ChatPanel, ProductTable, ScoreCard
-│   │   ├── chat/messages/      # MessageBubble, ToolResultCard (SEO agent + MCP), ThinkingBlock
-│   │   └── dashboard/          # DashboardHeader (spinner butonlar), DashboardSidebar (boş arama durumu)
+│   ├── components/             # ChatPanel, ProductTable, ScoreCard (Quick Wins)
+│   │   ├── chat/messages/      # MessageBubble, ToolResultCard (SEO agent + MCP), ThinkingBlock, CostCard
+│   │   └── dashboard/          # DashboardHeader (sync butonu), DashboardSidebar (boş arama durumu)
 │   ├── shared/
 │   │   ├── score/scoreUtils.ts # SCORE_FIELDS, getScoreColor, explainIssue
-│   │   └── ui/Toast.tsx        # ToastProvider + useToast (global bildirim sistemi)
+│   │   └── ui/                 # Toast (bildirim sistemi), ConfirmDialog
 │   ├── api/client.ts           # API istemci fonksiyonları
-│   └── hooks/useChat.ts        # Chat durum yönetimi
+│   └── hooks/
+│       ├── useChat.ts          # Chat durum yönetimi
+│       └── chat/chatHistory.ts # localStorage chat geçmişi (ürün başına, son 50 mesaj)
 │
 ├── data/
 │   ├── db.py                   # Async SQLite şema + yardımcılar

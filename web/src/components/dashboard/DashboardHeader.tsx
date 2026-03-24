@@ -52,21 +52,13 @@ function ActionButton({
 interface DashboardHeaderProps {
   totalCount?: number;
   syncPending: boolean;
-  resetPending: boolean;
-  llmsTxtPending: boolean;
   onSync: () => void;
-  onReset: () => void;
-  onDownloadLlmsTxt: () => void;
 }
 
 export default function DashboardHeader({
   totalCount,
   syncPending,
-  resetPending,
-  llmsTxtPending,
   onSync,
-  onReset,
-  onDownloadLlmsTxt,
 }: DashboardHeaderProps) {
   return (
     <header
@@ -107,29 +99,6 @@ export default function DashboardHeader({
           </svg>
         </ActionButton>
 
-        <ActionButton
-          label="DB Sifirla"
-          pendingLabel="Sifirlaniyor..."
-          pending={resetPending}
-          gradient="linear-gradient(135deg, #ef4444, #f97316)"
-          onClick={onReset}
-        >
-          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V4h6v3m-7 4v6m4-6v6m4-6v6M5 7l1 13h12l1-13" />
-          </svg>
-        </ActionButton>
-
-        <ActionButton
-          label="llms.txt Indir"
-          pendingLabel="Hazirlaniyor..."
-          pending={llmsTxtPending}
-          gradient="linear-gradient(135deg, #0ea5e9, #6366f1)"
-          onClick={onDownloadLlmsTxt}
-        >
-          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-        </ActionButton>
 
       </div>
 

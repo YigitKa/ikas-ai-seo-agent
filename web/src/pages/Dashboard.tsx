@@ -2,10 +2,8 @@ import { useCallback, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchProducts,
-  generateLlmsTxt,
   getProduct,
   getSettings,
-  resetLocalProductData,
   syncProductsFromIkas,
 } from '../api/client';
 import ChatPanel from '../components/ChatPanel';
@@ -15,7 +13,6 @@ import DashboardSidebar from '../components/dashboard/DashboardSidebar';
 import type { FilterTab } from '../components/dashboard/constants';
 import { buildIkasProductUrl } from '../components/dashboard/productUrl';
 import { useToast } from '../shared/ui/Toast';
-import ConfirmDialog from '../shared/ui/ConfirmDialog';
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
@@ -23,7 +20,6 @@ export default function Dashboard() {
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<FilterTab>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
 
   // ── Switch guard ──────────────────────────────────────────────────────────
   /** Set while a ChatPanel request is in flight. Stored as a ref so that the
@@ -68,35 +64,6 @@ export default function Dashboard() {
     },
     onError: () => {
       toast.error('Senkronizasyon başarısız. Bağlantınızı ve ikas ayarlarınızı kontrol edin.');
-    },
-  });
-
-  const resetLocalDataMut = useMutation({
-    mutationFn: resetLocalProductData,
-    onSuccess: (data) => {
-      setSelectedId(null);
-      toast.success(
-        `${data.products_deleted} ürün, ${data.scores_deleted} skor ve ${data.suggestions_deleted} öneri silindi.`,
-      );
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['product'] });
-      queryClient.invalidateQueries({ queryKey: ['suggestions'] });
-    },
-    onError: () => {
-      toast.error('Veritabanı sıfırlama başarısız oldu.');
-    },
-  });
-
-  const llmsTxtMut = useMutation({
-    mutationFn: generateLlmsTxt,
-    onSuccess: (text) => {
-      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'llms.txt';
-      a.click();
-      URL.revokeObjectURL(url);
     },
   });
 
@@ -149,35 +116,12 @@ export default function Dashboard() {
     setPage(1);
   };
 
-  const handleResetLocalData = () => {
-    setConfirmResetOpen(true);
-  };
-
-  const handleConfirmReset = () => {
-    setConfirmResetOpen(false);
-    resetLocalDataMut.mutate();
-  };
-
   return (
     <div className="flex h-screen flex-col" style={{ background: 'var(--color-bg-base)' }}>
-      <ConfirmDialog
-        open={confirmResetOpen}
-        title="Veritabanını Sıfırla"
-        message="Tüm ürün önbelleği, SEO skorları ve öneriler silinecek. Bu işlem geri alınamaz."
-        confirmLabel="Sıfırla"
-        cancelLabel="İptal"
-        variant="danger"
-        onConfirm={handleConfirmReset}
-        onCancel={() => setConfirmResetOpen(false)}
-      />
       <DashboardHeader
         totalCount={productsQ.data?.total_count}
         syncPending={syncProductsMut.isPending}
-        resetPending={resetLocalDataMut.isPending}
-        llmsTxtPending={llmsTxtMut.isPending}
         onSync={() => syncProductsMut.mutate()}
-        onReset={handleResetLocalData}
-        onDownloadLlmsTxt={() => llmsTxtMut.mutate()}
       />
 
       <div className="flex flex-1 overflow-hidden">
