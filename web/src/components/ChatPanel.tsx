@@ -27,6 +27,8 @@ interface Props {
   product?: Product | null;
   score?: SeoScore | null;
   productDetailUrl?: string;
+  /** Called whenever the chat loading state changes (e.g. for a parent switch-guard). */
+  onLoadingChange?: (isLoading: boolean) => void;
 }
 
 const ACTION_LABELS: Record<string, string> = {
@@ -45,6 +47,7 @@ export default function ChatPanel({
   product,
   score,
   productDetailUrl,
+  onLoadingChange,
 }: Props) {
   const queryClient = useQueryClient();
 
@@ -87,6 +90,12 @@ export default function ChatPanel({
   }, handleProductUpdated);
 
   const [liveElapsedSeconds, setLiveElapsedSeconds] = useState(0);
+
+  // Notify parent about loading state so it can guard against mid-stream product switches
+  useEffect(() => {
+    onLoadingChange?.(isLoading);
+  }, [isLoading, onLoadingChange]);
+
   const [diffModalSuggestion, setDiffModalSuggestion] = useState<SeoSuggestion | null>(null);
   const [diffModalAction, setDiffModalAction] = useState<string>("");
   const prevPendingSuggestionRef = useRef<SeoSuggestion | null>(null);

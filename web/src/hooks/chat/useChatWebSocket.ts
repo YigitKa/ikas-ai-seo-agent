@@ -184,7 +184,11 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
         case 'cleared':
           finishPendingRequest();
           clearActiveAutoIntro();
-          resetToContextIntro();
+          // On product-switch clears the history is restored from localStorage
+          // by useChat's switch effect, so we must not wipe it here.
+          if (clearReasonRef.current !== 'switch') {
+            resetToContextIntro();
+          }
           clearReasonRef.current = 'clear';
           break;
       }
