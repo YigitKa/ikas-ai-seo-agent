@@ -223,3 +223,65 @@ class ChatMessageSchema(BaseModel):
     thinking: str = ""
     error: bool = False
     meta: dict[str, Any] = Field(default_factory=dict)
+
+
+# ── Batch Operations ──────────────────────────────────────────────────────────
+
+class BatchConfig(BaseModel):
+    score_threshold: int = Field(default=70, ge=0, le=100)
+    category_filter: str = ""
+    in_stock_only: bool = False
+    preserve_specs: bool = True
+    prevent_cannibalization: bool = True
+    max_title_change_pct: int = Field(default=20, ge=0, le=100)
+    sample_size: int = Field(default=10, ge=1, le=20)
+
+
+class BatchJobResponse(BaseModel):
+    id: str
+    status: str
+    config: dict[str, Any]
+    total_count: int
+    processed_count: int
+    skipped_count: int
+    failed_count: int
+    avg_score_before: float
+    avg_score_after: float
+    created_at: str
+    updated_at: str
+    completed_at: Optional[str] = None
+    error: Optional[str] = None
+
+
+class BatchItemResponse(BaseModel):
+    id: int
+    job_id: str
+    product_id: str
+    product_name: str
+    status: str
+    score_before: Optional[int] = None
+    score_after: Optional[int] = None
+    skip_reason: Optional[str] = None
+    has_rollback: bool = False
+
+
+class BatchJobDetailResponse(BaseModel):
+    job: BatchJobResponse
+    items: list[BatchItemResponse]
+
+
+class BatchStatsResponse(BaseModel):
+    total_jobs: int
+    total_processed: int
+    avg_score_improvement: float
+    active_job: Optional[BatchJobResponse] = None
+
+
+class StartBatchRequest(BaseModel):
+    config: BatchConfig
+    run_calibration_first: bool = True
+
+
+class BatchItemDecisionRequest(BaseModel):
+    decision: str  # 'approved' | 'rejected' | 'revised'
+    revised_data: Optional[dict[str, Any]] = None

@@ -96,6 +96,40 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL,
     updated_at TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS batch_jobs (
+    id TEXT PRIMARY KEY,
+    status TEXT DEFAULT 'idle',
+    config_json JSON,
+    total_count INTEGER DEFAULT 0,
+    processed_count INTEGER DEFAULT 0,
+    skipped_count INTEGER DEFAULT 0,
+    failed_count INTEGER DEFAULT 0,
+    avg_score_before REAL DEFAULT 0,
+    avg_score_after REAL DEFAULT 0,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    error TEXT
+);
+
+CREATE TABLE IF NOT EXISTS batch_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id TEXT,
+    product_id TEXT,
+    product_name TEXT,
+    status TEXT DEFAULT 'pending',
+    score_before INTEGER,
+    score_after INTEGER,
+    rollback_data JSON,
+    skip_reason TEXT,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    FOREIGN KEY(job_id) REFERENCES batch_jobs(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_batch_items_job ON batch_items(job_id);
+CREATE INDEX IF NOT EXISTS idx_batch_items_product ON batch_items(product_id);
 """
 
 
@@ -856,4 +890,184 @@ async def get_llms_dashboard_counts() -> dict[str, int]:
         "pending": pending,
         "failed": failed,
         "unprocessed": unprocessed,
+    }
+
+
+# ── Batch job storage helpers ──────────────────────────────────────────────────
+
+
+def _row_to_batch_job(row) -> dict:
+    return {
+        "id": row["id"],
+        "status": row["status"],
+        "config": json.loads(row["config_json"] or "{}"),
+        "total_count": int(row["total_count"] or 0),
+        "processed_count": int(row["processed_count"] or 0),
+        "skipped_count": int(row["skipped_count"] or 0),
+        "failed_count": int(row["failed_count"] or 0),
+        "avg_score_before": float(row["avg_score_before"] or 0),
+        "avg_score_after": float(row["avg_score_after"] or 0),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "completed_at": row["completed_at"],
+        "error": row["error"],
+    }
+
+
+def _row_to_batch_item(row) -> dict:
+    return {
+        "id": int(row["id"]),
+        "job_id": row["job_id"],
+        "product_id": row["product_id"],
+        "product_name": row["product_name"] or "",
+        "status": row["status"],
+        "score_before": int(row["score_before"]) if row["score_before"] is not None else None,
+        "score_after": int(row["score_after"]) if row["score_after"] is not None else None,
+        "has_rollback": bool(row["rollback_data"]),
+        "skip_reason": row["skip_reason"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+async def create_batch_job(job_id: str, config_json: str) -> None:
+    now = _now_iso()
+    async with connection() as conn:
+        await conn.execute(
+            """
+            INSERT INTO batch_jobs (id, status, config_json, created_at, updated_at)
+            VALUES (?, 'idle', ?, ?, ?)
+            """,
+            (job_id, config_json, now, now),
+        )
+        await conn.commit()
+
+
+async def get_batch_job(job_id: str) -> dict | None:
+    async with connection() as conn:
+        async with conn.execute("SELECT * FROM batch_jobs WHERE id = ?", (job_id,)) as cursor:
+            row = await cursor.fetchone()
+    return _row_to_batch_job(row) if row else None
+
+
+async def list_batch_jobs() -> list[dict]:
+    async with connection() as conn:
+        async with conn.execute("SELECT * FROM batch_jobs ORDER BY created_at DESC") as cursor:
+            rows = await cursor.fetchall()
+    return [_row_to_batch_job(row) for row in rows]
+
+
+async def update_batch_job(job_id: str, **kwargs) -> None:
+    if not kwargs:
+        return
+    now = _now_iso()
+    kwargs["updated_at"] = now
+    set_clause = ", ".join(f"{k} = ?" for k in kwargs)
+    values = list(kwargs.values()) + [job_id]
+    async with connection() as conn:
+        await conn.execute(f"UPDATE batch_jobs SET {set_clause} WHERE id = ?", values)
+        await conn.commit()
+
+
+async def create_batch_item(
+    job_id: str,
+    product_id: str,
+    product_name: str,
+    status: str,
+    score_before: int | None = None,
+) -> int:
+    now = _now_iso()
+    async with connection() as conn:
+        await conn.execute(
+            """
+            INSERT INTO batch_items (job_id, product_id, product_name, status, score_before, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (job_id, product_id, product_name, status, score_before, now, now),
+        )
+        async with conn.execute("SELECT last_insert_rowid() AS id") as cur:
+            item_id = int((await cur.fetchone())["id"])
+        await conn.commit()
+    return item_id
+
+
+async def update_batch_item(item_id: int, **kwargs) -> None:
+    if not kwargs:
+        return
+    now = _now_iso()
+    kwargs["updated_at"] = now
+    # rollback_data dict → JSON string
+    if "rollback_data" in kwargs and isinstance(kwargs["rollback_data"], dict):
+        kwargs["rollback_data"] = json.dumps(kwargs["rollback_data"], ensure_ascii=False)
+    set_clause = ", ".join(f"{k} = ?" for k in kwargs)
+    values = list(kwargs.values()) + [item_id]
+    async with connection() as conn:
+        await conn.execute(f"UPDATE batch_items SET {set_clause} WHERE id = ?", values)
+        await conn.commit()
+
+
+async def get_batch_items(job_id: str) -> list[dict]:
+    async with connection() as conn:
+        async with conn.execute(
+            "SELECT * FROM batch_items WHERE job_id = ? ORDER BY id ASC", (job_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [_row_to_batch_item(row) for row in rows]
+
+
+async def get_batch_item(item_id: int) -> dict | None:
+    async with connection() as conn:
+        async with conn.execute("SELECT * FROM batch_items WHERE id = ?", (item_id,)) as cursor:
+            row = await cursor.fetchone()
+    return _row_to_batch_item(row) if row else None
+
+
+async def get_batch_item_rollback_data(item_id: int) -> dict | None:
+    async with connection() as conn:
+        async with conn.execute(
+            "SELECT rollback_data, product_id FROM batch_items WHERE id = ?", (item_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+    if row and row["rollback_data"]:
+        return {"product_id": row["product_id"], **json.loads(row["rollback_data"])}
+    return None
+
+
+async def get_batch_item_by_product(job_id: str, product_id: str) -> dict | None:
+    async with connection() as conn:
+        async with conn.execute(
+            "SELECT * FROM batch_items WHERE job_id = ? AND product_id = ?",
+            (job_id, product_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return _row_to_batch_item(row) if row else None
+
+
+async def get_batch_stats() -> dict:
+    async with connection() as conn:
+        async with conn.execute("SELECT COUNT(*) AS c FROM batch_jobs") as cur:
+            total_jobs = int((await cur.fetchone())["c"] or 0)
+        async with conn.execute(
+            "SELECT SUM(processed_count) AS s FROM batch_jobs WHERE status = 'completed'"
+        ) as cur:
+            total_processed = int((await cur.fetchone())["s"] or 0)
+        async with conn.execute(
+            """
+            SELECT AVG(avg_score_after - avg_score_before) AS delta
+            FROM batch_jobs
+            WHERE status = 'completed' AND avg_score_before > 0
+            """
+        ) as cur:
+            row = await cur.fetchone()
+            avg_improvement = float(row["delta"] or 0)
+        async with conn.execute(
+            "SELECT * FROM batch_jobs WHERE status IN ('calibrating','running') ORDER BY created_at DESC LIMIT 1"
+        ) as cur:
+            active_row = await cur.fetchone()
+
+    return {
+        "total_jobs": total_jobs,
+        "total_processed": total_processed,
+        "avg_score_improvement": avg_improvement,
+        "active_job": _row_to_batch_job(active_row) if active_row else None,
     }

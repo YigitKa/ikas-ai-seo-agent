@@ -104,6 +104,20 @@ export default function DashboardHeader({
 
       <div className="flex items-center gap-3">
         <Link
+          to="/batch"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors hover:bg-[var(--color-bg-hover)]"
+          style={{
+            color: 'var(--color-text-secondary)',
+            border: '1px solid var(--color-border-light)',
+          }}
+        >
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+          </svg>
+          Toplu İşlemler
+        </Link>
+
+        <Link
           to="/llms"
           className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold text-white transition-all hover:translate-y-[-1px]"
           style={{
