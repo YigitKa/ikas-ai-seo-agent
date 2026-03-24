@@ -18,17 +18,17 @@
   --score-fair: #f97316;
   --score-poor: #ef4444;
 
-  --color-bg-base: #0a0a0f;
-  --color-bg-surface: #111118;
-  --color-bg-elevated: #1a1a24;
+  --color-bg-base: #020617;
+  --color-bg-surface: #0b1120;
+  --color-bg-elevated: #111827;
   --color-bg-hover: #22222e;
 
   --color-border: rgba(255, 255, 255, 0.06);
   --color-border-light: rgba(255, 255, 255, 0.1);
 
-  --color-text-primary: #f1f1f4;
-  --color-text-secondary: #9494a8;
-  --color-text-muted: #5e5e72;
+  --color-text-primary: #e2e8f0;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
 
   --glass-bg: rgba(255, 255, 255, 0.03);
   --glass-border: rgba(255, 255, 255, 0.06);
@@ -237,4 +237,24 @@ body {
     opacity: 1;
     transform: translateX(0) scale(1);
   }
+}
+
+.enterprise-panel-divider {
+  border-right: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.enterprise-list-item {
+  background: rgba(15, 23, 42, 0.46);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.enterprise-list-item:hover {
+  transform: translateY(-1px);
+  background: rgba(30, 41, 59, 0.68);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+.enterprise-list-item.is-selected {
+  background: linear-gradient(135deg, rgba(30,64,175,0.3), rgba(30,41,59,0.56));
+  border-color: rgba(96,165,250,0.42);
 }
