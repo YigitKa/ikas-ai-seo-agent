@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useToast } from '../../shared/ui/Toast';
 import {
   getMcpStatus,
   getLmStudioLiveStatus,
@@ -10,6 +11,7 @@ import {
   getProviders,
   getSettings,
   initializeMcp,
+  resetLocalProductData,
   resetPromptTemplates,
   savePromptTemplates,
   testConnection,
@@ -31,11 +33,13 @@ import PromptEditorSection from './PromptEditorSection';
 import ControlSidebar from './ControlSidebar';
 import LmStudioStatusCard from './LmStudioStatusCard';
 import LiveStatusCard from './LiveStatusCard';
+import ConfirmDialog from '../../shared/ui/ConfirmDialog';
 
 type BannerState = { tone: BannerTone; message: string } | null;
 
 export default function SettingsPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [form, setForm] = useState<SettingsData | null>(null);
   const [promptGroups, setPromptGroups] = useState<PromptGroup[]>([]);
   const [promptValues, setPromptValues] = useState<Record<string, string>>({});
@@ -43,6 +47,7 @@ export default function SettingsPage() {
   const [discoveredModels, setDiscoveredModels] = useState<Record<string, string[]>>({});
   const [banner, setBanner] = useState<BannerState>(null);
   const [downloadJobId, setDownloadJobId] = useState('');
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
 
   const settingsQ = useQuery({ queryKey: ['settings'], queryFn: getSettings });
   const promptsQ = useQuery({ queryKey: ['prompt-templates'], queryFn: getPromptTemplates });
@@ -104,8 +109,13 @@ export default function SettingsPage() {
       qc.invalidateQueries({ queryKey: ['provider-health'] });
       qc.invalidateQueries({ queryKey: ['mcp-status'] });
       setBanner({ tone: 'success', message: 'Ayarlar ve promptlar kaydedildi.' });
+      toast.success('Ayarlar kaydedildi.');
     },
-    onError: (error) => setBanner({ tone: 'error', message: formatError(error, 'Kaydetme sirasinda hata olustu.') }),
+    onError: (error) => {
+      const msg = formatError(error, 'Kaydetme sirasinda hata olustu.');
+      setBanner({ tone: 'error', message: msg });
+      toast.error(msg);
+    },
   });
 
   const resetPromptMut = useMutation({
@@ -153,6 +163,25 @@ export default function SettingsPage() {
     onError: (error) => setBanner({ tone: 'error', message: formatError(error, 'Model listesi alinamadi.') }),
   });
 
+  const resetDbMut = useMutation({
+    mutationFn: resetLocalProductData,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['product'] });
+      qc.invalidateQueries({ queryKey: ['suggestions'] });
+      setBanner({
+        tone: 'success',
+        message: `${data.products_deleted} ürün, ${data.scores_deleted} skor ve ${data.suggestions_deleted} öneri silindi.`,
+      });
+      toast.success('Veritabanı sıfırlandı.');
+    },
+    onError: (error) => {
+      const msg = formatError(error, 'Veritabanı sıfırlama başarısız oldu.');
+      setBanner({ tone: 'error', message: msg });
+      toast.error(msg);
+    },
+  });
+
   // ── Loading / Error ───────────────────────────────────────────────────────
 
   if ((settingsQ.isLoading && !form) || (promptsQ.isLoading && promptGroups.length === 0)) {
@@ -194,6 +223,16 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(37,99,235,0.25),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(14,165,233,0.18),_transparent_24%),linear-gradient(180deg,_#020617,_#0f172a_42%,_#020617)] text-slate-100">
+      <ConfirmDialog
+        open={confirmResetOpen}
+        title="Veritabanını Sıfırla"
+        message="Tüm ürün önbelleği, SEO skorları ve öneriler silinecek. Bu işlem geri alınamaz."
+        confirmLabel="Sıfırla"
+        cancelLabel="İptal"
+        variant="danger"
+        onConfirm={() => { setConfirmResetOpen(false); resetDbMut.mutate(); }}
+        onCancel={() => setConfirmResetOpen(false)}
+      />
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-slate-800/80 bg-slate-950/65 p-6 shadow-2xl shadow-slate-950/40 backdrop-blur md:flex-row md:items-end md:justify-between">
           <div className="space-y-3">
@@ -249,9 +288,11 @@ export default function SettingsPage() {
               onSave={() => { setBanner(null); saveAllMut.mutate({ settings: form, prompts: promptValues }); }}
               onTest={() => { setBanner(null); testMut.mutate(form as unknown as Record<string, unknown>); }}
               onMcpInit={() => { setBanner(null); mcpInitMut.mutate(); }}
+              onResetDb={() => setConfirmResetOpen(true)}
               isSaving={saveAllMut.isPending}
               isTesting={testMut.isPending}
               isMcpConnecting={mcpInitMut.isPending}
+              isResettingDb={resetDbMut.isPending}
               mcpDisabled={!form.mcp_token.trim()}
               banner={banner}
               testResult={testMut.data}

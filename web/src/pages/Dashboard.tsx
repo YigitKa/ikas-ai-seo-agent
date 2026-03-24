@@ -2,10 +2,8 @@ import { useCallback, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchProducts,
-  generateLlmsTxt,
   getProduct,
   getSettings,
-  resetLocalProductData,
   syncProductsFromIkas,
 } from '../api/client';
 import ChatPanel from '../components/ChatPanel';
@@ -14,9 +12,11 @@ import DashboardHeader from '../components/dashboard/DashboardHeader';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar';
 import type { FilterTab } from '../components/dashboard/constants';
 import { buildIkasProductUrl } from '../components/dashboard/productUrl';
+import { useToast } from '../shared/ui/Toast';
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<FilterTab>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -58,35 +58,12 @@ export default function Dashboard() {
   const syncProductsMut = useMutation({
     mutationFn: syncProductsFromIkas,
     onSuccess: (data) => {
-      alert(`${data.fetched_count}/${data.total_count} urun ikas'tan senkronlandi.`);
+      toast.success(`${data.fetched_count}/${data.total_count} ürün ikas'tan senkronlandı.`);
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['product'] });
     },
-  });
-
-  const resetLocalDataMut = useMutation({
-    mutationFn: resetLocalProductData,
-    onSuccess: (data) => {
-      setSelectedId(null);
-      alert(
-        `${data.products_deleted} urun, ${data.scores_deleted} skor, ${data.suggestions_deleted} oneri ve ${data.logs_deleted} log silindi.`,
-      );
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['product'] });
-      queryClient.invalidateQueries({ queryKey: ['suggestions'] });
-    },
-  });
-
-  const llmsTxtMut = useMutation({
-    mutationFn: generateLlmsTxt,
-    onSuccess: (text) => {
-      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'llms.txt';
-      a.click();
-      URL.revokeObjectURL(url);
+    onError: () => {
+      toast.error('Senkronizasyon başarısız. Bağlantınızı ve ikas ayarlarınızı kontrol edin.');
     },
   });
 
@@ -139,22 +116,12 @@ export default function Dashboard() {
     setPage(1);
   };
 
-  const handleResetLocalData = () => {
-    if (window.confirm('Local urun cache veritabani sifirlansin mi? Bu islem geri alinamaz.')) {
-      resetLocalDataMut.mutate();
-    }
-  };
-
   return (
     <div className="flex h-screen flex-col" style={{ background: 'var(--color-bg-base)' }}>
       <DashboardHeader
         totalCount={productsQ.data?.total_count}
         syncPending={syncProductsMut.isPending}
-        resetPending={resetLocalDataMut.isPending}
-        llmsTxtPending={llmsTxtMut.isPending}
         onSync={() => syncProductsMut.mutate()}
-        onReset={handleResetLocalData}
-        onDownloadLlmsTxt={() => llmsTxtMut.mutate()}
       />
 
       <div className="flex flex-1 overflow-hidden">

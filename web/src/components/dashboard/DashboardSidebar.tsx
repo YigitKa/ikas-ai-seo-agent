@@ -115,6 +115,43 @@ export default function DashboardSidebar({
               <div key={index} className="animate-shimmer h-14 rounded-lg" />
             ))}
           </div>
+        ) : filteredItems.length === 0 && searchQuery.trim() ? (
+          <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+            <svg
+              className="h-8 w-8"
+              style={{ color: 'var(--color-text-muted)', opacity: 0.5 }}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.5}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+            <div>
+              <p className="text-[12px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+                «{searchQuery}» için sonuç bulunamadı
+              </p>
+              <p className="mt-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                Farklı bir arama deneyin
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors hover:opacity-80"
+              style={{
+                background: 'rgba(99, 102, 241, 0.12)',
+                border: '1px solid rgba(99, 102, 241, 0.25)',
+                color: 'var(--color-primary-light)',
+              }}
+            >
+              Aramayı Temizle
+            </button>
+          </div>
         ) : (
           <ProductTable items={filteredItems} selectedId={selectedId} onSelect={onSelect} />
         )}

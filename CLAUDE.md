@@ -112,7 +112,15 @@ ikas-ai-seo-agent/
 │       │   │   ├── ChatMessage.tsx
 │       │   │   ├── chatUtils.ts
 │       │   │   ├── promptParams.ts
-│       │   │   └── suggestionUtils.ts
+│       │   │   ├── suggestionUtils.ts
+│       │   │   └── messages/
+│       │   │       ├── MessageBubble.tsx
+│       │   │       ├── ToolResultCard.tsx   # MCP + SEO agent tool results (score/validate/save)
+│       │   │       ├── SuggestionSavedCard.tsx
+│       │   │       ├── ThinkingBlock.tsx
+│       │   │       ├── AssistantContent.tsx
+│       │   │       ├── CostCard.tsx
+│       │   │       └── ContextUsageCard.tsx
 │       │   └── dashboard/   # Dashboard layout components
 │       │       ├── DashboardDetail.tsx
 │       │       ├── DashboardHeader.tsx
@@ -121,10 +129,27 @@ ikas-ai-seo-agent/
 │       │       ├── constants.ts
 │       │       └── productUrl.ts
 │       ├── hooks/
-│       │   └── useChat.ts   # Custom React hook for chat state
+│       │   ├── useChat.ts             # Chat state composition root (5 sub-hooks)
+│       │   └── chat/
+│       │       ├── chatHistory.ts     # localStorage persistence per product (last 50 msgs)
+│       │       ├── useChatStream.ts   # RAF-buffered chunk streaming
+│       │       ├── useChatWebSocket.ts # WebSocket connection + message routing
+│       │       ├── useChatStatus.ts   # Pending timing, token estimates, MCP state
+│       │       └── useChatAutoIntro.ts # Auto-runs first product analysis on selection
 │       ├── pages/
 │       │   ├── Dashboard.tsx
 │       │   └── Settings.tsx
+│       ├── shared/
+│       │   ├── score/
+│       │   │   └── scoreUtils.ts  # SCORE_FIELDS, getScoreColor, getQuickWins, explainIssue
+│       │   └── ui/
+│       │       ├── Toast.tsx        # ToastProvider + useToast hook (global notification system)
+│       │       ├── CircularScore.tsx
+│       │       ├── ConfirmDialog.tsx
+│       │       ├── ErrorBoundary.tsx
+│       │       ├── Modal.tsx
+│       │       ├── ProgressBar.tsx
+│       │       └── StatusBadge.tsx
 │       └── types/
 │           └── index.ts     # TypeScript type definitions
 │
@@ -641,15 +666,30 @@ React/TypeScript SPA built with Vite. Communicates with the FastAPI backend via 
 - **react-markdown** + **remark-gfm** (markdown rendering in chat)
 
 ### Page structure
-- `pages/Dashboard.tsx` — Main dashboard: product list, SEO scores, AI suggestions, diff viewer
-- `pages/Settings.tsx` — Provider config, API keys, model selection, prompt editing
+- `pages/Dashboard.tsx` — Main dashboard: product list, SEO scores, AI suggestions, diff viewer. Includes **product-switch guard**: if a chat request is in flight when the user clicks another product, a modal asks to "Durdur ve Geç" (cancel immediately) or "Analiz Bitince Geç" (auto-switch after the response finishes).
+- `pages/Settings.tsx` — Provider config, API keys, model selection, prompt editing, DB reset
+- `pages/LlmsLab.tsx` — llms.txt generation and management UI (includes llms.txt download)
 
 ### Component groups
 - `components/dashboard/` — Dashboard layout: header, sidebar, detail panel, empty state
+  - `DashboardSidebar.tsx` — Product list with search (shows empty-state card when search yields 0 results) and filter tabs
+  - `DashboardHeader.tsx` — Header with animated spinner on action buttons (sync)
 - `components/chat/` — Chat utilities: message rendering, prompt parameters, suggestion option parsing (JSON→buttons)
-- `components/ChatPanel.tsx` — Full chat UI with WebSocket connection, multi-agent awareness, and **interaction panel** (renders structured options from the latest assistant message as clickable buttons above the input area)
+  - `messages/ToolResultCard.tsx` — Dispatches to semantic card for SEO agent tools (`seo_score_product` → score badge, `validate_rewrite` → delta badge, `save_suggestion` → confirmation) or generic MCP card for ikas tools
+  - `messages/CostCard.tsx` — Per-message token count + cost estimate; session total shown when >0
+- `components/ChatPanel.tsx` — Full chat UI with WebSocket connection, multi-agent awareness, and **interaction panel** (renders structured options from the latest assistant message as clickable buttons above the input area). Exposes `onLoadingChange` prop so Dashboard can guard mid-stream product switches.
 - `components/ProductTable.tsx` — Product list with pagination and score badges
-- `components/ScoreCard.tsx` — SEO score breakdown display
+- `components/ScoreCard.tsx` — SEO score breakdown display; includes **Quick Wins section** (top 3 highest-impact fields shown when total score ≤ 85)
+- `shared/ui/Toast.tsx` — Global notification system: `ToastProvider` (wraps app in `App.tsx`), `useToast()` hook; replaces all `window.alert()` calls; 4 tones (success/error/info/warning), auto-dismiss after 4s
+
+### Chat history persistence
+`hooks/chat/chatHistory.ts` persists chat messages to `localStorage` keyed by product ID (`ikas_chat_{productId}`). Keeps last 50 messages. Key behaviours:
+- History is saved on every response-finish and on `beforeunload`
+- On product selection, history is restored and auto-intro is skipped if prior history exists
+- On product switch (different ID), current history is saved before context is cleared
+- `clearHistory(productId)` is called when user manually clears chat
+- `hasHistory(productId)` lets `useChat` detect whether to skip the auto-intro
+- `pendingSuggestion` field is stripped before serialisation to avoid stale suggestion objects in storage
 
 ---
 

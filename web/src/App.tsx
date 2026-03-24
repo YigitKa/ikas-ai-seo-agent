@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Suspense, lazy } from 'react';
 import ErrorBoundary from './shared/ui/ErrorBoundary';
+import { ToastProvider } from './shared/ui/Toast';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Settings = lazy(() => import('./pages/settings/SettingsPage'));
@@ -21,6 +22,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
+        <ToastProvider>
         <BrowserRouter>
           <Suspense
             fallback={
@@ -36,6 +38,7 @@ export default function App() {
             </Routes>
           </Suspense>
         </BrowserRouter>
+        </ToastProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );
