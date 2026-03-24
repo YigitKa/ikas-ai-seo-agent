@@ -695,8 +695,13 @@ ikas-ai-seo-agent/
 │   └── routers/                # products, seo, suggestions, settings, chat
 │
 ├── web/src/                    # React/TypeScript SPA
-│   ├── pages/                  # Dashboard, Settings
+│   ├── pages/                  # Dashboard, Settings, LlmsLab
 │   ├── components/             # ChatPanel, ProductTable, ScoreCard
+│   │   ├── chat/messages/      # MessageBubble, ToolResultCard (SEO agent + MCP), ThinkingBlock
+│   │   └── dashboard/          # DashboardHeader (spinner butonlar), DashboardSidebar (boş arama durumu)
+│   ├── shared/
+│   │   ├── score/scoreUtils.ts # SCORE_FIELDS, getScoreColor, explainIssue
+│   │   └── ui/Toast.tsx        # ToastProvider + useToast (global bildirim sistemi)
 │   ├── api/client.ts           # API istemci fonksiyonları
 │   └── hooks/useChat.ts        # Chat durum yönetimi
 │

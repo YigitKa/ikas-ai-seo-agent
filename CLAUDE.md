@@ -112,7 +112,15 @@ ikas-ai-seo-agent/
 │       │   │   ├── ChatMessage.tsx
 │       │   │   ├── chatUtils.ts
 │       │   │   ├── promptParams.ts
-│       │   │   └── suggestionUtils.ts
+│       │   │   ├── suggestionUtils.ts
+│       │   │   └── messages/
+│       │   │       ├── MessageBubble.tsx
+│       │   │       ├── ToolResultCard.tsx   # MCP + SEO agent tool results (score/validate/save)
+│       │   │       ├── SuggestionSavedCard.tsx
+│       │   │       ├── ThinkingBlock.tsx
+│       │   │       ├── AssistantContent.tsx
+│       │   │       ├── CostCard.tsx
+│       │   │       └── ContextUsageCard.tsx
 │       │   └── dashboard/   # Dashboard layout components
 │       │       ├── DashboardDetail.tsx
 │       │       ├── DashboardHeader.tsx
@@ -125,6 +133,17 @@ ikas-ai-seo-agent/
 │       ├── pages/
 │       │   ├── Dashboard.tsx
 │       │   └── Settings.tsx
+│       ├── shared/
+│       │   ├── score/
+│       │   │   └── scoreUtils.ts  # SCORE_FIELDS, getScoreColor, getQuickWins, explainIssue
+│       │   └── ui/
+│       │       ├── Toast.tsx        # ToastProvider + useToast hook (global notification system)
+│       │       ├── CircularScore.tsx
+│       │       ├── ConfirmDialog.tsx
+│       │       ├── ErrorBoundary.tsx
+│       │       ├── Modal.tsx
+│       │       ├── ProgressBar.tsx
+│       │       └── StatusBadge.tsx
 │       └── types/
 │           └── index.ts     # TypeScript type definitions
 │
@@ -646,10 +665,14 @@ React/TypeScript SPA built with Vite. Communicates with the FastAPI backend via 
 
 ### Component groups
 - `components/dashboard/` — Dashboard layout: header, sidebar, detail panel, empty state
+  - `DashboardSidebar.tsx` — Product list with search (shows empty-state card when search yields 0 results) and filter tabs
+  - `DashboardHeader.tsx` — Header with animated spinner on action buttons (sync, llms.txt download)
 - `components/chat/` — Chat utilities: message rendering, prompt parameters, suggestion option parsing (JSON→buttons)
+  - `messages/ToolResultCard.tsx` — Dispatches to semantic card for SEO agent tools (`seo_score_product` → score badge, `validate_rewrite` → delta badge, `save_suggestion` → confirmation) or generic MCP card for ikas tools
 - `components/ChatPanel.tsx` — Full chat UI with WebSocket connection, multi-agent awareness, and **interaction panel** (renders structured options from the latest assistant message as clickable buttons above the input area)
 - `components/ProductTable.tsx` — Product list with pagination and score badges
-- `components/ScoreCard.tsx` — SEO score breakdown display
+- `components/ScoreCard.tsx` — SEO score breakdown display; includes **Quick Wins section** (top 3 highest-impact fields shown when total score ≤ 85)
+- `shared/ui/Toast.tsx` — Global notification system: `ToastProvider` (wraps app in `App.tsx`), `useToast()` hook; replaces all `window.alert()` calls; 4 tones (success/error/info/warning), auto-dismiss after 4s
 
 ---
 
