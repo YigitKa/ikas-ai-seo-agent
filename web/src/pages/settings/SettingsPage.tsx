@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useToast } from '../../shared/ui/Toast';
 import {
   getMcpStatus,
   getLmStudioLiveStatus,
@@ -36,6 +37,7 @@ type BannerState = { tone: BannerTone; message: string } | null;
 
 export default function SettingsPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [form, setForm] = useState<SettingsData | null>(null);
   const [promptGroups, setPromptGroups] = useState<PromptGroup[]>([]);
   const [promptValues, setPromptValues] = useState<Record<string, string>>({});
@@ -104,8 +106,13 @@ export default function SettingsPage() {
       qc.invalidateQueries({ queryKey: ['provider-health'] });
       qc.invalidateQueries({ queryKey: ['mcp-status'] });
       setBanner({ tone: 'success', message: 'Ayarlar ve promptlar kaydedildi.' });
+      toast.success('Ayarlar kaydedildi.');
     },
-    onError: (error) => setBanner({ tone: 'error', message: formatError(error, 'Kaydetme sirasinda hata olustu.') }),
+    onError: (error) => {
+      const msg = formatError(error, 'Kaydetme sirasinda hata olustu.');
+      setBanner({ tone: 'error', message: msg });
+      toast.error(msg);
+    },
   });
 
   const resetPromptMut = useMutation({

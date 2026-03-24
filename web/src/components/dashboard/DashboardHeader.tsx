@@ -1,6 +1,24 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
+function SpinnerIcon() {
+  return (
+    <svg
+      className="h-3.5 w-3.5 animate-spin"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+      />
+    </svg>
+  );
+}
+
 interface ActionButtonProps {
   label: string;
   pendingLabel: string;
@@ -25,7 +43,7 @@ function ActionButton({
       className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
       style={{ background: gradient }}
     >
-      {children}
+      {pending ? <SpinnerIcon /> : children}
       {pending ? pendingLabel : label}
     </button>
   );

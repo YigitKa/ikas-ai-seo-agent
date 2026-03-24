@@ -14,12 +14,16 @@ import DashboardHeader from '../components/dashboard/DashboardHeader';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar';
 import type { FilterTab } from '../components/dashboard/constants';
 import { buildIkasProductUrl } from '../components/dashboard/productUrl';
+import { useToast } from '../shared/ui/Toast';
+import ConfirmDialog from '../shared/ui/ConfirmDialog';
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<FilterTab>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
 
   // ── Switch guard ──────────────────────────────────────────────────────────
   /** Set while a ChatPanel request is in flight. Stored as a ref so that the
@@ -58,9 +62,12 @@ export default function Dashboard() {
   const syncProductsMut = useMutation({
     mutationFn: syncProductsFromIkas,
     onSuccess: (data) => {
-      alert(`${data.fetched_count}/${data.total_count} urun ikas'tan senkronlandi.`);
+      toast.success(`${data.fetched_count}/${data.total_count} ürün ikas'tan senkronlandı.`);
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['product'] });
+    },
+    onError: () => {
+      toast.error('Senkronizasyon başarısız. Bağlantınızı ve ikas ayarlarınızı kontrol edin.');
     },
   });
 
@@ -68,12 +75,15 @@ export default function Dashboard() {
     mutationFn: resetLocalProductData,
     onSuccess: (data) => {
       setSelectedId(null);
-      alert(
-        `${data.products_deleted} urun, ${data.scores_deleted} skor, ${data.suggestions_deleted} oneri ve ${data.logs_deleted} log silindi.`,
+      toast.success(
+        `${data.products_deleted} ürün, ${data.scores_deleted} skor ve ${data.suggestions_deleted} öneri silindi.`,
       );
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['product'] });
       queryClient.invalidateQueries({ queryKey: ['suggestions'] });
+    },
+    onError: () => {
+      toast.error('Veritabanı sıfırlama başarısız oldu.');
     },
   });
 
@@ -140,13 +150,26 @@ export default function Dashboard() {
   };
 
   const handleResetLocalData = () => {
-    if (window.confirm('Local urun cache veritabani sifirlansin mi? Bu islem geri alinamaz.')) {
-      resetLocalDataMut.mutate();
-    }
+    setConfirmResetOpen(true);
+  };
+
+  const handleConfirmReset = () => {
+    setConfirmResetOpen(false);
+    resetLocalDataMut.mutate();
   };
 
   return (
     <div className="flex h-screen flex-col" style={{ background: 'var(--color-bg-base)' }}>
+      <ConfirmDialog
+        open={confirmResetOpen}
+        title="Veritabanını Sıfırla"
+        message="Tüm ürün önbelleği, SEO skorları ve öneriler silinecek. Bu işlem geri alınamaz."
+        confirmLabel="Sıfırla"
+        cancelLabel="İptal"
+        variant="danger"
+        onConfirm={handleConfirmReset}
+        onCancel={() => setConfirmResetOpen(false)}
+      />
       <DashboardHeader
         totalCount={productsQ.data?.total_count}
         syncPending={syncProductsMut.isPending}

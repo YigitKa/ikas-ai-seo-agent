@@ -7,6 +7,72 @@ interface Props {
   score: SeoScore;
 }
 
+function QuickWins({ score }: { score: SeoScore }) {
+  const wins = SCORE_FIELDS
+    .map(({ key, label, max }) => {
+      const val = score[key] as number;
+      const gap = max - val;
+      return { key, label, max, val, gap };
+    })
+    .filter(({ gap }) => gap > 2)
+    .sort((a, b) => b.gap - a.gap)
+    .slice(0, 3);
+
+  if (wins.length === 0 || score.total_score > 85) return null;
+
+  return (
+    <div className="mb-4">
+      <div
+        className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.18em]"
+        style={{ color: 'var(--color-text-muted)' }}
+      >
+        Hızlı Kazanımlar
+      </div>
+      <div className="space-y-2">
+        {wins.map(({ key, label, gap }) => (
+          <div
+            key={key}
+            className="flex items-center gap-3 rounded-xl px-3.5 py-2.5"
+            style={{
+              background: 'rgba(99, 102, 241, 0.07)',
+              border: '1px solid rgba(99, 102, 241, 0.18)',
+            }}
+          >
+            <svg
+              className="h-4 w-4 flex-shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+              style={{ color: 'var(--color-primary-light)' }}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            <div className="min-w-0 flex-1">
+              <span className="text-[12px] font-medium text-white">{label}</span>
+              <span
+                className="ml-1 text-[12px]"
+                style={{ color: 'var(--color-text-secondary)' }}
+              >
+                iyileştirin
+              </span>
+            </div>
+            <span
+              className="flex-shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+              style={{
+                background: 'rgba(99, 102, 241, 0.18)',
+                color: 'var(--color-primary-light)',
+              }}
+            >
+              +{gap} puan
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ScoreCard({ score }: Props) {
   return (
     <div
@@ -74,7 +140,11 @@ export default function ScoreCard({ score }: Props) {
         })}
       </div>
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-4">
+        <QuickWins score={score} />
+      </div>
+
+      <div className="space-y-3">
         {SCORE_FIELDS.map(({ key, label, max, description }) => {
           const val = score[key] as number;
           const pct = (val / max) * 100;
