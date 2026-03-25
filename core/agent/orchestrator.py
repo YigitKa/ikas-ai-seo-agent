@@ -78,6 +78,8 @@ def _build_headers(config: AppConfig) -> dict[str, str]:
     api_key = config.ai_api_key
     if config.ai_provider == "anthropic" and api_key:
         headers["x-api-key"] = api_key
+        headers["anthropic-version"] = "2023-06-01"
+        headers["anthropic-beta"] = "tools-2024-04-04"
     elif api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     elif config.ai_provider in ("ollama", "lm-studio"):
@@ -136,6 +138,7 @@ class AgentOrchestrator:
         self._system_prompt = system_prompt
         self._max_iterations = max_iterations
         self._cancel_lock = threading.Lock()
+        self._cancelled = False
         self._active_client: httpx.AsyncClient | None = None
 
     # ── Public API ───────────────────────────────────────────────────
@@ -177,9 +180,21 @@ class AgentOrchestrator:
         messages = self._build_initial_messages(user_message, context)
         tools = self._toolkit.get_openai_functions() if len(self._toolkit) > 0 else None
         all_tool_calls: list[dict[str, Any]] = []
+        suggestion_saved_data: dict[str, Any] | None = None
+        content = ""
 
         for iteration in range(1, self._max_iterations + 1):
-            content, thinking_text, tool_calls, meta = await self._call_llm(messages, tools)
+            # Check cancellation before each LLM call
+            with self._cancel_lock:
+                if self._cancelled:
+                    yield AgentEvent(type="error", content="İşlem iptal edildi.")
+                    return
+
+            try:
+                content, thinking_text, tool_calls, meta = await self._call_llm(messages, tools)
+            except RuntimeError as exc:
+                yield AgentEvent(type="error", content=str(exc))
+                return
 
             if thinking_text:
                 yield AgentEvent(type="thinking", content=thinking_text)
@@ -190,7 +205,11 @@ class AgentOrchestrator:
                 yield AgentEvent(
                     type="completed",
                     content=response_text,
-                    meta={**meta, "iterations": iteration},
+                    meta={
+                        **meta,
+                        "iterations": iteration,
+                        "suggestion_saved": suggestion_saved_data,
+                    },
                 )
                 return
 
@@ -202,11 +221,19 @@ class AgentOrchestrator:
             })
 
             for tc in tool_calls:
+                # Check cancellation between tool calls
+                with self._cancel_lock:
+                    if self._cancelled:
+                        yield AgentEvent(type="error", content="İşlem iptal edildi.")
+                        return
+
                 func = tc.get("function", {}) if isinstance(tc, dict) else {}
                 tool_name = func.get("name", "") if isinstance(func, dict) else ""
+                raw_args = func.get("arguments", "{}") if isinstance(func, dict) else "{}"
                 try:
-                    args = json.loads(func.get("arguments", "{}")) if isinstance(func, dict) else {}
+                    args = json.loads(raw_args) if isinstance(raw_args, str) else {}
                 except json.JSONDecodeError:
+                    logger.warning("Invalid JSON in tool args for '%s': %r", tool_name, raw_args)
                     args = {}
                 if not isinstance(args, dict):
                     args = {}
@@ -214,6 +241,16 @@ class AgentOrchestrator:
                 yield AgentEvent(type="tool_call", tool_name=tool_name, tool_args=args)
 
                 result_text = await self._toolkit.execute(tool_name, args)
+
+                # Track save_suggestion success so AgentResult.suggestion_saved is populated
+                if tool_name == "save_suggestion":
+                    try:
+                        parsed = json.loads(result_text)
+                        if isinstance(parsed, dict) and parsed.get("success"):
+                            suggestion_saved_data = parsed
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
+
                 all_tool_calls.append({
                     "tool": tool_name,
                     "arguments": args,
@@ -232,22 +269,22 @@ class AgentOrchestrator:
         # Max iterations reached
         yield AgentEvent(
             type="completed",
-            content=content if content else "Maksimum iterasyon sayisina ulasildi.",
-            meta={"iterations": self._max_iterations, "max_iterations_reached": True},
+            content=content if content else "Maksimum iterasyon sayısına ulaşıldı.",
+            meta={
+                "iterations": self._max_iterations,
+                "max_iterations_reached": True,
+                "suggestion_saved": suggestion_saved_data,
+            },
         )
 
     def cancel(self) -> bool:
         """Cancel the active LLM request if one is in flight."""
         with self._cancel_lock:
-            client = self._active_client
-            if client is not None:
-                try:
-                    client.close()
-                except Exception:
-                    pass
-                self._active_client = None
-                return True
-        return False
+            if self._cancelled:
+                return False
+            self._cancelled = True
+            self._active_client = None
+            return True
 
     # ── Private helpers ──────────────────────────────────────────────
 
@@ -301,6 +338,13 @@ class AgentOrchestrator:
                 )
                 resp.raise_for_status()
                 data = resp.json()
+            except httpx.HTTPStatusError as exc:
+                body_preview = exc.response.text[:300] if exc.response.text else ""
+                raise RuntimeError(
+                    f"LLM API hatası {exc.response.status_code}: {body_preview}"
+                ) from exc
+            except httpx.RequestError as exc:
+                raise RuntimeError(f"LLM bağlantı hatası: {exc}") from exc
             finally:
                 with self._cancel_lock:
                     if self._active_client is client:
