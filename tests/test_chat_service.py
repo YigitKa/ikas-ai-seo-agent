@@ -14,6 +14,7 @@ from core.chat import (
     _build_completion_meta,
     _build_product_context,
     _has_mutation_tool_result,
+    _parse_agent_type,
 )
 from core.models import AppConfig, ChatMessage, Product, SeoScore
 
@@ -400,7 +401,7 @@ async def test_route_to_agent_uses_semantic_llm_request(monkeypatch):
     assert captured["url"] == "https://example.com/v1/chat/completions"
     assert captured["json"]["model"] == "gpt-test"
     assert captured["json"]["temperature"] == 0.0
-    assert captured["json"]["max_tokens"] == 20
+    assert captured["json"]["max_tokens"] == 256
     assert captured["json"]["stream"] is False
     assert captured["json"]["messages"][0]["role"] == "system"
     assert "agent_type" in captured["json"]["messages"][0]["content"]
@@ -431,6 +432,32 @@ async def test_route_to_agent_defaults_to_general_on_invalid_payload(monkeypatch
     # Both messages default to "general" when router payload is invalid
     assert await service._route_to_agent("stokta kac tane kaldi") == "general"
     assert await service._route_to_agent("seo skorunu yorumla") == "general"
+
+
+@pytest.mark.parametrize("input_text,expected", [
+    # Standard JSON
+    ('{"agent_type": "operator"}', "operator"),
+    ('{"agent_type": "seo"}', "seo"),
+    ('{"agent_type": "general"}', "general"),
+    # Thinking model output with <think> blocks
+    ('<think>The user is asking about stock levels, this requires live data.</think>\n{"agent_type": "operator"}', "operator"),
+    ('<think>SEO question</think>{"agent_type": "seo"}', "seo"),
+    # Bare agent type word (no JSON)
+    ("operator", "operator"),
+    ("seo", "seo"),
+    ("general", "general"),
+    # Bare word with quotes
+    ('"operator"', "operator"),
+    # Markdown code block
+    ('```json\n{"agent_type": "operator"}\n```', "operator"),
+    # Only <think> block with no actual answer
+    ("<think>thinking...</think>", None),
+    # Empty / invalid
+    ("", None),
+    ("invalid text", None),
+])
+def test_parse_agent_type_handles_thinking_models(input_text, expected):
+    assert _parse_agent_type(input_text) == expected
 
 
 def test_build_completion_meta_uses_stats_and_context_length():

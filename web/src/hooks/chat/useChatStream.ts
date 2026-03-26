@@ -125,6 +125,8 @@ export function useChatStream(deps: UseChatStreamDeps) {
           ...lastMessage,
           ...finalizedMessage,
           content: typeof data.content === 'string' ? data.content : lastMessage.content,
+          // Preserve streamed thinking if the server didn't include it in response_done
+          thinking: finalizedMessage.thinking || lastMessage.thinking,
         };
         return next;
       }

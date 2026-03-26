@@ -14,6 +14,7 @@ from core.chat.support import (  # noqa: F401
     _build_completion_meta,
     _build_product_context,
     _has_mutation_tool_result,
+    _parse_agent_type,
 )
 
 
@@ -35,4 +36,5 @@ __all__ = [
     "_build_completion_meta",
     "_build_product_context",
     "_has_mutation_tool_result",
+    "_parse_agent_type",
 ]

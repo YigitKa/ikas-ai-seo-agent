@@ -286,7 +286,7 @@ class ChatServiceStateMixin:
                     {"role": "user", "content": cleaned_message},
                 ],
                 "temperature": 0.0,
-                "max_tokens": 20,
+                "max_tokens": 256,
                 "stream": False,
             }
             timeout = (

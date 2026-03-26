@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { formatThoughtDuration } from '../chatUtils';
 import MarkdownMessage from './MarkdownMessage';
 
@@ -39,7 +39,17 @@ export default function ThinkingBlock({
   durationSeconds?: number;
 }) {
   const isLive = typeof durationSeconds !== 'number' || durationSeconds <= 0;
-  const [expanded, setExpanded] = useState(true);
+  const wasLiveRef = useRef(isLive);
+  const [expanded, setExpanded] = useState(isLive);
+
+  // Auto-collapse when thinking completes (isLive transitions true → false)
+  useEffect(() => {
+    if (wasLiveRef.current && !isLive) {
+      setExpanded(false);
+    }
+    wasLiveRef.current = isLive;
+  }, [isLive]);
+
   const isExpanded = expanded;
   const hasMarkdownHints = /\*\*|`|^-|\n-|\n\d+\.|^>|\n>/m.test(text);
 

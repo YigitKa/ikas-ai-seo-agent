@@ -394,9 +394,19 @@ def _parse_agent_type(content: str) -> str | None:
     if not candidate:
         return None
 
+    # Strip <think>...</think> blocks from thinking models (Qwen, DeepSeek, etc.)
+    candidate = re.sub(r"<think>.*?</think>", "", candidate, flags=re.DOTALL).strip()
+    if not candidate:
+        return None
+
     if candidate.startswith("```"):
         candidate = re.sub(r"^```(?:json)?\s*", "", candidate, flags=re.IGNORECASE)
         candidate = re.sub(r"\s*```$", "", candidate)
+
+    # Try direct match for bare agent type words (no JSON wrapper)
+    bare = candidate.strip().strip('"').strip("'").lower()
+    if bare in {"seo", "operator", "general"}:
+        return bare
 
     if not candidate.startswith("{"):
         match = SEMANTIC_ROUTING_JSON_PATTERN.search(candidate)
