@@ -55,26 +55,31 @@ Su alanlari optimize et ve JSON olarak dondur:
 # Per-field prompt templates – smaller context, single field output
 FIELD_PROMPT_TEMPLATES = {
     "name": """Urun Adi: {name}
+Urun Aciklama Ozeti: {description_summary}
 Kategori: {category}
 Hedef Keywordler: {keywords}
 
 Bu urunun adini SEO icin optimize et. Dogal ve aranabilir bir isim olustur.
+Urunun ne icin kullanildigini aciklama ozetinden cikar; insan, hayvan, bitki gibi kullanim alanlarini karistirma ve veri uydurma.
 SADECE JSON dondur:
 {{"suggested_name": "..."}}""",
 
     "meta_title": """Urun Adi: {name}
+Urun Aciklama Ozeti: {description_summary}
 Kategori: {category}
 Hedef Keywordler: {keywords}
 
 Bu urun icin SEO uyumlu meta title yaz. Max 60 karakter, marka adiyla bitir.
+Kullanim amaci ve hedef urun tipi icin aciklama ozetini esas al; insan, hayvan, bitki gibi alanlari karistirma.
 SADECE JSON dondur:
 {{"suggested_meta_title": "..."}}""",
 
     "meta_desc": """Urun Adi: {name}
-Mevcut Aciklama: {description_short}
+Urun Aciklama Ozeti: {description_summary}
 Hedef Keywordler: {keywords}
 
 Bu urun icin SEO uyumlu meta description yaz. Max 155 karakter, CTA icermeli.
+Ozette gecen kullanim amacina ve hedef alana sadik kal; veri uydurma.
 SADECE JSON dondur:
 {{"suggested_meta_description": "..."}}""",
 

@@ -234,6 +234,8 @@ export default function BatchOperations() {
     prevStatusRef.current = null;
   }, []);
 
+  const isReviewViewport = view === 'analyzing' || view === 'review';
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -280,8 +282,8 @@ export default function BatchOperations() {
       </header>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto px-6 py-5">
-        <div className="mx-auto max-w-6xl">
+      <main className="flex-1 overflow-auto px-4 py-4 lg:px-6">
+        <div className={`mx-auto ${isReviewViewport ? 'max-w-[1560px]' : 'max-w-6xl'}`}>
 
           {/* PRODUCT SELECTION */}
           {view === 'select' && (

@@ -184,7 +184,45 @@ def test_build_field_rewrite_request_strips_html_before_sending_prompt():
     )
 
     assert "EN content" in request["user_prompt"]
-    assert "<em>" not in request["user_prompt"]
+    assert "Mevcut Ingilizce Aciklama: <div>EN <em>content</em></div>" not in request["user_prompt"]
+
+
+def test_build_field_rewrite_request_uses_description_summary_for_short_fields():
+    long_intro = "Kalsiyum takviyesi gereken durumlar icin konsantre bir formul sunar " * 3
+    product = Product(
+        id="p-summary",
+        name="Calcium 25 kg",
+        category="Bitki Besini",
+        description=(
+            f"<p>{long_intro.strip()}.</p>"
+            "<p>Bitki gelisimi, hizli buyume ve kalsiyum eksikliginin giderilmesi icin kullanilir.</p>"
+            "<p>Insan veya hayvan tuketimi icin degildir.</p>"
+        ),
+    )
+
+    name_request = build_field_rewrite_request(
+        _build_config(ai_provider="openai"),
+        "openai",
+        "name",
+        product,
+    )
+    meta_title_request = build_field_rewrite_request(
+        _build_config(ai_provider="openai"),
+        "openai",
+        "meta_title",
+        product,
+    )
+    meta_desc_request = build_field_rewrite_request(
+        _build_config(ai_provider="openai"),
+        "openai",
+        "meta_desc",
+        product,
+    )
+
+    for request in (name_request, meta_title_request, meta_desc_request):
+        assert "Urun Aciklama Ozeti:" in request["user_prompt"]
+        assert "Bitki gelisimi, hizli buyume ve kalsiyum eksikliginin giderilmesi icin kullanilir." in request["user_prompt"]
+        assert "Insan veya hayvan tuketimi icin degildir." in request["user_prompt"]
 
 
 def test_build_suggestion_preserves_html_in_description_fields():

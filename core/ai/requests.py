@@ -1,18 +1,59 @@
 """Request builder functions for AI provider calls."""
 
+import re
 from typing import List, Optional
 
-from core.utils.html import sanitize_html_for_prompt
+from core.utils.html import html_to_plain_text, sanitize_html_for_prompt
 from core.models import AppConfig, Product, SeoScore, SeoSuggestion
 from core.prompt_store import load_prompt_template, render_prompt_template
 from core.ai.constants import FIELD_PROMPT_TEMPLATES, USER_PROMPT_TEMPLATE
 from core.ai.helpers import _get_system_prompt, _cap_field_max_tokens
 
 
+def _build_description_summary(value: str, limit: int = 320) -> str:
+    """Extract a compact, product-focused plain-text summary from description HTML."""
+    plain_text = html_to_plain_text(value, preserve_breaks=True)
+    if not plain_text:
+        return ""
+
+    blocks = [re.sub(r"\s+", " ", block).strip(" -•\t") for block in plain_text.splitlines()]
+    blocks = [block for block in blocks if block]
+    if not blocks:
+        return ""
+
+    summary_parts: list[str] = []
+    current_length = 0
+    for block in blocks:
+        sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", block) if part.strip()]
+        if not sentences:
+            sentences = [block]
+
+        for sentence in sentences:
+            if sentence in summary_parts:
+                continue
+            summary_parts.append(sentence)
+            current_length = len(" ".join(summary_parts))
+            if current_length >= limit or len(summary_parts) >= 3:
+                break
+
+        if current_length >= limit or len(summary_parts) >= 3:
+            break
+
+    summary = " ".join(summary_parts).strip()
+    if len(summary) <= limit:
+        return summary
+
+    truncated = summary[:limit].rsplit(" ", 1)[0].strip()
+    return truncated or summary[:limit].strip()
+
+
 def _build_field_prompt(field: str, product: Product, keywords: List[str], desc_limit: int = 800) -> str:
     """Build a small prompt for a single field rewrite."""
     raw_desc = sanitize_html_for_prompt(product.description, limit=desc_limit)
     raw_desc_en = sanitize_html_for_prompt(product.description_translations.get("en", ""), limit=desc_limit)
+    description_summary = _build_description_summary(product.description, limit=min(400, desc_limit)) or (
+        raw_desc[:400] if raw_desc else "Belirtilmemis"
+    )
 
     kw_str = ", ".join(keywords) if keywords else "Belirtilmemis"
 
@@ -36,6 +77,7 @@ def _build_field_prompt(field: str, product: Product, keywords: List[str], desc_
         name=product.name,
         description=raw_desc,
         description_short=raw_desc[:200],
+        description_summary=description_summary,
         description_en=raw_desc_en,
         category=product.category or "Belirtilmemis",
         keywords=kw_str,
