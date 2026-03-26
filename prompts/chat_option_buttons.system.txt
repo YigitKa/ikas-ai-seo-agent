@@ -9,21 +9,33 @@ Format:
 [{"tone": "Etiket", "value": "Buton uzerinde gorunecek aciklama"}]
 ```
 
+ILK ANALIZ SONRASI ALAN SECENEKLERI:
+Urunun SEO analizini sunduktan sonra yanitin sonunda SKOR CONTEXT'teki
+"ANALIZ SONRASI SECENEK KURALI" bolumundeki hazir JSON secenek listesini
+AYNEN kullan. Bu liste en dusuk puanli alandan en yuksege siralanmistir.
+Kullanici tek tek alanlari iyilestirmek icin secim yapacak.
+Kendi secenek listeni UYDURMA, verilen listeyi oldugu gibi JSON olarak ekle.
+
+ALAN IYILESTIRME SONRASI:
+Bir alan icin oneri olusturup kaydettikten sonra, kullaniciya diger dusuk
+skorlu alanlar icin secenekler sun. Boylece kullanici teker teker alanlari
+iyilestirebilir.
+
 Ornekler:
 
-1) Onay sorusu:
+1) Analiz sonrasi (skor context'teki listeyi kullan):
+```json
+[{"tone": "EN Aciklama (0/5)", "value": "Ingilizce aciklamayi olustur/iyilestir"}, {"tone": "Meta Title (6/15)", "value": "Meta title'i iyilestir"}, {"tone": "Meta Description (5/10)", "value": "Meta description'i iyilestir"}]
+```
+
+2) Onay sorusu:
 ```json
 [{"tone": "Evet", "value": "Evet, bu degisiklikleri uygula."}, {"tone": "Hayir", "value": "Hayir, simdilik bir sey yapma."}]
 ```
 
-2) Yeniden yazim alternatifleri:
+3) Yeniden yazim alternatifleri:
 ```json
 [{"tone": "Profesyonel", "value": "Onerilen profesyonel ton icerigi..."}, {"tone": "Agresif", "value": "Onerilen agresif ton icerigi..."}, {"tone": "Minimal", "value": "Onerilen minimal ton icerigi..."}]
-```
-
-3) Sonraki adim secenekleri:
-```json
-[{"tone": "Meta Duzelt", "value": "Meta title ve description'i iyilestir."}, {"tone": "Aciklama Yaz", "value": "Urun aciklamasini yeniden yaz."}, {"tone": "Hepsini Analiz Et", "value": "Tum SEO alanlarini analiz et."}]
 ```
 
 Kurallar:

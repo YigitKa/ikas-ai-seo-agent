@@ -78,7 +78,14 @@ Sorunlar: {issues}
 
 ONCELIK KURALI: Analiz ve oneri sunarken EN DUSUK yuzdelik skora sahip alanlardan basla.
 0 puan olan alanlar KRITIK onceliklidir ve mutlaka ilk sirada belirtilmelidir.
-Yuksek puan alan alanlari (>=80%) "guclu" olarak isle ve onlari degistirmeyi onceliklendirme."""
+Yuksek puan alan alanlari (>=80%) "guclu" olarak isle ve onlari degistirmeyi onceliklendirme.
+
+ANALIZ SONRASI SECENEK KURALI:
+Ilk SEO analizi yaptiktan sonra yanitin sonunda kullaniciya alanlari TEKER TEKER iyilestirmek
+icin secenekler sun. Secenekler asagidaki sirada verilmeli (en dusuk yuzdelik skor birinci):
+{field_priority_options}
+Bu secenekleri aynen bu sirada ve formatta yanitin sonuna JSON olarak ekle.
+Kullanici bir alani sectikten sonra SADECE o alan icin somut bir SEO degeri olustur."""
 
 # Legacy aliases kept for backward compat — not currently used by runtime code.
 IKAS_OPERATION_GUIDE_TR = ""  # loaded from file at runtime via load_prompt_template()
@@ -445,10 +452,54 @@ def _parse_agent_type(content: str) -> str | None:
 
 
 _COMPACT_OPTION_BUTTONS_INSTRUCTION = (
-    'Yanitin sonunda secenekleri JSON olarak sun: ```json\n'
-    '[{"tone":"Etiket","value":"Aciklama"}]\n```\n'
-    "SEO deger onerisi verirken degerleri duz metin degil, bu JSON formatinda sun."
+    'Analiz sonrasi skor context\'teki "ANALIZ SONRASI SECENEK KURALI" bolumundeki '
+    "hazir JSON secenek listesini AYNEN yanitin sonuna ekle. Kendi listeni uydurma.\n"
+    "SEO deger onerisi verirken degerleri duz metin degil, JSON formatinda sun."
 )
+
+
+# Field metadata: (score_attr, max_points, label for buttons, description)
+_FIELD_PRIORITY_DEFS: list[tuple[str, int, str, str]] = [
+    ("english_description_score", 5, "EN Aciklama", "Ingilizce aciklamayi olustur/iyilestir"),
+    ("title_score", 15, "Urun Adi", "Urun adini SEO icin optimize et"),
+    ("meta_score", 15, "Meta Title", "Meta title'i iyilestir"),
+    ("meta_desc_score", 10, "Meta Description", "Meta description'i iyilestir"),
+    ("description_score", 20, "TR Aciklama", "Turkce aciklamayi iyilestir"),
+    ("keyword_score", 10, "Anahtar Kelime", "Anahtar kelime optimizasyonu yap"),
+    ("content_quality_score", 10, "Icerik Kalitesi", "Icerik kalitesini artir"),
+    ("technical_seo_score", 10, "Teknik SEO", "Teknik SEO sorunlarini duzelt"),
+    ("readability_score", 5, "Okunabilirlik", "Okunabilirlik skorunu artir"),
+    ("ai_citability_score", 10, "AI Alintilama", "AI alintilama skorunu artir"),
+]
+
+
+def _build_field_priority_options(score: "SeoScore") -> str:
+    """Build a priority-sorted JSON option list from score breakdown.
+
+    Returns a string like:
+    [{"tone":"EN Aciklama (0/5)","value":"Ingilizce aciklamayi olustur/iyilestir"}, ...]
+    sorted by score percentage ascending (worst fields first).
+    """
+    field_scores: list[tuple[float, str, int, int, str]] = []
+    for attr, max_pts, label, desc in _FIELD_PRIORITY_DEFS:
+        pts = getattr(score, attr, 0) or 0
+        pct = (pts / max_pts * 100) if max_pts > 0 else 100
+        field_scores.append((pct, label, pts, max_pts, desc))
+
+    # Sort by percentage ascending (worst first)
+    field_scores.sort(key=lambda x: x[0])
+
+    options: list[dict[str, str]] = []
+    for pct, label, pts, max_pts, desc in field_scores:
+        if pct >= 100:
+            continue  # Skip perfect-score fields
+        tag = f"{label} ({pts}/{max_pts})"
+        options.append({"tone": tag, "value": desc})
+
+    if not options:
+        return '[{"tone":"Tum alanlar iyi","value":"Tum SEO alanlari yeterli seviyede."}]'
+
+    return json.dumps(options, ensure_ascii=False)
 
 
 def _build_product_context(
@@ -484,6 +535,7 @@ def _build_product_context(
         )
 
     if score:
+        field_priority_options = _build_field_priority_options(score)
         score_ctx = CHAT_FLOW_SCORE_CONTEXT_TEMPLATE.format(
             total_score=score.total_score,
             seo_score=score.seo_score,
@@ -500,6 +552,7 @@ def _build_product_context(
             readability_score=score.readability_score,
             ai_citability_score=score.ai_citability_score,
             issues="; ".join(score.issues[:8]) if score.issues else "Yok",
+            field_priority_options=field_priority_options,
         )
 
     agent_prompts = get_agent_system_prompts_tr()

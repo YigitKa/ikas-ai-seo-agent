@@ -234,6 +234,9 @@ class ChatServiceStreamingMixin:
             Only sends the product fields the model needs and the
             ``save_seo_suggestion`` tool — keeps the total under ~1 500 tokens
             so even 4 096-context models can handle it.
+
+            When the user selected a specific field (e.g. "EN Aciklama"),
+            the system prompt instructs the AI to fill ONLY that field.
             """
             product_lines: list[str] = []
             if self._product:
@@ -246,10 +249,16 @@ class ChatServiceStreamingMixin:
                     f"Aciklama (ozet): {(p.description or '')[:150]}",
                 ]
 
+            # Detect which field the user selected from the message content
+            field_instruction = (
+                "Kullanicinin sectigi ALAN icin somut SEO degeri olustur. "
+                "YALNIZCA o alani save_seo_suggestion aracinda doldur, "
+                "diger alanlari BOZ birak."
+            )
+
             system_prompt = (
-                "Sen SEO uzmansin. Kullanicinin sectigi secenek dogrultusunda "
-                "urun icin somut SEO degerlerini olustur ve save_seo_suggestion "
-                "aracini cagirarak kaydet. Dusunme, dogrudan araci cagir. /no_think\n\n"
+                "Sen SEO uzmansin. " + field_instruction + " "
+                "Dusunme, dogrudan araci cagir. /no_think\n\n"
                 + "\n".join(product_lines)
             )
 

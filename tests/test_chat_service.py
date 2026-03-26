@@ -255,6 +255,29 @@ def test_build_product_context_includes_all_score_fields():
     assert "ONCELIK KURALI" in ctx
 
 
+def test_build_product_context_includes_field_priority_options():
+    """Field priority options should be sorted by score % ascending."""
+    product = _make_product()
+    score = _make_score(
+        total_score=76,
+        title_score=8,
+        description_score=18,
+        english_description_score=0,
+        meta_score=6,
+        meta_desc_score=5,
+    )
+    ctx = _build_product_context(product, score)
+    # EN Aciklama (0/5) = 0% should come first
+    assert "EN Aciklama (0/5)" in ctx
+    # Meta Title (6/15) = 40% should come before Meta Description (5/10) = 50%
+    en_pos = ctx.index("EN Aciklama (0/5)")
+    meta_title_pos = ctx.index("Meta Title (6/15)")
+    meta_desc_pos = ctx.index("Meta Description (5/10)")
+    assert en_pos < meta_title_pos < meta_desc_pos
+    # Description (18/20) = 90% should NOT appear (near perfect)
+    assert "ANALIZ SONRASI SECENEK KURALI" in ctx
+
+
 def test_extract_thinking():
     text = "Some text <think>This is my reasoning</think> Final answer"
     result = ChatService._extract_thinking(text)
