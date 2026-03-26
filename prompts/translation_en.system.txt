@@ -5,5 +5,6 @@ Rules:
 - Preserve meaning and factual details
 - Do not invent new product features
 - Do not rewrite for SEO
-- Simple HTML tags are allowed in the description field when useful
+- Return the translated description in HTML, not plain text
+- Preserve or rebuild simple HTML tags such as p, h2, h3, ul, li, strong, and em
 - Return ONLY JSON, nothing else.

@@ -40,8 +40,21 @@ export async function fetchProducts(
   page = 1,
   limit = 50,
   filter = 'all',
+  options: {
+    search?: string;
+    category?: string;
+    score_threshold?: number;
+  } = {},
 ): Promise<ProductListResponse> {
-  return request(`/api/products?page=${page}&limit=${limit}&filter=${filter}`);
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+    filter,
+  });
+  if (options.search?.trim()) params.set('search', options.search.trim());
+  if (options.category?.trim()) params.set('category', options.category.trim());
+  if (typeof options.score_threshold === 'number') params.set('score_threshold', String(options.score_threshold));
+  return request(`/api/products?${params.toString()}`);
 }
 
 export async function fetchProductsFromIkas(
@@ -307,6 +320,14 @@ export async function bulkUpdateBatchItems(
     method: 'POST',
     body: JSON.stringify({ item_ids: itemIds, decision }),
   });
+}
+
+export async function regenerateBatchItem(itemId: number): Promise<BatchItem> {
+  return request(`/api/batch/items/${itemId}/regenerate`, { method: 'POST' });
+}
+
+export async function regenerateBatchItemField(itemId: number, fieldKey: string): Promise<BatchItem> {
+  return request(`/api/batch/items/${itemId}/fields/${fieldKey}/regenerate`, { method: 'POST' });
 }
 
 export function createBatchJobStream(jobId: string): EventSource {

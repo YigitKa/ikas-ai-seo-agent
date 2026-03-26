@@ -6,7 +6,8 @@ Bu urunun mevcut Turkce aciklamasini Ingilizceye cevir.
 Kurallar:
 - Anlami koru, yeni ozellik uydurma
 - Dogal ve profesyonel urun Ingilizcesi kullan
-- Gerekirse p, ul, li, strong ve em gibi basit HTML tagleri kullanabilirsin
+- Ciktiyi HTML formatinda ver; duz metin paragraf dondurme
+- p, h2, h3, ul, li, strong ve em gibi basit HTML taglerini koru veya uygun sekilde yeniden kur
 - SEO icin yeniden yazma, ceviri yap
 - Yanit sadece JSON olsun
 

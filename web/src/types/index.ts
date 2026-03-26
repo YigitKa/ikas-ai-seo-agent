@@ -302,7 +302,7 @@ export interface BatchItem {
   score_after: number | null;
   skip_reason: string | null;
   has_rollback: boolean;
-  suggestion_data: Record<string, string> | null;
+  suggestion_data: Record<string, unknown> | null;
 }
 
 export interface BatchJobDetail {

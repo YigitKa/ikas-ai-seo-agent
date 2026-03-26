@@ -10,23 +10,24 @@ const DEFAULT_CONFIG: BatchConfig = {
   preserve_specs: true,
   prevent_cannibalization: true,
   max_title_change_pct: 20,
-  sample_size: 10,
   target_fields: ['meta_title', 'meta_description', 'name', 'description', 'description_en'],
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  idle: 'Boşta',
-  calibrating: 'Kalibre Ediliyor',  calibration_done: 'Kalibrasyon Tamamlandı',  running: 'Çalışıyor',
-  paused: 'Duraklatıldı',
-  completed: 'Tamamlandı',
+  idle: 'Bosta',
+  analyzing: 'Analiz Ediliyor',
+  analyzed: 'Analiz Tamamlandi',
+  running: 'Calisiyor',
+  paused: 'Duraklatildi',
+  completed: 'Tamamlandi',
   failed: 'Hata',
-  cancelled: 'İptal Edildi',
+  cancelled: 'Iptal Edildi',
 };
 
 const STATUS_COLORS: Record<string, string> = {
   idle: 'rgba(100,116,139,0.2)',
-  calibrating: 'rgba(245,158,11,0.18)',
-  calibration_done: 'rgba(245,158,11,0.18)',
+  analyzing: 'rgba(245,158,11,0.18)',
+  analyzed: 'rgba(99,102,241,0.18)',
   running: 'rgba(34,197,94,0.18)',
   paused: 'rgba(99,102,241,0.18)',
   completed: 'rgba(34,197,94,0.18)',
@@ -36,8 +37,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_TEXT: Record<string, string> = {
   idle: '#94a3b8',
-  calibrating: '#f59e0b',
-  calibration_done: '#f59e0b',
+  analyzing: '#f59e0b',
+  analyzed: '#818cf8',
   running: '#22c55e',
   paused: '#818cf8',
   completed: '#22c55e',
@@ -98,25 +99,25 @@ export default function BatchCommandCenter({
 }: Props) {
   const [config, setConfig] = useState<BatchConfig>(DEFAULT_CONFIG);
 
-  const activeStatus = stats.active_job?.status ?? 'idle';
+  const activeJob = stats.active_job;
+  const activeStatus = activeJob?.status ?? 'idle';
   const bgColor = STATUS_COLORS[activeStatus] ?? STATUS_COLORS.idle;
   const textColor = STATUS_TEXT[activeStatus] ?? STATUS_TEXT.idle;
-
   const avgDelta = stats.avg_score_improvement;
-  const activeJob = stats.active_job;
-  const isActive = activeJob && (activeJob.status === 'calibrating' || activeJob.status === 'running');
+
+  const isAnalyzing = activeJob?.status === 'analyzing';
+  const isRunning = activeJob?.status === 'running';
+  const isActive = isAnalyzing || isRunning;
+  const bannerAccent = isAnalyzing ? '#f59e0b' : '#22c55e';
 
   return (
     <div className="space-y-5">
-      {/* Active job banner — prominent when LLM is working */}
       {isActive && activeJob && (
         <div
           className="rounded-xl p-4"
           style={{
-            background: activeJob.status === 'calibrating'
-              ? 'rgba(245,158,11,0.06)'
-              : 'rgba(34,197,94,0.06)',
-            border: activeJob.status === 'calibrating'
+            background: isAnalyzing ? 'rgba(245,158,11,0.06)' : 'rgba(34,197,94,0.06)',
+            border: isAnalyzing
               ? '1px solid rgba(245,158,11,0.25)'
               : '1px solid rgba(34,197,94,0.25)',
           }}
@@ -126,60 +127,53 @@ export default function BatchCommandCenter({
               <div
                 className="flex h-9 w-9 items-center justify-center rounded-lg"
                 style={{
-                  background: activeJob.status === 'calibrating'
-                    ? 'rgba(245,158,11,0.15)'
-                    : 'rgba(34,197,94,0.15)',
+                  background: isAnalyzing ? 'rgba(245,158,11,0.15)' : 'rgba(34,197,94,0.15)',
                 }}
               >
                 <svg
                   className="h-5 w-5 animate-spin"
                   fill="none"
                   viewBox="0 0 24 24"
-                  stroke={activeJob.status === 'calibrating' ? '#f59e0b' : '#22c55e'}
+                  stroke={bannerAccent}
                   strokeWidth={2}
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
                 </svg>
               </div>
               <div>
                 <p className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                  {activeJob.status === 'calibrating'
-                    ? 'Kalibrasyon Devam Ediyor'
-                    : 'Toplu Optimizasyon Çalışıyor'}
+                  {isAnalyzing ? 'Analiz Devam Ediyor' : 'Toplu Optimizasyon Calisiyor'}
                 </p>
                 <p className="mt-0.5 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-                  {activeJob.status === 'calibrating' ? (
-                    <>
-                      AI, <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-                        {activeJob.config?.sample_size ?? '?'}
-                      </span> örneklem ürün üzerinde SEO önerileri oluşturuyor
-                      {activeJob.processed_count > 0 && (
-                        <> — <span className="font-semibold tabular-nums" style={{ color: 'var(--color-primary-light)' }}>
-                          {activeJob.processed_count} / {activeJob.config?.sample_size ?? '?'}
-                        </span> tamamlandı</>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <span className="font-semibold tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
-                        {activeJob.processed_count}
+                  <span className="font-semibold tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
+                    {activeJob.processed_count}
+                  </span>
+                  {' / '}
+                  <span className="tabular-nums">{activeJob.total_count}</span>
+                  {isAnalyzing ? ' urun analiz edildi' : ' urun islendi'}
+                  {isRunning && activeJob.avg_score_before > 0 && activeJob.avg_score_after > 0 && (
+                    <span className="ml-2">
+                      {' · Ort. skor: '}
+                      {activeJob.avg_score_before.toFixed(0)}
+                      {' -> '}
+                      {activeJob.avg_score_after.toFixed(0)}
+                      <span
+                        style={{
+                          color: activeJob.avg_score_after > activeJob.avg_score_before ? '#22c55e' : '#ef4444',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {' '}
+                        (
+                        {activeJob.avg_score_after > activeJob.avg_score_before ? '+' : ''}
+                        {(activeJob.avg_score_after - activeJob.avg_score_before).toFixed(0)}
+                        )
                       </span>
-                      {' / '}
-                      <span className="tabular-nums">{activeJob.total_count}</span>
-                      {' ürün işlendi'}
-                      {activeJob.avg_score_before > 0 && activeJob.avg_score_after > 0 && (
-                        <span className="ml-2">
-                          · Ort. skor: {activeJob.avg_score_before.toFixed(0)} → {activeJob.avg_score_after.toFixed(0)}
-                          <span style={{
-                            color: activeJob.avg_score_after > activeJob.avg_score_before ? '#22c55e' : '#ef4444',
-                            fontWeight: 600,
-                          }}>
-                            {' '}({activeJob.avg_score_after > activeJob.avg_score_before ? '+' : ''}
-                            {(activeJob.avg_score_after - activeJob.avg_score_before).toFixed(0)})
-                          </span>
-                        </span>
-                      )}
-                    </>
+                    </span>
                   )}
                 </p>
               </div>
@@ -189,20 +183,18 @@ export default function BatchCommandCenter({
               onClick={() => onViewJob(activeJob.id)}
               className="rounded-lg px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
               style={{
-                background: activeJob.status === 'calibrating'
+                background: isAnalyzing
                   ? 'linear-gradient(135deg, #f59e0b, #d97706)'
                   : 'linear-gradient(135deg, #22c55e, #16a34a)',
               }}
             >
-              {activeJob.status === 'calibrating' ? 'Kalibrasyonu Gör' : 'İlerlemeyi Gör'}
+              {isAnalyzing ? 'Analizi Gor' : 'Ilerlemeyi Gor'}
             </button>
           </div>
         </div>
       )}
 
-      {/* Status + metrics row */}
       <div className="grid grid-cols-4 gap-4">
-        {/* System status */}
         <div
           className="col-span-1 flex flex-col justify-between rounded-xl p-4"
           style={{
@@ -222,7 +214,7 @@ export default function BatchCommandCenter({
                 className="h-1.5 w-1.5 rounded-full"
                 style={{
                   background: textColor,
-                  animation: activeStatus === 'running' || activeStatus === 'calibrating' ? 'pulse 2s infinite' : 'none',
+                  animation: activeStatus === 'running' || activeStatus === 'analyzing' ? 'pulse 2s infinite' : 'none',
                 }}
               />
               {STATUS_LABELS[activeStatus] ?? activeStatus}
@@ -231,23 +223,22 @@ export default function BatchCommandCenter({
         </div>
 
         <MetricCard
-          label="Toplam İşlem"
+          label="Toplam Islem"
           value={stats.total_jobs}
-          sub="tamamlanan döngü"
+          sub="tamamlanan dongu"
         />
         <MetricCard
-          label="İşlenen Ürün"
+          label="Islenen Urun"
           value={stats.total_processed.toLocaleString('tr-TR')}
           sub="toplam optimize edildi"
         />
         <MetricCard
-          label="Ort. Skor Artışı"
+          label="Ort. Skor Artisi"
           value={avgDelta > 0 ? `+${avgDelta.toFixed(1)}` : avgDelta.toFixed(1)}
-          sub="puan iyileştirme"
+          sub="puan iyilestirme"
         />
       </div>
 
-      {/* Config + History side by side */}
       <div className="grid grid-cols-5 gap-5">
         <div className="col-span-3">
           <BatchConfigPanel
@@ -259,7 +250,11 @@ export default function BatchCommandCenter({
           />
         </div>
         <div className="col-span-2">
-          <BatchHistory jobs={jobs.slice(0, 8)} onSelect={onViewJob} onDelete={onDeleteJob} />
+          <BatchHistory
+            jobs={jobs.slice(0, 8)}
+            onSelect={(jobId) => onViewJob(jobId)}
+            onDelete={onDeleteJob}
+          />
         </div>
       </div>
     </div>

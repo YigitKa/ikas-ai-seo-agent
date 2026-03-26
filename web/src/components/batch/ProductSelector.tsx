@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { BatchConfig, ProductWithScore } from '../../types';
 import { getSettings } from '../../api/client';
@@ -11,6 +11,8 @@ const FIELD_OPTIONS: { key: string; label: string }[] = [
   { key: 'description', label: 'Açıklama (TR)' },
   { key: 'description_en', label: 'Açıklama (EN)' },
 ];
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 
 interface Props {
   config: BatchConfig;
@@ -29,7 +31,11 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
-  const limit = 50;
+  const [pageSize, setPageSize] = useState(50);
+
+  useEffect(() => {
+    setPage(1);
+  }, [pageSize, search, config.category_filter, config.score_threshold]);
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
@@ -37,8 +43,12 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['batchProducts', page],
-    queryFn: () => fetchProducts(page, limit, 'all'),
+    queryKey: ['batchProducts', page, pageSize, search, config.category_filter, config.score_threshold],
+    queryFn: () => fetchProducts(page, pageSize, 'all', {
+      search,
+      category: config.category_filter,
+      score_threshold: config.score_threshold,
+    }),
   });
 
   const { data: settings } = useQuery({
@@ -50,35 +60,17 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
 
   const products: ProductWithScore[] = data?.items ?? [];
   const totalCount = data?.total_count ?? 0;
-  const totalPages = Math.ceil(totalCount / limit);
-
-  // Client-side filter
-  const filtered = useMemo(() => {
-    let list = products;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(p => p.product.name.toLowerCase().includes(q));
-    }
-    if (config.category_filter) {
-      const cat = config.category_filter.toLowerCase();
-      list = list.filter(p => (p.product.category || '').toLowerCase().includes(cat));
-    }
-    if (config.score_threshold < 100) {
-      list = list.filter(p => (p.score?.total_score ?? 100) < config.score_threshold);
-    }
-    return list;
-  }, [products, search, config.category_filter, config.score_threshold]);
-
-  const allFilteredIds = new Set(filtered.map(p => p.product.id));
-  const allSelected = filtered.length > 0 && filtered.every(p => selectedIds.has(p.product.id));
+  const totalPages = Math.ceil(totalCount / pageSize);
+  const allPageIds = new Set(products.map(p => p.product.id));
+  const allSelected = products.length > 0 && products.every(p => selectedIds.has(p.product.id));
 
   function toggleAll() {
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (allSelected) {
-        allFilteredIds.forEach(id => next.delete(id));
+        allPageIds.forEach(id => next.delete(id));
       } else {
-        allFilteredIds.forEach(id => next.add(id));
+        allPageIds.forEach(id => next.add(id));
       }
       return next;
     });
@@ -273,12 +265,38 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
           <span className="flex-1 text-[12px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
             {selectedIds.size > 0
               ? `${selectedIds.size} ürün seçildi`
-              : `${filtered.length} ürün listeleniyor`}
+              : `${products.length} ürün listeleniyor`}
           </span>
-          {filtered.length > 0 && (
-            <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-              Sayfa {page}/{totalPages}
-            </span>
+          {totalCount > 0 && (
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                <span>Listeleme</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="rounded-md px-2 py-1 text-[11px]"
+                  style={{
+                    background: 'var(--color-bg-primary)',
+                    border: '1px solid var(--color-border)',
+                    color: 'var(--color-text-primary)',
+                    colorScheme: 'dark',
+                  }}
+                >
+                  {PAGE_SIZE_OPTIONS.map((size) => (
+                    <option
+                      key={size}
+                      value={size}
+                      style={{ background: '#0f172a', color: '#e5e7eb' }}
+                    >
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                Sayfa {page}/{totalPages}
+              </span>
+            </div>
           )}
         </div>
 
@@ -288,12 +306,12 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
             <div className="p-8 text-center text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
               Ürünler yükleniyor...
             </div>
-          ) : filtered.length === 0 ? (
+          ) : products.length === 0 ? (
             <div className="p-8 text-center text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
               Filtrelere uygun ürün bulunamadı.
             </div>
           ) : (
-            filtered.map(item => {
+            products.map(item => {
               const p = item.product;
               const score = item.score?.total_score ?? null;
               const selected = selectedIds.has(p.id);

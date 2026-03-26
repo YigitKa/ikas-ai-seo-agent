@@ -4,6 +4,7 @@ Kategori: {{category}}
 Hedef Keywordler: {{keywords}}
 
 Bu urunun Turkce aciklamasini SEO icin optimize et. Urun icin Nedir? Neden? Nasil Kullanilir? sorularina basliklar halinde cevap icersin.
-Gerekirse p, ul, li, strong ve em gibi basit HTML tagleri kullan. Dogal satis dili kullan.
+Sonucu yalnizca HTML olarak uret. En az bir `<h2>` basligi, birden fazla `<p>` paragrafi ve uygun ise `<ul><li>` listesi kullan.
+`suggested_description` alaninin degeri duz metin degil, dogrudan HTML parcalari olmali. Dogal satis dili kullan.
 SADECE JSON dondur:
 {"suggested_description": "..."}

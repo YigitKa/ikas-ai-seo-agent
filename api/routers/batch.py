@@ -202,22 +202,56 @@ async def rollback_batch_item(
     return {"ok": success, "product_id": product_id}
 
 
+@router.post("/items/{item_id}/regenerate", response_model=BatchItemResponse)
+async def regenerate_batch_item(
+    item_id: int,
+    manager: ProductManager = Depends(get_manager),
+) -> BatchItemResponse:
+    try:
+        item = await manager.regenerate_batch_item(item_id)
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "not found" in message.lower() else 400
+        raise HTTPException(status_code=status_code, detail=message) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return _item_to_response(item)
+
+
+@router.post("/items/{item_id}/fields/{field_key}/regenerate", response_model=BatchItemResponse)
+async def regenerate_batch_item_field(
+    item_id: int,
+    field_key: str,
+    manager: ProductManager = Depends(get_manager),
+) -> BatchItemResponse:
+    try:
+        item = await manager.regenerate_batch_item_field(item_id, field_key)
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "not found" in message.lower() else 400
+        raise HTTPException(status_code=status_code, detail=message) from exc
+    return _item_to_response(item)
+
+
 # ── Item decisions ────────────────────────────────────────────────────────────
 
 @router.patch("/items/{item_id}", response_model=BatchItemResponse)
 async def update_batch_item_decision(
     item_id: int,
     body: BatchItemDecisionRequest,
+    manager: ProductManager = Depends(get_manager),
 ) -> BatchItemResponse:
     """Approve or reject an analyzed item."""
-    if body.decision not in ("approved", "rejected", "revised"):
-        raise HTTPException(status_code=400, detail="decision must be approved, rejected, or revised")
-
-    status = "approved" if body.decision in ("approved", "revised") else "rejected"
-    await db.update_batch_item(item_id, status=status)
-    item = await db.get_batch_item(item_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
+    try:
+        item = await manager.update_batch_item_decision(
+            item_id,
+            body.decision,
+            body.revised_data,
+        )
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "not found" in message.lower() else 400
+        raise HTTPException(status_code=status_code, detail=message) from exc
     return _item_to_response(item)
 
 

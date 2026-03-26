@@ -4,7 +4,9 @@ iceriklerini Turk kullanicilar ve Google TR icin optimize etmek.
 Kurallar:
 - Dogal, satis odakli Turkce kullan
 - Urun icin Ürün Adı + Nedir?Neden + Ürün Adı?Ürün Adı + Nasil Kullanilir? sorularina basliklar halinde cevap icersin.
-- Aciklama alaninda p, br, ul, ol, li, strong ve em gibi basit HTML tagleri kullanabilirsin.
+- Aciklama yalnizca HTML formatinda olmali; duz metin paragraf dondurme.
+- Aciklama alaninda p, h2, h3, br, ul, ol, li, strong ve em gibi basit HTML tagleri kullan.
+- En az 2 paragraf ve uygun ise 1 liste bolumu olustur.
 - Ad, meta title ve meta description alanlarinda HTML kullanma.
 - Abartili reklam dili kullanma
 - Urunun gercek ozelliklerine sadik kal

@@ -12,6 +12,8 @@ import {
   stopBatchJob,
   rollbackBatchJob,
   rollbackBatchItem,
+  regenerateBatchItem,
+  regenerateBatchItemField,
   updateBatchItem,
   bulkUpdateBatchItems,
   deleteBatchJob,
@@ -48,6 +50,7 @@ export default function BatchOperations() {
   const [view, setView] = useState<View>('select');
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [config, setConfig] = useState<BatchConfig>(DEFAULT_CONFIG);
+  const [regeneratingKey, setRegeneratingKey] = useState<string | null>(null);
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -138,8 +141,15 @@ export default function BatchOperations() {
   });
 
   const decisionMutation = useMutation({
-    mutationFn: ({ itemId, decision }: { itemId: number; decision: 'approved' | 'rejected' }) =>
-      updateBatchItem(itemId, decision),
+    mutationFn: ({
+      itemId,
+      decision,
+      revisedData,
+    }: {
+      itemId: number;
+      decision: 'approved' | 'rejected' | 'revised';
+      revisedData?: Record<string, string>;
+    }) => updateBatchItem(itemId, decision, revisedData),
     onSuccess: () => invalidateBatch(qc, activeJobId),
   });
 
@@ -147,6 +157,57 @@ export default function BatchOperations() {
     mutationFn: ({ itemIds, decision }: { itemIds: number[]; decision: 'approved' | 'rejected' }) =>
       bulkUpdateBatchItems(itemIds, decision),
     onSuccess: () => invalidateBatch(qc, activeJobId),
+  });
+
+  const regenerateMutation = useMutation({
+    mutationFn: (itemId: number) => regenerateBatchItem(itemId),
+    onMutate: (itemId) => {
+      setRegeneratingKey(`item:${itemId}`);
+    },
+    onSuccess: (item) => {
+      invalidateBatch(qc, activeJobId);
+      const succeeded = item.status === 'analyzed';
+      addToast({
+        tone: succeeded ? 'success' : 'error',
+        message: succeeded
+          ? 'Öneri yeniden üretildi.'
+          : item.skip_reason || 'Öneri yeniden üretilemedi.',
+      });
+    },
+    onError: (err: Error) => {
+      addToast({ tone: 'error', message: err.message });
+    },
+    onSettled: () => {
+      setRegeneratingKey(null);
+    },
+  });
+
+  const regenerateFieldMutation = useMutation({
+    mutationFn: ({ itemId, fieldKey }: { itemId: number; fieldKey: string }) =>
+      regenerateBatchItemField(itemId, fieldKey),
+    onMutate: ({ itemId, fieldKey }) => {
+      setRegeneratingKey(`${itemId}:${fieldKey}`);
+    },
+    onSuccess: (item, variables) => {
+      invalidateBatch(qc, activeJobId);
+      const fieldLabels: Record<string, string> = {
+        name: 'Başlık',
+        meta_title: 'Meta Başlık',
+        meta_description: 'Meta Açıklama',
+        description: 'Açıklama',
+        description_en: 'Açıklama (EN)',
+      };
+      addToast({
+        tone: item.status === 'failed' ? 'error' : 'success',
+        message: `${fieldLabels[variables.fieldKey] ?? variables.fieldKey} alanı yeniden üretildi.`,
+      });
+    },
+    onError: (err: Error) => {
+      addToast({ tone: 'error', message: err.message });
+    },
+    onSettled: () => {
+      setRegeneratingKey(null);
+    },
   });
 
   const deleteJobMutation = useMutation({
@@ -309,12 +370,20 @@ export default function BatchOperations() {
             <AnalysisReview
               job={activeJob}
               items={activeItems}
-              onDecision={(itemId, decision) => decisionMutation.mutate({ itemId, decision })}
+              onDecision={(itemId, decision, revisedData) => decisionMutation.mutate({ itemId, decision, revisedData })}
+              onRegenerate={(itemId) => regenerateMutation.mutate(itemId)}
+              onFieldRegenerate={(itemId, fieldKey) => regenerateFieldMutation.mutate({ itemId, fieldKey })}
               onBulkDecision={(itemIds, decision) => bulkDecisionMutation.mutate({ itemIds, decision })}
               onApplyAll={() => applyMutation.mutate()}
               onStop={() => stopMutation.mutate()}
               onBack={handleBackToSelect}
-              isMutating={applyMutation.isPending}
+              isMutating={
+                applyMutation.isPending
+                || decisionMutation.isPending
+                || bulkDecisionMutation.isPending
+                || regeneratingKey !== null
+              }
+              regeneratingKey={regeneratingKey}
             />
           )}
 

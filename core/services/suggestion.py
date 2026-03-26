@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from core.models import Product, SeoSuggestion
+from core.utils.html import plain_text_to_basic_html
 from core.utils.presentation import clean_suggestion_value
 
 
@@ -27,9 +28,9 @@ def apply_suggestion_field(suggestion: SeoSuggestion, field: str, value: str) ->
     elif field == "meta_desc":
         suggestion.suggested_meta_description = cleaned
     elif field == "desc_tr":
-        suggestion.suggested_description = cleaned
+        suggestion.suggested_description = plain_text_to_basic_html(cleaned)
     elif field == "desc_en":
-        suggestion.suggested_description_en = cleaned
+        suggestion.suggested_description_en = plain_text_to_basic_html(cleaned)
 
 
 def sync_suggestion_fields(suggestion: SeoSuggestion, field_values: Mapping[str, str]) -> SeoSuggestion:

@@ -84,7 +84,8 @@ Kategori: {category}
 Hedef Keywordler: {keywords}
 
 Rewrite the English product description for SEO. 200-400 words, natural sales language.
-Simple HTML is allowed in the description field when useful.
+Return the description in HTML, not plain text.
+Use simple tags such as <h2>, <p>, <ul>, <li>, <strong>, and <em> when useful.
 Return ONLY JSON:
 {{"suggested_description_en": "..."}}""",
 }

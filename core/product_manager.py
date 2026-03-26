@@ -24,6 +24,7 @@ from core.services.provider import (
     get_provider_health,
     test_settings_connection,
 )
+from core.services.suggestion import apply_suggestion_field, create_pending_suggestion
 from core.seo.analyzer import analyze_product
 from data import db
 
@@ -36,6 +37,25 @@ TARGET_FIELD_LABELS = {
     "description": "Açıklama (TR)",
     "description_en": "Açıklama (EN)",
 }
+
+BATCH_FIELD_TO_AI_FIELD = {
+    "name": "name",
+    "meta_title": "meta_title",
+    "meta_description": "meta_desc",
+    "description": "desc_tr",
+    "description_en": "desc_en",
+}
+
+BATCH_FIELD_TO_SUGGESTION_ATTR = {
+    "name": "suggested_name",
+    "meta_title": "suggested_meta_title",
+    "meta_description": "suggested_meta_description",
+    "description": "suggested_description",
+    "description_en": "suggested_description_en",
+}
+
+SUCCESSFUL_BATCH_ITEM_STATUSES = {"analyzed", "approved", "rejected", "applied", "rolled_back"}
+SKIPPED_BATCH_ITEM_STATUSES = {"skipped", "failed"}
 
 TScore = TypeVar("TScore")
 
@@ -389,26 +409,31 @@ class ProductManager:
 
     # ── Batch operations ──────────────────────────────────────────────────
 
+    def _get_batch_config_value(self, config: Any, key: str, default: Any) -> Any:
+        if isinstance(config, dict):
+            return config.get(key, default)
+        return getattr(config, key, default)
+
     def _build_batch_system_prompt(self, config: Any) -> str:
         """Build BATCH_AGENT_SYSTEM_PROMPT augmented with user-defined constraints."""
         rules: list[str] = []
-        if getattr(config, "preserve_specs", True):
+        if self._get_batch_config_value(config, "preserve_specs", True):
             rules.append(
                 "Teknik özellikleri (materyal, boyut, ağırlık) DEĞİŞTİRME, "
                 "sadece biçimlendir ve SEO açısından zenginleştir."
             )
-        if getattr(config, "prevent_cannibalization", True):
+        if self._get_batch_config_value(config, "prevent_cannibalization", True):
             rules.append(
                 "Benzer ürün gruplarında LSI (Latent Semantic Indexing) varyasyonları "
                 "kullan; anahtar kelime çakışmasını önle."
             )
-        pct = getattr(config, "max_title_change_pct", 20)
+        pct = self._get_batch_config_value(config, "max_title_change_pct", 20)
         if pct < 100:
             rules.append(
                 f"Başlık (title) etiketinde maksimum %{pct} değişiklik yap; "
                 "mevcut ana anahtar kelimeyi koru."
             )
-        target_fields = getattr(config, "target_fields", None)
+        target_fields = self._get_batch_config_value(config, "target_fields", None)
         if target_fields:
             field_labels = [TARGET_FIELD_LABELS.get(f, f) for f in target_fields]
             rules.append(
@@ -426,6 +451,8 @@ class ProductManager:
         self, product: Product, score: SeoScore, system_prompt: str,
     ) -> SeoSuggestion | None:
         """Run the agentic rewrite and return the saved suggestion, or None."""
+        previous_suggestion = await db.get_latest_suggestion_by_product(product.id)
+        previous_created_at = previous_suggestion.created_at if previous_suggestion else None
         toolkit = create_seo_rewrite_toolkit()
         orchestrator = AgentOrchestrator(
             config=self._config,
@@ -459,7 +486,192 @@ class ProductManager:
             [tc.name for tc in result.tool_calls_made],
             len(result.content),
         )
-        return await db.get_latest_suggestion_by_product(product.id)
+        latest_suggestion = await db.get_latest_suggestion_by_product(product.id)
+        if latest_suggestion is None:
+            return None
+        if previous_created_at and latest_suggestion.created_at == previous_created_at:
+            return None
+        return latest_suggestion
+
+    def _filter_suggestion_to_target_fields(
+        self,
+        suggestion: SeoSuggestion,
+        config: Any,
+    ) -> SeoSuggestion:
+        target_fields = set(self._get_batch_config_value(config, "target_fields", None) or [])
+        if not target_fields:
+            return suggestion
+
+        blanks = {
+            attr: ""
+            for field_key, attr in BATCH_FIELD_TO_SUGGESTION_ATTR.items()
+            if field_key not in target_fields
+        }
+        return suggestion.model_copy(update=blanks) if blanks else suggestion
+
+    def _build_batch_skip_reason(self, config: Any) -> str:
+        target_fields = self._get_batch_config_value(config, "target_fields", None)
+        if target_fields:
+            field_labels = [TARGET_FIELD_LABELS.get(f, f) for f in target_fields]
+            return f"Öneri oluşturulamadı (hedef alanlar: {', '.join(field_labels)})"
+        return "Öneri oluşturulamadı"
+
+    def _get_batch_target_fields(
+        self,
+        config: Any,
+        field_keys: list[str] | None = None,
+    ) -> list[str]:
+        configured_fields = self._get_batch_config_value(config, "target_fields", None) or list(TARGET_FIELD_LABELS)
+        valid_fields = [field for field in configured_fields if field in TARGET_FIELD_LABELS]
+        if field_keys is None:
+            return valid_fields
+        allowed = set(field_keys)
+        return [field for field in valid_fields if field in allowed]
+
+    def _get_batch_field_value(self, suggestion: SeoSuggestion, field: str) -> str:
+        attr = BATCH_FIELD_TO_SUGGESTION_ATTR[field]
+        value = getattr(suggestion, attr, "")
+        return value or ""
+
+    def _set_batch_field_value(self, suggestion: SeoSuggestion, field: str, value: str) -> None:
+        apply_suggestion_field(suggestion, BATCH_FIELD_TO_AI_FIELD[field], value)
+
+    def _build_suggestion_from_batch_item(self, product: Product, item: dict | None) -> SeoSuggestion:
+        suggestion = create_pending_suggestion(product)
+        suggestion_data = item.get("suggestion_data") if item else None
+        if not isinstance(suggestion_data, dict):
+            return suggestion
+
+        for field in BATCH_FIELD_TO_SUGGESTION_ATTR:
+            suggested_value = suggestion_data.get(f"suggested_{field}", "")
+            if isinstance(suggested_value, str) and suggested_value.strip():
+                self._set_batch_field_value(suggestion, field, suggested_value)
+        return suggestion
+
+    def _get_batch_item_field_errors(self, item: dict | None) -> dict[str, str]:
+        suggestion_data = item.get("suggestion_data") if isinstance(item, dict) else None
+        if not isinstance(suggestion_data, dict):
+            return {}
+        raw_field_errors = suggestion_data.get("field_errors")
+        if not isinstance(raw_field_errors, dict):
+            return {}
+        return {
+            str(key): str(value)
+            for key, value in raw_field_errors.items()
+            if str(value).strip()
+        }
+
+    def _generate_batch_field_value(
+        self,
+        field: str,
+        product: Product,
+        score: SeoScore,
+    ) -> tuple[str, str]:
+        if field == "description_en" and not html_to_plain_text(
+            get_en_description_value(product.description_translations),
+            preserve_breaks=False,
+        ):
+            result = self.translate_description_to_en(product)
+        else:
+            result = self.rewrite_field(BATCH_FIELD_TO_AI_FIELD[field], product, score)
+
+        if isinstance(result, tuple):
+            return result
+        return result, ""
+
+    def _build_batch_item_result(
+        self,
+        product: Product,
+        suggestion: SeoSuggestion,
+        target_fields: list[str],
+        field_errors: dict[str, str] | None = None,
+    ) -> tuple[int, dict[str, Any], bool]:
+        original_en_description = get_en_description_value(product.description_translations)
+        updated_translations = dict(product.description_translations or {})
+        if suggestion.suggested_description:
+            updated_translations["tr"] = suggestion.suggested_description
+        if suggestion.suggested_description_en:
+            updated_translations["en"] = suggestion.suggested_description_en
+
+        updated = product.model_copy(update={
+            "name": suggestion.suggested_name or product.name,
+            "description": suggestion.suggested_description or product.description,
+            "description_translations": updated_translations,
+            "meta_title": suggestion.suggested_meta_title or product.meta_title,
+            "meta_description": suggestion.suggested_meta_description or product.meta_description,
+        })
+        after_score = analyze_product(updated, self._config.seo_target_keywords).total_score
+        original_values = {
+            "name": product.name,
+            "meta_title": product.meta_title or "",
+            "meta_description": product.meta_description or "",
+            "description": product.description or "",
+            "description_en": original_en_description,
+        }
+        suggestion_data: dict[str, Any] = {
+            "field_errors": field_errors or {},
+            "active_fields": list(target_fields),
+        }
+        has_suggestions = False
+        for field in target_fields:
+            suggestion_data[f"original_{field}"] = original_values.get(field, "")
+            suggested_value = self._get_batch_field_value(suggestion, field)
+            suggestion_data[f"suggested_{field}"] = suggested_value
+            if suggested_value.strip():
+                has_suggestions = True
+        return after_score, suggestion_data, has_suggestions
+
+    async def _generate_batch_suggestion(
+        self,
+        product: Product,
+        score: SeoScore,
+        config: Any,
+        system_prompt: str,
+        field_keys: list[str] | None = None,
+        base_suggestion: SeoSuggestion | None = None,
+    ) -> tuple[SeoSuggestion, dict[str, str]]:
+        del system_prompt
+        target_fields = self._get_batch_target_fields(config, field_keys)
+        suggestion = base_suggestion.model_copy(deep=True) if base_suggestion else create_pending_suggestion(product)
+        field_errors: dict[str, str] = {}
+        thinking_parts: list[str] = []
+
+        for field in target_fields:
+            try:
+                value, thinking = self._generate_batch_field_value(field, product, score)
+                if not value.strip():
+                    field_errors[field] = "Öneri oluşturulamadı."
+                    continue
+                self._set_batch_field_value(suggestion, field, value)
+                if thinking.strip():
+                    thinking_parts.append(f"[{TARGET_FIELD_LABELS.get(field, field)}]\n{thinking.strip()}")
+            except Exception as exc:
+                logger.warning("Batch field generation failed for %s/%s: %s", product.id, field, exc)
+                field_errors[field] = str(exc)[:200]
+
+        suggestion.thinking_text = "\n\n".join(thinking_parts).strip()
+        await db.save_or_update_pending_suggestion(self._filter_suggestion_to_target_fields(suggestion, config))
+        return suggestion, field_errors
+
+    async def _refresh_batch_job_metrics(self, job_id: str) -> None:
+        items = await db.get_batch_items(job_id)
+        successful_items = [item for item in items if item["status"] in SUCCESSFUL_BATCH_ITEM_STATUSES]
+        scored_items = [
+            item for item in successful_items
+            if item["score_before"] is not None and item["score_after"] is not None
+        ]
+
+        def _avg(values: list[float]) -> float:
+            return sum(values) / len(values) if values else 0
+
+        await db.update_batch_job(
+            job_id,
+            processed_count=len(successful_items),
+            skipped_count=sum(1 for item in items if item["status"] in SKIPPED_BATCH_ITEM_STATUSES),
+            failed_count=sum(1 for item in items if item["status"] == "failed"),
+            avg_score_before=_avg([float(item["score_before"]) for item in scored_items]),
+            avg_score_after=_avg([float(item["score_after"]) for item in scored_items]),
+        )
 
     async def _fallback_rewrite(
         self, product: Product, score: SeoScore, config: Any,
@@ -471,25 +683,171 @@ class ProductManager:
             logger.warning("Fallback rewrite failed for %s: %s", product.id, exc)
             return None
 
-        # Filter by target_fields: blank out non-target suggested fields
-        target_fields = getattr(config, "target_fields", None)
-        if target_fields:
-            field_to_attr = {
-                "name": "suggested_name",
-                "description": "suggested_description",
-                "description_en": "suggested_description_en",
-                "meta_title": "suggested_meta_title",
-                "meta_description": "suggested_meta_description",
-            }
-            blanks = {}
-            for field_key, attr in field_to_attr.items():
-                if field_key not in target_fields:
-                    blanks[attr] = ""
-            if blanks:
-                suggestion = suggestion.model_copy(update=blanks)
-
+        suggestion = self._filter_suggestion_to_target_fields(suggestion, config)
         await db.save_or_update_pending_suggestion(suggestion)
         return suggestion
+
+    async def regenerate_batch_item(self, item_id: int) -> dict:
+        item = await db.get_batch_item(item_id)
+        if item is None:
+            raise ValueError("Item not found")
+
+        job = await db.get_batch_job(item["job_id"])
+        if job is None:
+            raise ValueError("Job not found")
+        if job["status"] != "analyzed":
+            raise ValueError("Yeniden üretme sadece analiz tamamlandıktan sonra kullanılabilir.")
+
+        product = await db.get_product(item["product_id"])
+        if product is None:
+            raise ValueError("Product not found")
+
+        config = job["config"]
+        score = analyze_product(product, self._config.seo_target_keywords)
+        system_prompt = self._build_batch_system_prompt(config)
+        base_suggestion = self._build_suggestion_from_batch_item(product, item)
+        suggestion, field_errors = await self._generate_batch_suggestion(
+            product,
+            score,
+            config,
+            system_prompt,
+            base_suggestion=base_suggestion,
+        )
+        target_fields = self._get_batch_target_fields(config)
+        after_score, suggestion_data, has_suggestions = self._build_batch_item_result(
+            product,
+            suggestion,
+            target_fields,
+            field_errors,
+        )
+        await db.update_batch_item(
+            item_id,
+            status="analyzed" if has_suggestions else "skipped",
+            score_before=score.total_score,
+            score_after=after_score if has_suggestions else None,
+            skip_reason=None if has_suggestions else self._build_batch_skip_reason(config),
+            suggestion_data=suggestion_data,
+        )
+        await self._refresh_batch_job_metrics(job["id"])
+        updated_item = await db.get_batch_item(item_id)
+        if updated_item is None:
+            raise ValueError("Item not found after update")
+        return updated_item
+
+    async def regenerate_batch_item_field(self, item_id: int, field_key: str) -> dict:
+        item = await db.get_batch_item(item_id)
+        if item is None:
+            raise ValueError("Item not found")
+
+        job = await db.get_batch_job(item["job_id"])
+        if job is None:
+            raise ValueError("Job not found")
+        if job["status"] != "analyzed":
+            raise ValueError("Yeniden üretme sadece analiz tamamlandıktan sonra kullanılabilir.")
+
+        config = job["config"]
+        target_fields = self._get_batch_target_fields(config)
+        if field_key not in target_fields:
+            raise ValueError("Bu alan bu iş için seçilmemiş.")
+        if field_key not in BATCH_FIELD_TO_AI_FIELD:
+            raise ValueError("Desteklenmeyen alan.")
+
+        product = await db.get_product(item["product_id"])
+        if product is None:
+            raise ValueError("Product not found")
+
+        score = analyze_product(product, self._config.seo_target_keywords)
+        system_prompt = self._build_batch_system_prompt(config)
+        base_suggestion = self._build_suggestion_from_batch_item(product, item)
+        existing_field_errors = self._get_batch_item_field_errors(item)
+        suggestion, field_errors = await self._generate_batch_suggestion(
+            product,
+            score,
+            config,
+            system_prompt,
+            field_keys=[field_key],
+            base_suggestion=base_suggestion,
+        )
+        merged_field_errors = {**existing_field_errors, **field_errors}
+        if field_key not in field_errors:
+            merged_field_errors.pop(field_key, None)
+        after_score, suggestion_data, has_suggestions = self._build_batch_item_result(
+            product,
+            suggestion,
+            target_fields,
+            merged_field_errors,
+        )
+        await db.update_batch_item(
+            item_id,
+            status="analyzed" if has_suggestions else "skipped",
+            score_before=score.total_score,
+            score_after=after_score if has_suggestions else None,
+            skip_reason=None if has_suggestions else self._build_batch_skip_reason(config),
+            suggestion_data=suggestion_data,
+        )
+        await self._refresh_batch_job_metrics(job["id"])
+        updated_item = await db.get_batch_item(item_id)
+        if updated_item is None:
+            raise ValueError("Item not found after update")
+        return updated_item
+
+    async def update_batch_item_decision(
+        self,
+        item_id: int,
+        decision: str,
+        revised_data: dict[str, Any] | None = None,
+    ) -> dict:
+        item = await db.get_batch_item(item_id)
+        if item is None:
+            raise ValueError("Item not found")
+
+        if decision not in ("approved", "rejected", "revised"):
+            raise ValueError("decision must be approved, rejected, or revised")
+
+        status = "approved" if decision in ("approved", "revised") else "rejected"
+        update_kwargs: dict[str, Any] = {"status": status}
+
+        if revised_data:
+            job = await db.get_batch_job(item["job_id"])
+            if job is None:
+                raise ValueError("Job not found")
+
+            product = await db.get_product(item["product_id"])
+            if product is None:
+                raise ValueError("Product not found")
+
+            target_fields = self._get_batch_target_fields(job["config"])
+            base_data = item.get("suggestion_data") if isinstance(item, dict) else None
+            merged_item = {
+                "suggestion_data": dict(base_data) if isinstance(base_data, dict) else {},
+            }
+            field_errors = self._get_batch_item_field_errors(item)
+
+            for field_key, raw_value in revised_data.items():
+                if field_key not in target_fields or field_key not in BATCH_FIELD_TO_AI_FIELD:
+                    continue
+                merged_item["suggestion_data"][f"suggested_{field_key}"] = "" if raw_value is None else str(raw_value)
+                field_errors.pop(field_key, None)
+
+            score = analyze_product(product, self._config.seo_target_keywords)
+            suggestion = self._build_suggestion_from_batch_item(product, merged_item)
+            after_score, next_suggestion_data, has_suggestions = self._build_batch_item_result(
+                product,
+                suggestion,
+                target_fields,
+                field_errors,
+            )
+            update_kwargs["score_before"] = score.total_score
+            update_kwargs["score_after"] = after_score if has_suggestions else None
+            update_kwargs["suggestion_data"] = next_suggestion_data
+            if has_suggestions:
+                update_kwargs["skip_reason"] = None
+
+        await db.update_batch_item(item_id, **update_kwargs)
+        updated_item = await db.get_batch_item(item_id)
+        if updated_item is None:
+            raise ValueError("Item not found after update")
+        return updated_item
 
     async def run_analysis(self, job_id: str, product_ids: list[str], config: Any) -> None:
         """
@@ -531,43 +889,16 @@ class ProductManager:
             )
 
             try:
-                suggestion = await self._run_agent_for_product(product, score, system_prompt)
+                suggestion, field_errors = await self._generate_batch_suggestion(product, score, config, system_prompt)
+                target_fields = self._get_batch_target_fields(config)
+                after_score, suggestion_data, has_suggestions = self._build_batch_item_result(
+                    product,
+                    suggestion,
+                    target_fields,
+                    field_errors,
+                )
 
-                # Fallback: if agent didn't save, use direct AI rewrite
-                if suggestion is None:
-                    logger.warning(
-                        "Agent did not save suggestion for %s; falling back to direct rewrite",
-                        product.id,
-                    )
-                    suggestion = await self._fallback_rewrite(product, score, config)
-
-                if suggestion is None:
-                    target_fields = getattr(config, "target_fields", None)
-                    if target_fields:
-                        field_labels = [TARGET_FIELD_LABELS.get(f, f) for f in target_fields]
-                        skip_reason = f"Öneri oluşturulamadı (hedef alanlar: {', '.join(field_labels)})"
-                    else:
-                        skip_reason = "Öneri oluşturulamadı"
-                    await db.update_batch_item(item_id, status="skipped", skip_reason=skip_reason)
-                    skipped += 1
-                else:
-                    updated = product.model_copy(update={
-                        "name": suggestion.suggested_name or product.name,
-                        "description": suggestion.suggested_description or product.description,
-                        "meta_title": suggestion.suggested_meta_title or product.meta_title,
-                        "meta_description": suggestion.suggested_meta_description or product.meta_description,
-                    })
-                    after_score = analyze_product(updated, self._config.seo_target_keywords).total_score
-                    suggestion_data = {
-                        "original_name": product.name,
-                        "suggested_name": suggestion.suggested_name or "",
-                        "original_meta_title": product.meta_title or "",
-                        "suggested_meta_title": suggestion.suggested_meta_title or "",
-                        "original_meta_description": product.meta_description or "",
-                        "suggested_meta_description": suggestion.suggested_meta_description or "",
-                        "original_description": (product.description or "")[:500],
-                        "suggested_description": (suggestion.suggested_description or "")[:500],
-                    }
+                if has_suggestions:
                     await db.update_batch_item(
                         item_id,
                         status="analyzed",
@@ -577,6 +908,16 @@ class ProductManager:
                     score_befores.append(score.total_score)
                     score_afters.append(after_score)
                     processed += 1
+                else:
+                    skip_reason = self._build_batch_skip_reason(config)
+                    await db.update_batch_item(
+                        item_id,
+                        status="skipped",
+                        score_after=None,
+                        skip_reason=skip_reason,
+                        suggestion_data=suggestion_data,
+                    )
+                    skipped += 1
             except Exception as exc:
                 logger.warning("Analysis failed for %s: %s", product.id, exc)
                 await db.update_batch_item(item_id, status="failed", skip_reason=str(exc)[:200])
@@ -598,13 +939,14 @@ class ProductManager:
             avg_score_before=_avg(score_befores),
             avg_score_after=_avg(score_afters),
         )
+        await self._refresh_batch_job_metrics(job_id)
         logger.info("Analysis job %s done: %d analyzed, %d skipped", job_id, processed, skipped)
 
     async def apply_batch_job(self, job_id: str, config: Any) -> None:
         """Apply approved suggestions to ikas for items with status='approved'."""
         items = await db.get_batch_items(job_id)
         approved = [i for i in items if i["status"] == "approved"]
-        target_fields = set(getattr(config, "target_fields", []) or [])
+        target_fields = set(self._get_batch_target_fields(config))
 
         all_products = await db.get_all_products()
         product_map = {p.id: p for p in all_products}
@@ -616,13 +958,15 @@ class ProductManager:
                 break
 
             product_id = item["product_id"]
-            suggestion = await db.get_latest_suggestion_by_product(product_id)
-            if not suggestion:
-                await db.update_batch_item(item["id"], status="skipped", skip_reason="Öneri bulunamadı")
-                continue
-
             product = product_map.get(product_id)
             if not product:
+                continue
+
+            suggestion = self._build_suggestion_from_batch_item(product, item)
+            if not any(self._get_batch_field_value(suggestion, field).strip() for field in target_fields):
+                suggestion = await db.get_latest_suggestion_by_product(product_id)
+            if not suggestion:
+                await db.update_batch_item(item["id"], status="skipped", skip_reason="Öneri bulunamadı")
                 continue
 
             rollback_data = {

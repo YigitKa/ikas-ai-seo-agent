@@ -192,6 +192,10 @@ body {
 }
 
 /* ── HTML content styling inside diff viewer ─────────────────────────────── */
+.html-content {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .html-content h1, .html-content h2, .html-content h3, .html-content h4 {
   font-weight: 600;
   margin-top: 0.75em;

@@ -185,24 +185,24 @@ function ItemCard({
         <div className="space-y-2.5">
           <DiffRow
             label="Başlık"
-            before={item.suggestion_data?.original_name ?? ''}
-            after={item.suggestion_data?.suggested_name ?? ''}
+            before={String(item.suggestion_data?.original_name ?? '')}
+            after={String(item.suggestion_data?.suggested_name ?? '')}
           />
           <DiffRow
             label="Meta Başlık"
-            before={item.suggestion_data?.original_meta_title ?? ''}
-            after={item.suggestion_data?.suggested_meta_title ?? ''}
+            before={String(item.suggestion_data?.original_meta_title ?? '')}
+            after={String(item.suggestion_data?.suggested_meta_title ?? '')}
           />
           <DiffRow
             label="Meta Açıklama"
-            before={item.suggestion_data?.original_meta_description ?? ''}
-            after={item.suggestion_data?.suggested_meta_description ?? ''}
+            before={String(item.suggestion_data?.original_meta_description ?? '')}
+            after={String(item.suggestion_data?.suggested_meta_description ?? '')}
           />
-          {(item.suggestion_data?.original_description || item.suggestion_data?.suggested_description) && (
+          {(String(item.suggestion_data?.original_description ?? '') || String(item.suggestion_data?.suggested_description ?? '')) && (
             <DiffRow
               label="Açıklama"
-              before={item.suggestion_data?.original_description ?? ''}
-              after={item.suggestion_data?.suggested_description ?? ''}
+              before={String(item.suggestion_data?.original_description ?? '')}
+              after={String(item.suggestion_data?.suggested_description ?? '')}
             />
           )}
         </div>
@@ -256,6 +256,7 @@ export default function CalibrationReview({ job, items, onDecision, onConfirmRun
   const confidencePct = totalItems > 0 ? Math.round((approvedCount / totalItems) * 100) : 0;
   const canConfirm = approvedCount >= Math.ceil(totalItems * 0.5);
   const remaining = job.total_count - totalItems;
+  const calibrationDone = job.status === 'analyzed' || job.processed_count >= job.total_count;
 
   return (
     <div className="space-y-5">
@@ -297,7 +298,7 @@ export default function CalibrationReview({ job, items, onDecision, onConfirmRun
             key={item.id}
             item={item}
             onDecision={onDecision}
-            calibrationDone={job.processed_count >= (job.config?.sample_size ?? job.total_count)}
+            calibrationDone={calibrationDone}
           />
         ))}
       </div>

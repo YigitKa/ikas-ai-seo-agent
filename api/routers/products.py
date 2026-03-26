@@ -23,6 +23,9 @@ async def list_products(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
     filter: str = Query("all", pattern="^(all|low_score|missing_english|pending|approved)$"),
+    search: str = Query(""),
+    category: str = Query(""),
+    score_threshold: int = Query(100, ge=0, le=100),
     manager: ProductManager = Depends(get_manager),
 ) -> ProductListResponse:
     """Return cached products with their latest scores."""
@@ -39,6 +42,17 @@ async def list_products(
     elif filter == "approved":
         approved_ids = await manager.get_suggestion_product_ids("approved")
         scored = [(p, s) for p, s in scored if p.id in approved_ids]
+
+    search_query = search.strip().lower()
+    if search_query:
+        scored = [(p, s) for p, s in scored if search_query in p.name.lower()]
+
+    category_query = category.strip().lower()
+    if category_query:
+        scored = [(p, s) for p, s in scored if category_query in (p.category or "").lower()]
+
+    if score_threshold < 100:
+        scored = [(p, s) for p, s in scored if s.total_score < score_threshold]
 
     total = len(scored)
     start = (page - 1) * limit

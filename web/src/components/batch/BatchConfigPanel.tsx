@@ -3,11 +3,11 @@ import type { BatchConfig } from '../../types';
 import { getCategories } from '../../api/client';
 
 const FIELD_OPTIONS: { key: string; label: string }[] = [
-  { key: 'meta_title', label: 'Meta Başlık' },
-  { key: 'meta_description', label: 'Meta Açıklama' },
-  { key: 'name', label: 'Ürün Başlığı' },
-  { key: 'description', label: 'Açıklama (TR)' },
-  { key: 'description_en', label: 'Açıklama (EN)' },
+  { key: 'meta_title', label: 'Meta Baslik' },
+  { key: 'meta_description', label: 'Meta Aciklama' },
+  { key: 'name', label: 'Urun Basligi' },
+  { key: 'description', label: 'Aciklama (TR)' },
+  { key: 'description_en', label: 'Aciklama (EN)' },
 ];
 
 interface Props {
@@ -27,7 +27,7 @@ function Toggle({
   label: string;
   description: string;
   checked: boolean;
-  onChange: (v: boolean) => void;
+  onChange: (value: boolean) => void;
 }) {
   return (
     <div className="flex items-start justify-between gap-4">
@@ -75,14 +75,17 @@ export default function BatchConfigPanel({
   });
 
   const toggleField = (field: string) => {
-    const current = config.target_fields ?? FIELD_OPTIONS.map((f) => f.key);
+    const current = config.target_fields ?? FIELD_OPTIONS.map((option) => option.key);
     const next = current.includes(field)
-      ? current.filter((f) => f !== field)
+      ? current.filter((item) => item !== field)
       : [...current, field];
-    if (next.length > 0) set('target_fields', next);
+
+    if (next.length > 0) {
+      set('target_fields', next);
+    }
   };
 
-  const isDryRun = true; // DRY_RUN is read from backend settings, but we show a warning regardless
+  const isDryRun = true;
 
   return (
     <div
@@ -96,11 +99,10 @@ export default function BatchConfigPanel({
         className="mb-4 text-[13px] font-semibold uppercase tracking-wider"
         style={{ color: 'var(--color-text-muted)' }}
       >
-        Konfigürasyon
+        Konfigurasyon
       </h3>
 
       <div className="space-y-5">
-        {/* Targeting */}
         <section>
           <p
             className="mb-3 text-[11px] font-semibold uppercase tracking-wider"
@@ -114,14 +116,14 @@ export default function BatchConfigPanel({
                 className="w-40 flex-shrink-0 text-[12px]"
                 style={{ color: 'var(--color-text-secondary)' }}
               >
-                SEO Eşiği (max skor)
+                SEO Esigi (max skor)
               </label>
               <input
                 type="number"
                 min={0}
                 max={100}
                 value={config.score_threshold}
-                onChange={(e) => set('score_threshold', Number(e.target.value))}
+                onChange={(event) => set('score_threshold', Number(event.target.value))}
                 disabled={disabled}
                 className="w-20 rounded-lg px-2.5 py-1.5 text-center text-[13px] outline-none disabled:opacity-40"
                 style={{
@@ -131,7 +133,7 @@ export default function BatchConfigPanel({
                 }}
               />
               <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                puan altındaki ürünler
+                puan altindaki urunler
               </span>
             </div>
 
@@ -144,7 +146,7 @@ export default function BatchConfigPanel({
               </label>
               <select
                 value={config.category_filter}
-                onChange={(e) => set('category_filter', e.target.value)}
+                onChange={(event) => set('category_filter', event.target.value)}
                 disabled={disabled}
                 className="flex-1 rounded-lg px-2.5 py-1.5 text-[13px] outline-none disabled:opacity-40"
                 style={{
@@ -153,55 +155,37 @@ export default function BatchConfigPanel({
                   color: 'var(--color-text-primary)',
                 }}
               >
-                <option value="" style={{ background: '#1e1e2e', color: 'var(--color-text-primary)' }}>Tüm Kategoriler</option>
-                {categories.map((cat) => (
-                  <option key={cat} value={cat} style={{ background: '#1e1e2e', color: 'var(--color-text-primary)' }}>{cat}</option>
+                <option value="" style={{ background: '#1e1e2e', color: 'var(--color-text-primary)' }}>
+                  Tum Kategoriler
+                </option>
+                {categories.map((category) => (
+                  <option
+                    key={category}
+                    value={category}
+                    style={{ background: '#1e1e2e', color: 'var(--color-text-primary)' }}
+                  >
+                    {category}
+                  </option>
                 ))}
               </select>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <label
-                className="w-40 flex-shrink-0 text-[12px]"
-                style={{ color: 'var(--color-text-secondary)' }}
-              >
-                Örneklem Boyutu
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={20}
-                value={config.sample_size}
-                onChange={(e) => set('sample_size', Number(e.target.value))}
-                disabled={disabled}
-                className="w-20 rounded-lg px-2.5 py-1.5 text-center text-[13px] outline-none disabled:opacity-40"
-                style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text-primary)',
-                }}
-              />
-              <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                kalibrasyon ürünü
-              </span>
             </div>
           </div>
         </section>
 
-        {/* Target Fields */}
         <section>
           <p
             className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
             style={{ color: 'var(--color-primary-light)' }}
           >
-            Güncellenecek Alanlar
+            Guncellenecek Alanlar
           </p>
           <p className="mb-3 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-            AI yalnızca seçili alanları değiştirecek, diğerlerine dokunmayacak.
+            AI yalnizca secili alanlari degistirecek, digerlerine dokunmayacak.
           </p>
           <div className="flex flex-wrap gap-2">
             {FIELD_OPTIONS.map((field) => {
-              const active = (config.target_fields ?? FIELD_OPTIONS.map((f) => f.key)).includes(field.key);
+              const active = (config.target_fields ?? FIELD_OPTIONS.map((option) => option.key)).includes(field.key);
+
               return (
                 <button
                   key={field.key}
@@ -227,31 +211,30 @@ export default function BatchConfigPanel({
           </div>
         </section>
 
-        {/* Constraints */}
         <section>
           <p
             className="mb-3 text-[11px] font-semibold uppercase tracking-wider"
             style={{ color: 'var(--color-primary-light)' }}
           >
-            Operasyonel Kısıtlamalar
+            Operasyonel Kisitalar
           </p>
           <div className="space-y-4">
             <Toggle
               label="Teknik Veri Koruma"
-              description="Materyal, boyut, ağırlık gibi teknik özellikleri değiştirme; sadece biçimlendir."
+              description="Materyal, boyut ve agirlik gibi teknik ozellikleri koru; yalnizca dili duzenle."
               checked={config.preserve_specs}
-              onChange={(v) => set('preserve_specs', v)}
+              onChange={(value) => set('preserve_specs', value)}
             />
             <Toggle
-              label="Kanibalizasyon Önleme"
-              description="Aynı kategorideki ürünlerin Google'da birbirinin rakibi olmasını önler. Her ürüne farklı anahtar kelime varyasyonları kullanarak arama sonuçlarında çakışmayı engeller."
+              label="Kanibalizasyon Onleme"
+              description="Ayni kategorideki urunlerin ayni sorgular icin birbirini ezmesini azalt."
               checked={config.prevent_cannibalization}
-              onChange={(v) => set('prevent_cannibalization', v)}
+              onChange={(value) => set('prevent_cannibalization', value)}
             />
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <p className="text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
-                  Maks. Başlık Değişimi
+                  Maks. Baslik Degisimi
                 </p>
                 <span
                   className="rounded px-1.5 py-0.5 text-[12px] font-semibold tabular-nums"
@@ -269,19 +252,18 @@ export default function BatchConfigPanel({
                 max={100}
                 step={5}
                 value={config.max_title_change_pct}
-                onChange={(e) => set('max_title_change_pct', Number(e.target.value))}
+                onChange={(event) => set('max_title_change_pct', Number(event.target.value))}
                 disabled={disabled}
                 className="w-full accent-indigo-500 disabled:opacity-40"
               />
               <div className="flex justify-between text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
                 <span>Minimal (%0)</span>
-                <span>Tam Özgürlük (%100)</span>
+                <span>Tam Ozgurluk (%100)</span>
               </div>
             </div>
           </div>
         </section>
 
-        {/* DRY_RUN Warning */}
         <div
           className="flex items-start gap-3 rounded-lg px-4 py-3"
           style={{
@@ -294,38 +276,37 @@ export default function BatchConfigPanel({
           </svg>
           <div>
             <p className="text-[12px] font-semibold" style={{ color: '#f59e0b' }}>
-              {isDryRun ? 'Güvenli Mod (DRY_RUN) Aktif' : 'DİKKAT: Canlı Mod'}
+              {isDryRun ? 'Guvenli Mod (DRY_RUN) Aktif' : 'DIKKAT: Canli Mod'}
             </p>
             <p className="mt-0.5 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
               {isDryRun
-                ? 'Değişiklikler yalnızca taslak olarak kaydedilecek, ikas mağazanıza yazılmayacak. Canlı uygulamak için Ayarlar → DRY_RUN seçeneğini kapatın.'
-                : 'Değişiklikler doğrudan ikas mağazanıza uygulanacak! Önce kalibrasyon yapmanız önerilir.'}
+                ? 'Degisiklikler yalnizca taslak olarak kaydedilecek, magazaniza yazilmayacak.'
+                : 'Degisiklikler dogrudan magazaniza uygulanacak.'}
             </p>
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex gap-3 pt-1">
           <button
             type="button"
             onClick={onStartCalibration}
-            disabled={disabled || (config.target_fields ?? []).length === 0}
+            disabled={disabled || config.target_fields.length === 0}
             className="flex-1 rounded-lg px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
             style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
           >
-            Kalibrasyon Başlat
+            Kalibrasyon Baslat
           </button>
           <button
             type="button"
             onClick={onStartDirect}
-            disabled={disabled || (config.target_fields ?? []).length === 0}
+            disabled={disabled || config.target_fields.length === 0}
             className="rounded-lg px-4 py-2 text-[13px] font-medium transition-colors hover:bg-[var(--color-bg-hover)] disabled:opacity-40"
             style={{
               border: '1px solid var(--color-border-light)',
               color: 'var(--color-text-secondary)',
             }}
           >
-            Direkt Çalıştır
+            Direkt Calistir
           </button>
         </div>
       </div>

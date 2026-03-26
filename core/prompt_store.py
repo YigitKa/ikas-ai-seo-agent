@@ -58,7 +58,9 @@ Kurallar:
 - Dogal, satis odakli Turkce kullan
 - Aciklama 200-400 kelime arasi
 - Ilk paragrafta ana keyword gecmeli
-- Aciklama alaninda p, br, ul, ol, li, strong ve em gibi basit HTML tagleri kullanabilirsin
+- Aciklama yalnizca HTML formatinda olmali; duz metin paragraf dondurme
+- Aciklama alaninda p, h2, h3, br, ul, ol, li, strong ve em gibi basit HTML tagleri kullan
+- En az 2 paragraf ve uygun ise 1 liste bolumu olustur
 - Ad, meta title ve meta description alanlarinda HTML kullanma
 - Abartili reklam dili kullanma
 - Urunun gercek ozelliklerine sadik kal
@@ -70,7 +72,9 @@ Kategori: {{category}}
 Hedef Keywordler: {{keywords}}
 
 Bu urunun Turkce aciklamasini SEO icin optimize et. 200-400 kelime, dogal satis dili.
-Gerekirse p, ul, li, strong ve em gibi basit HTML tagleri kullanabilirsin.
+Sonucu yalnizca HTML olarak uret.
+En az bir <h2> basligi, birden fazla <p> paragrafi ve uygun ise <ul><li> listesi kullan.
+`suggested_description` degeri duz metin degil, dogrudan HTML olmali.
 SADECE JSON dondur:
 {"suggested_description": "..."}""",
     "translation_system": """You are a professional e-commerce translator.
@@ -80,7 +84,8 @@ Rules:
 - Preserve meaning and factual details
 - Do not invent new product features
 - Do not rewrite for SEO
-- Simple HTML tags are allowed in the description field when useful
+- Return the translated description in HTML, not plain text
+- Preserve or rebuild simple HTML tags such as p, h2, h3, ul, li, strong, and em
 - Return ONLY JSON, nothing else.""",
     "translation_user": """Urun Adi: {{name}}
 Mevcut Turkce Aciklama: {{description}}
@@ -90,7 +95,8 @@ Bu urunun mevcut Turkce aciklamasini Ingilizceye cevir.
 Kurallar:
 - Anlami koru, yeni ozellik uydurma
 - Dogal ve profesyonel urun Ingilizcesi kullan
-- Gerekirse p, ul, li, strong ve em gibi basit HTML tagleri kullanabilirsin
+- Ciktiyi HTML formatinda ver, duz metin paragraf dondurme
+- p, h2, h3, ul, li, strong ve em gibi basit HTML taglerini koru veya uygun sekilde yeniden kur
 - SEO icin yeniden yazma, ceviri yap
 - Yanit sadece JSON olsun
 
