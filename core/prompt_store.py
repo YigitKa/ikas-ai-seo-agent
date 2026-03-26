@@ -17,6 +17,17 @@ PROMPT_FILES = {
     "geo_rewrite_user": "geo_rewrite.user.txt",
     "llms_summary_system": "llms_summary.system.txt",
     "llms_summary_user": "llms_summary.user.txt",
+    # Chat agent personas
+    "agent_seo_expert_system": "agent_seo_expert.system.txt",
+    "agent_store_operator_system": "agent_store_operator.system.txt",
+    "agent_general_system": "agent_general.system.txt",
+    # Chat flow layers
+    "chat_option_buttons_system": "chat_option_buttons.system.txt",
+    "ikas_operation_guide_system": "ikas_operation_guide.system.txt",
+    # Autonomous agent prompts
+    "rewrite_agent_system": "rewrite_agent.system.txt",
+    "batch_agent_system": "batch_agent.system.txt",
+    "geo_agent_system": "geo_agent.system.txt",
 }
 
 PROMPT_EDITOR_GROUPS = [
@@ -46,6 +57,29 @@ PROMPT_EDITOR_GROUPS = [
         (
             "llms_summary_system",
             "llms_summary_user",
+        ),
+    ),
+    (
+        "Chat Ajanlari",
+        (
+            "agent_seo_expert_system",
+            "agent_store_operator_system",
+            "agent_general_system",
+        ),
+    ),
+    (
+        "Chat Akisi",
+        (
+            "chat_option_buttons_system",
+            "ikas_operation_guide_system",
+        ),
+    ),
+    (
+        "Otonom Ajanlar",
+        (
+            "rewrite_agent_system",
+            "batch_agent_system",
+            "geo_agent_system",
         ),
     ),
 ]
@@ -81,6 +115,9 @@ SADECE JSON dondur:
 Translate Turkish product content into natural English.
 
 Rules:
+- Translate the FULL source description from start to finish
+- Do not shorten, summarize, omit, or merge sections
+- Fidelity and completeness are more important than style changes
 - Preserve meaning and factual details
 - Do not invent new product features
 - Do not rewrite for SEO
@@ -93,6 +130,9 @@ Kategori: {{category}}
 
 Bu urunun mevcut Turkce aciklamasini Ingilizceye cevir.
 Kurallar:
+- Tum Turkce aciklamayi bastan sona cevir; hicbir paragrafi, liste maddesini veya cumleyi atlama
+- Ozetleme, kisaltma, sadelestirme veya SEO icin yeniden yazma yapma
+- Kaynak metindeki kapsam ve sira mumkun oldugunca korunsun
 - Anlami koru, yeni ozellik uydurma
 - Dogal ve profesyonel urun Ingilizcesi kullan
 - Ciktiyi HTML formatinda ver, duz metin paragraf dondurme
@@ -131,9 +171,7 @@ Ham Aciklama: {{description}}
 
 Bu urunu llms.txt icin ozetle. Kurallara uy, veri uydurma. Yalnizca JSON dondur:
 {"summary": "..."}""",
-}
-
-AGENT_SEO_EXPERT_PROMPT_TR = """Sen ikas e-ticaret altyapısı için uzman bir SEO Metin Yazarısın. Amacın ürün başlıklarını, açıklamalarını ve meta etiketlerini satış odaklı ve yaratıcı bir dille optimize etmektir. Teknik mağaza verileriyle (stok, sipariş) ilgilenmezsin. Yanıtların yaratıcı, ikna edici ve SEO kurallarına (keyword yoğunluğu vb.) %100 uygun olmalıdır.
+    "agent_seo_expert_system": """Sen ikas e-ticaret altyapısı için uzman bir SEO Metin Yazarısın. Amacın ürün başlıklarını, açıklamalarını ve meta etiketlerini satış odaklı ve yaratıcı bir dille optimize etmektir. Teknik mağaza verileriyle (stok, sipariş) ilgilenmezsin. Yanıtların yaratıcı, ikna edici ve SEO kurallarına (keyword yoğunluğu vb.) %100 uygun olmalıdır.
 
 Kurallar:
 - Turkce yanit ver; kullanici Ingilizce yazarsa Ingilizce yanit ver.
@@ -142,9 +180,8 @@ Kurallar:
 - Asla uydurma veri verme; yalnizca verilen urun/SEO baglamini kullan.
 
 {product_context}
-{score_context}"""
-
-AGENT_STORE_OPERATOR_PROMPT_TR = """Sen ikas e-ticaret altyapısı için Veri ve Operasyon Analistisin. Amacın mağazanın canlı verilerini (stok durumları, fiyatlar, siparişler, müşteri verileri) MCP araçlarını kullanarak çekmek ve kullanıcıya net, analitik, tablo/liste formatında sunmaktır. Kesinlikle yorum katma, sadece elindeki veriyi analiz et.
+{score_context}""",
+    "agent_store_operator_system": """Sen ikas e-ticaret altyapısı için Veri ve Operasyon Analistisin. Amacın mağazanın canlı verilerini (stok durumları, fiyatlar, siparişler, müşteri verileri) MCP araçlarını kullanarak çekmek ve kullanıcıya net, analitik, tablo/liste formatında sunmaktır. Kesinlikle yorum katma, sadece elindeki veriyi analiz et.
 
 Kurallar:
 - Turkce yanit ver; kullanici Ingilizce yazarsa Ingilizce yanit ver.
@@ -153,9 +190,8 @@ Kurallar:
 - Yorum/deger yargisi katma; sadece olgusal analiz yap.
 
 {product_context}
-{score_context}"""
-
-AGENT_GENERAL_PROMPT_TR = """Sen bir ikas e-ticaret mağazası asistanısın. Mağaza sahibine ürünleri,
+{score_context}""",
+    "agent_general_system": """Sen bir ikas e-ticaret mağazası asistanısın. Mağaza sahibine ürünleri,
 SEO optimizasyonu, stok durumu ve mağaza yönetimi konularında yardım ediyorsun.
 
 Kurallar:
@@ -170,17 +206,63 @@ Kurallar:
 - Degisiklik uygulamak icin kullaniciyi chat uzerindeki onay akisiyla yonlendir; once degisiklikleri goster, sonra onay al.
 
 {product_context}
-{score_context}"""
+{score_context}""",
+    "chat_option_buttons_system": """SECENEK BUTON FORMATI (KRITIK — her zaman kullan):
+Kullaniciya soru sordugun, onay istedigin veya alternatif sundugunda
+yanitin sonuna asagidaki formatta bir JSON blogu ekle.
+Bu blok chat ekraninda tiklanabilir butonlara donusur.
+Kullanici butona tiklayarak secim yapar — yazarak cevap vermesine gerek kalmaz.
 
-AGENT_SYSTEM_PROMPTS_TR: dict[str, str] = {
-    "seo": AGENT_SEO_EXPERT_PROMPT_TR,
-    "operator": AGENT_STORE_OPERATOR_PROMPT_TR,
-    "general": AGENT_GENERAL_PROMPT_TR,
-}
+Format:
+```json
+[{"tone": "Etiket", "value": "Buton uzerinde gorunecek aciklama"}]
+```
 
-# ── Agentic orchestrator prompts (tool-calling agents) ───────────────────
+Ornekler:
 
-REWRITE_AGENT_SYSTEM_PROMPT = """Sen bir SEO optimizasyon agentisin.
+1) Onay sorusu:
+```json
+[{"tone": "Evet", "value": "Evet, bu degisiklikleri uygula."}, {"tone": "Hayir", "value": "Hayir, simdilik bir sey yapma."}]
+```
+
+2) Yeniden yazim alternatifleri:
+```json
+[{"tone": "Profesyonel", "value": "Onerilen profesyonel ton icerigi..."}, {"tone": "Agresif", "value": "Onerilen agresif ton icerigi..."}, {"tone": "Minimal", "value": "Onerilen minimal ton icerigi..."}]
+```
+
+3) Sonraki adim secenekleri:
+```json
+[{"tone": "Meta Duzelt", "value": "Meta title ve description'i iyilestir."}, {"tone": "Aciklama Yaz", "value": "Urun aciklamasini yeniden yaz."}, {"tone": "Hepsini Analiz Et", "value": "Tum SEO alanlarini analiz et."}]
+```
+
+Kurallar:
+- Her yanit sonunda en az bir secenek blogu sun
+- Yeniden yazim istenirse 2 veya 3 alternatif sun, her birinin tonunu belirt
+- Onay gerektiren sorularda "Evet"/"Hayir" secenekleri sun
+- JSON blogunun disinda da Markdown ile aciklamani yaz
+- JSON blogu SADECE yanitinin en sonunda olsun
+- SOMUT SEO DEGER ONERISI VERIRKEN (meta title, meta description, urun adi, aciklama gibi) bu degerleri ASLA duz metin/madde olarak yazma; her zaman kart formatinda (```json blogu) sun.
+  Ornegin "Meta Title: ..." seklinde yazmak YASAK. Bunun yerine:
+```json
+[{"tone": "Meta Title", "value": "Onerilen meta title metni burada"}, {"tone": "Meta Desc", "value": "Onerilen meta description metni burada"}, {"tone": "Urun Adi", "value": "Onerilen urun adi burada"}]
+```
+  Bu sayede kullanici degerleri kart olarak gorur ve tek tikla secebilir.""",
+    "ikas_operation_guide_system": """Davranis kurallari:
+- Urun alanlarini (name, description, meta_title, meta_description) guncelleyebilirsin. Kullanici onay verdiginde arka planda uygun araci cagir.
+- Bir arac cagirmadan "guncelledim" veya "uyguladim" DEME. Bu kullaniciyi yaniltir.
+- Yalnizca arac GERCEKTEN cagirilip basarili sonuc dondugunde islemi raporla.
+- Kullanici degisiklik uygulamak istediginde:
+  * Once degisiklikleri listele ve onay iste
+  * Onaydan sonra arka planda uygun araci cagir
+  * Sonucu kontrol et ve basarili/basarisiz durumu raporla
+- Canli magaza verisi gerektiginde arka planda uygun sorgu araclarini kullan.
+- Bu chat ekraninda varsayilan tavsiyeleri yalnizca mevcut SEO metrikleri ve secili urunun eldeki alanlariyla sinirla.
+- Mutation gerektiren adimlarda kullanicidan net onay iste.
+- Yanitin sonunda konusmayi ilerletecek tek bir sonraki adim veya soru oner.
+- ASLA gerceklestirmedigin bir islemi basariliymiş gibi raporlama.
+- ASLA kullaniciya arac adi, MCP, GraphQL, API gibi teknik detaylari gosterme.
+- Kullaniciya teknik komutlar onerme; bunun yerine dogal dilde onay iste ve tiklanabilir secenekler sun.""",
+    "rewrite_agent_system": """Sen bir SEO optimizasyon agentisin.
 Görevin verilen ürünü analiz edip, SEO skorunu maximize edecek şekilde optimize etmek.
 
 Elindeki araçlar:
@@ -205,9 +287,8 @@ Kurallar:
 - Açıklama alanında temel HTML kullan (p, br, ul, ol, li, strong, em)
 - Meta title ve meta description alanlarında HTML kullanma
 - Doğal, satış odaklı Türkçe kullan
-- Sonuçları Türkçe sun"""
-
-BATCH_AGENT_SYSTEM_PROMPT = """Sen bir SEO optimizasyon agentisin.
+- Sonuçları Türkçe sun""",
+    "batch_agent_system": """Sen bir SEO optimizasyon agentisin.
 Görevin sana verilen ürünün SEO skorunu maximize edecek şekilde optimize etmek.
 
 Elindeki araçlar:
@@ -232,9 +313,8 @@ Kurallar:
 - Meta title ve meta description alanlarında HTML kullanma
 - Doğal, satış odaklı Türkçe kullan
 - İşin bittiğinde save_suggestion çağırmayı UNUTMA
-- Sonuçları Türkçe sun"""
-
-GEO_AGENT_SYSTEM_PROMPT = """Sen bir GEO (Generative Engine Optimization) analiz agentisin.
+- Sonuçları Türkçe sun""",
+    "geo_agent_system": """Sen bir GEO (Generative Engine Optimization) analiz agentisin.
 Görevin GEO audit sonuçlarını yorumlayıp aksiyon planı oluşturmak.
 
 Analiz ederken şunlara dikkat et:
@@ -244,7 +324,53 @@ Analiz ederken şunlara dikkat et:
 - Schema markup eksikse: JSON-LD ile Product, FAQPage, HowTo schema öner
 - Content quality düşükse: EEAT sinyalleri, yazar bilgisi, tarih güncelliği öner
 
-Sonuçları Türkçe sun ve önceliklere göre sırala."""
+Sonuçları Türkçe sun ve önceliklere göre sırala.""",
+}
+
+def _load_agent_prompt(key: str) -> str:
+    """Load an agent prompt from file, falling back to hardcoded default."""
+    return load_prompt_template(key)
+
+
+def get_agent_system_prompts_tr() -> dict[str, str]:
+    """Return the three chat agent personas loaded from editable files."""
+    return {
+        "seo": _load_agent_prompt("agent_seo_expert_system"),
+        "operator": _load_agent_prompt("agent_store_operator_system"),
+        "general": _load_agent_prompt("agent_general_system"),
+    }
+
+
+# Backward-compat: static dict for imports that expect a dict.
+# Prefer get_agent_system_prompts_tr() for fresh file reads.
+AGENT_SYSTEM_PROMPTS_TR: dict[str, str] = {
+    "seo": PROMPT_DEFAULTS["agent_seo_expert_system"],
+    "operator": PROMPT_DEFAULTS["agent_store_operator_system"],
+    "general": PROMPT_DEFAULTS["agent_general_system"],
+}
+
+# ── Agentic orchestrator prompts (tool-calling agents) ───────────────────
+
+def get_rewrite_agent_system_prompt() -> str:
+    """Load the rewrite agent system prompt from editable file."""
+    return load_prompt_template("rewrite_agent_system")
+
+
+def get_batch_agent_system_prompt() -> str:
+    """Load the batch agent system prompt from editable file."""
+    return load_prompt_template("batch_agent_system")
+
+
+def get_geo_agent_system_prompt() -> str:
+    """Load the GEO agent system prompt from editable file."""
+    return load_prompt_template("geo_agent_system")
+
+
+# Backward-compat aliases (static snapshots from defaults).
+# Prefer the get_*() functions above for fresh file reads.
+REWRITE_AGENT_SYSTEM_PROMPT = PROMPT_DEFAULTS["rewrite_agent_system"]
+BATCH_AGENT_SYSTEM_PROMPT = PROMPT_DEFAULTS["batch_agent_system"]
+GEO_AGENT_SYSTEM_PROMPT = PROMPT_DEFAULTS["geo_agent_system"]
 
 PROMPT_EDITOR_META = {
     "description_system": {
@@ -295,7 +421,176 @@ PROMPT_EDITOR_META = {
         "variables": ("store_name", "name", "description", "category", "price", "tags"),
         "height": 200,
     },
+    # Chat agent personas
+    "agent_seo_expert_system": {
+        "title": "SEO Uzman Ajani",
+        "description": "Chat'te SEO konularinda yaratici metin yazari rolu. Runtime'da {product_context} ve {score_context} enjekte edilir.",
+        "variables": (),
+        "runtime_variables": ("product_context", "score_context"),
+        "height": 200,
+    },
+    "agent_store_operator_system": {
+        "title": "Magaza Operatoru Ajani",
+        "description": "Chat'te MCP ile canli veri ceken veri/operasyon analisti rolu. Runtime'da {product_context} ve {score_context} enjekte edilir.",
+        "variables": (),
+        "runtime_variables": ("product_context", "score_context"),
+        "height": 200,
+    },
+    "agent_general_system": {
+        "title": "Genel Asistan Ajani",
+        "description": "Chat'te genel sorulara yanit veren asistan rolu. Runtime'da {product_context} ve {score_context} enjekte edilir.",
+        "variables": (),
+        "runtime_variables": ("product_context", "score_context"),
+        "height": 200,
+    },
+    # Chat flow layers
+    "chat_option_buttons_system": {
+        "title": "Secenek Buton Formati",
+        "description": "Chat yanitlarinin sonundaki tiklanabilir JSON buton formatinin kurallarini tanimlar.",
+        "variables": (),
+        "height": 250,
+    },
+    "ikas_operation_guide_system": {
+        "title": "ikas Operasyon Rehberi",
+        "description": "Chat'te urun guncelleme, taslak kaydetme ve onay akisi davranis kurallarini belirler.",
+        "variables": (),
+        "height": 200,
+    },
+    # Autonomous agent prompts
+    "rewrite_agent_system": {
+        "title": "Rewrite Agent",
+        "description": "Tek urun SEO optimizasyonu icin otonom ajan. Tool-calling ile skorla → yaz → dogrula → kaydet dongusunu calistirir.",
+        "variables": (),
+        "height": 250,
+    },
+    "batch_agent_system": {
+        "title": "Batch Agent",
+        "description": "Toplu SEO optimizasyonu icin otonom ajan. Verilen urunu dogrudan optimize eder ve sonucu kaydeder.",
+        "variables": (),
+        "height": 250,
+    },
+    "geo_agent_system": {
+        "title": "GEO Audit Agent",
+        "description": "GEO audit sonuclarini yorumlayip aksiyon plani olusturan analiz ajani.",
+        "variables": (),
+        "height": 180,
+    },
 }
+
+# ── Prompt Layering Order (for UI visualization) ─────────────────────────
+
+PROMPT_LAYERING_ORDER: list[dict[str, object]] = [
+    {
+        "id": "chat",
+        "title": "Chat Akisi",
+        "description": "Kullanici chat mesaji gonderdiginde promptlar su sirada birlestirilir:",
+        "layers": [
+            {
+                "order": 1,
+                "prompt_key": None,
+                "label": "Agent Persona (Routing)",
+                "description": "Semantik routing ile seo / operator / general ajanlarindan biri secilir.",
+                "linked_keys": ["agent_seo_expert_system", "agent_store_operator_system", "agent_general_system"],
+            },
+            {
+                "order": 2,
+                "prompt_key": "chat_option_buttons_system",
+                "label": "Secenek Buton Formati",
+                "description": "Tiklanabilir JSON buton kurallari eklenir.",
+                "linked_keys": [],
+            },
+            {
+                "order": 3,
+                "prompt_key": "ikas_operation_guide_system",
+                "label": "ikas Operasyon Rehberi",
+                "description": "Urun guncelleme ve onay akisi kurallari eklenir.",
+                "linked_keys": [],
+            },
+            {
+                "order": 4,
+                "prompt_key": None,
+                "label": "Urun Baglami",
+                "description": "Secili urunun adi, kategorisi, fiyati, SKU, meta alanlari ve aciklama ozeti.",
+                "linked_keys": [],
+            },
+            {
+                "order": 5,
+                "prompt_key": None,
+                "label": "SEO Skor Baglami",
+                "description": "Urunun 100 uzerinden SEO skoru, alan bazli kirilimlar ve sorunlar listesi.",
+                "linked_keys": [],
+            },
+        ],
+    },
+    {
+        "id": "rewrite",
+        "title": "Tekil Rewrite",
+        "description": "Tek urun icin AI rewrite (otonom ajan) promptlari:",
+        "layers": [
+            {
+                "order": 1,
+                "prompt_key": "rewrite_agent_system",
+                "label": "Rewrite Agent System",
+                "description": "Otonom ajan: skorla → optimize et → dogrula → kaydet dongusunu yonetir.",
+                "linked_keys": [],
+            },
+            {
+                "order": 2,
+                "prompt_key": None,
+                "label": "Urun Verisi (User Message)",
+                "description": "Urunun adi, aciklamasi, mevcut skoru ve sorunlari user mesaji olarak gonderilir.",
+                "linked_keys": [],
+            },
+        ],
+    },
+    {
+        "id": "batch",
+        "title": "Toplu Optimizasyon",
+        "description": "Batch rewrite pipeline'inda kullanilan promptlar:",
+        "layers": [
+            {
+                "order": 1,
+                "prompt_key": "batch_agent_system",
+                "label": "Batch Agent System",
+                "description": "Verilen urunu dogrudan optimize edip kaydetmeye odakli otonom ajan.",
+                "linked_keys": [],
+            },
+            {
+                "order": 2,
+                "prompt_key": None,
+                "label": "Urun Verisi + Kisitlamalar",
+                "description": "Urun bilgisi ve kullanici kisitlamalari (varsa) user mesaji olarak eklenir.",
+                "linked_keys": [],
+            },
+        ],
+    },
+    {
+        "id": "product_rewrite",
+        "title": "Aciklama Rewrite (Fallback)",
+        "description": "Tool-calling desteklemeyen providerlarda kullanilan tek-atislik rewrite:",
+        "layers": [
+            {
+                "order": 1,
+                "prompt_key": "description_system",
+                "label": "Description System Prompt",
+                "description": "Turkce aciklama rewrite gorevinin rol ve kurallarini belirler.",
+                "linked_keys": [],
+            },
+            {
+                "order": 2,
+                "prompt_key": "description_user",
+                "label": "Description User Prompt",
+                "description": "Urun verileri {{degisken}} olarak enjekte edilir.",
+                "linked_keys": [],
+            },
+        ],
+    },
+]
+
+
+def get_prompt_layering_order() -> list[dict[str, object]]:
+    """Return prompt layering order data for UI visualization."""
+    return PROMPT_LAYERING_ORDER
 
 README_TEXT = """Bu klasordeki prompt dosyalari uygulama tarafindan her AI isteginde yeniden okunur.
 

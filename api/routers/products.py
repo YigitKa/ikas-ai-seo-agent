@@ -12,10 +12,88 @@ from api.schemas import (
     ProductSyncResponse,
     ProductWithScore,
 )
+from core.models import Product, SeoScore
 from core.product_manager import ProductManager
+from core.utils.html import html_to_plain_text
+from core.utils.presentation import get_en_description_value
 from data import db
 
 router = APIRouter()
+
+FIELD_SCORE_FILTERS: dict[str, tuple[int, str]] = {
+    "title_score_threshold": (15, "title_score"),
+    "description_score_threshold": (20, "description_score"),
+    "english_description_score_threshold": (5, "english_description_score"),
+    "meta_score_threshold": (15, "meta_score"),
+    "meta_desc_score_threshold": (10, "meta_desc_score"),
+}
+
+SORTABLE_FIELDS = {
+    "name",
+    "category",
+    "sku",
+    "has_english_description",
+    "total_score",
+    "title_score",
+    "description_score",
+    "english_description_score",
+    "meta_score",
+    "meta_desc_score",
+}
+
+
+def _normalize_score(raw_value: int, max_score: int) -> int:
+    if max_score <= 0:
+        return 0
+    normalized = round((max(0, raw_value) / max_score) * 100)
+    return max(0, min(100, normalized))
+
+
+def _normalized_text(value: str | None) -> str:
+    return (value or "").strip().lower()
+
+
+def _has_english_description(description_translations: dict[str, str] | None) -> bool:
+    return bool(
+        html_to_plain_text(
+            get_en_description_value(description_translations),
+            preserve_breaks=False,
+        )
+    )
+
+
+def _get_sort_value(item: tuple[Product, SeoScore], sort_by: str) -> str | int:
+    product, score = item
+    if sort_by == "name":
+        return _normalized_text(product.name)
+    if sort_by == "category":
+        return _normalized_text(product.category)
+    if sort_by == "sku":
+        return _normalized_text(product.sku)
+    if sort_by == "has_english_description":
+        return 1 if _has_english_description(product.description_translations) else 0
+    return int(getattr(score, sort_by, 0))
+
+
+def _sort_scored_products(
+    items: list[tuple[Product, SeoScore]],
+    sort_by: str,
+    sort_dir: str,
+) -> list[tuple[Product, SeoScore]]:
+    if sort_by not in SORTABLE_FIELDS:
+        return items
+
+    sorted_items = sorted(items, key=lambda item: _normalized_text(item[0].name))
+    sorted_items = sorted(
+        sorted_items,
+        key=lambda item: _get_sort_value(item, sort_by),
+        reverse=sort_dir == "desc",
+    )
+
+    if sort_by in {"category", "sku"}:
+        sorted_items = sorted(sorted_items, key=lambda item: _get_sort_value(item, sort_by) == "")
+
+    return sorted_items
 
 
 @router.get("", response_model=ProductListResponse)
@@ -26,6 +104,16 @@ async def list_products(
     search: str = Query(""),
     category: str = Query(""),
     score_threshold: int = Query(100, ge=0, le=100),
+    title_score_threshold: int = Query(100, ge=0, le=100),
+    description_score_threshold: int = Query(100, ge=0, le=100),
+    english_description_score_threshold: int = Query(100, ge=0, le=100),
+    meta_score_threshold: int = Query(100, ge=0, le=100),
+    meta_desc_score_threshold: int = Query(100, ge=0, le=100),
+    sort_by: str = Query(
+        "name",
+        pattern="^(name|category|sku|has_english_description|total_score|title_score|description_score|english_description_score|meta_score|meta_desc_score)$",
+    ),
+    sort_dir: str = Query("asc", pattern="^(asc|desc)$"),
     manager: ProductManager = Depends(get_manager),
 ) -> ProductListResponse:
     """Return cached products with their latest scores."""
@@ -53,6 +141,26 @@ async def list_products(
 
     if score_threshold < 100:
         scored = [(p, s) for p, s in scored if s.total_score < score_threshold]
+
+    field_thresholds = {
+        "title_score_threshold": title_score_threshold,
+        "description_score_threshold": description_score_threshold,
+        "english_description_score_threshold": english_description_score_threshold,
+        "meta_score_threshold": meta_score_threshold,
+        "meta_desc_score_threshold": meta_desc_score_threshold,
+    }
+    for threshold_key, threshold_value in field_thresholds.items():
+        if threshold_value >= 100:
+            continue
+
+        max_score, score_attr = FIELD_SCORE_FILTERS[threshold_key]
+        scored = [
+            (product, score)
+            for product, score in scored
+            if _normalize_score(getattr(score, score_attr, 0), max_score) < threshold_value
+        ]
+
+    scored = _sort_scored_products(scored, sort_by, sort_dir)
 
     total = len(scored)
     start = (page - 1) * limit

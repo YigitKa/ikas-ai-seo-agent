@@ -12,12 +12,12 @@ from core.ai.client import (
 )
 from core.agent.orchestrator import AgentOrchestrator, supports_tool_calling
 from core.agent.tools import create_seo_rewrite_toolkit
-from core.utils.html import html_to_plain_text
+from core.utils.html import html_to_plain_text, sanitize_html_for_prompt
 from core.chat import ChatService
 from core.clients.ikas import IkasClient
 from core.models import AgentEvent, AppConfig, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.utils.presentation import format_prompt_display, get_en_description_value, get_tr_description_value
-from core.prompt_store import REWRITE_AGENT_SYSTEM_PROMPT, BATCH_AGENT_SYSTEM_PROMPT, ensure_prompt_files
+from core.prompt_store import get_rewrite_agent_system_prompt, get_batch_agent_system_prompt, ensure_prompt_files
 from core.services.provider import (
     discover_provider_models,
     get_lm_studio_live_status,
@@ -198,7 +198,7 @@ class ProductManager:
         orchestrator = AgentOrchestrator(
             config=self._config,
             toolkit=toolkit,
-            system_prompt=REWRITE_AGENT_SYSTEM_PROMPT,
+            system_prompt=get_rewrite_agent_system_prompt(),
             max_iterations=8,
         )
         result = await orchestrator.run(
@@ -226,7 +226,7 @@ class ProductManager:
         orchestrator = AgentOrchestrator(
             config=self._config,
             toolkit=toolkit,
-            system_prompt=REWRITE_AGENT_SYSTEM_PROMPT,
+            system_prompt=get_rewrite_agent_system_prompt(),
             max_iterations=8,
         )
         async for event in orchestrator.stream(
@@ -440,12 +440,13 @@ class ProductManager:
                 "SADECE şu alanları güncelle: " + ", ".join(field_labels) + ". "
                 "Diğer alanlara dokunma, save_suggestion çağrısında diğer alanlara boş string ver."
             )
+        base = get_batch_agent_system_prompt()
         if not rules:
-            return BATCH_AGENT_SYSTEM_PROMPT
+            return base
         constraints_block = "\n\nKISITLAMALAR (Bu kurallara kesinlikle uy):\n" + "\n".join(
             f"- {r}" for r in rules
         )
-        return BATCH_AGENT_SYSTEM_PROMPT + constraints_block
+        return base + constraints_block
 
     async def _run_agent_for_product(
         self, product: Product, score: SeoScore, system_prompt: str,
@@ -463,7 +464,7 @@ class ProductManager:
         product_context = {
             "product_id": product.id,
             "name": product.name,
-            "description": (product.description or "")[:1000],
+            "description": sanitize_html_for_prompt(product.description, limit=1000),
             "meta_title": product.meta_title or "",
             "meta_description": product.meta_description or "",
             "category": product.category or "",
@@ -566,14 +567,29 @@ class ProductManager:
         field: str,
         product: Product,
         score: SeoScore,
+        suggestion: SeoSuggestion | None = None,
     ) -> tuple[str, str]:
+        working_product = product
+
+        if field == "description_en" and suggestion is not None:
+            if suggestion.suggested_description.strip():
+                working_product = working_product.model_copy(update={
+                    "description": suggestion.suggested_description,
+                })
+            if suggestion.suggested_description_en.strip():
+                updated_translations = dict(working_product.description_translations or {})
+                updated_translations["en"] = suggestion.suggested_description_en
+                working_product = working_product.model_copy(update={
+                    "description_translations": updated_translations,
+                })
+
         if field == "description_en" and not html_to_plain_text(
-            get_en_description_value(product.description_translations),
+            get_en_description_value(working_product.description_translations),
             preserve_breaks=False,
         ):
-            result = self.translate_description_to_en(product)
+            result = self.translate_description_to_en(working_product)
         else:
-            result = self.rewrite_field(BATCH_FIELD_TO_AI_FIELD[field], product, score)
+            result = self.rewrite_field(BATCH_FIELD_TO_AI_FIELD[field], working_product, score)
 
         if isinstance(result, tuple):
             return result
@@ -638,7 +654,7 @@ class ProductManager:
 
         for field in target_fields:
             try:
-                value, thinking = self._generate_batch_field_value(field, product, score)
+                value, thinking = self._generate_batch_field_value(field, product, score, suggestion)
                 if not value.strip():
                     field_errors[field] = "Öneri oluşturulamadı."
                     continue

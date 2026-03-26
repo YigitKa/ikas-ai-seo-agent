@@ -6,7 +6,6 @@ interface LiveStatusCardProps {
   storeName: string;
   languages: string;
   keywords: string;
-  promptCount: number;
 }
 
 export default function LiveStatusCard({
@@ -15,7 +14,6 @@ export default function LiveStatusCard({
   storeName,
   languages,
   keywords,
-  promptCount,
 }: LiveStatusCardProps) {
   return (
     <SectionCard
@@ -29,7 +27,6 @@ export default function LiveStatusCard({
         <StatusRow label="Magaza" value={storeName || 'Tanimlanmadi'} />
         <StatusRow label="Diller" value={languages || 'tr'} />
         <StatusRow label="Keywords" value={keywords || 'Tanimsiz'} mono={false} />
-        <StatusRow label="Promptlar" value={`${promptCount} duzenlenebilir dosya`} />
       </dl>
     </SectionCard>
   );

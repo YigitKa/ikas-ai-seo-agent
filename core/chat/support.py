@@ -31,9 +31,10 @@ from core.agent.tools import AgentToolkit, create_chat_toolkit
 from core.clients.ikas import IkasClient
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.clients.mcp import IkasMCPClient, MCPError
-from core.prompt_store import AGENT_SYSTEM_PROMPTS_TR
+from core.prompt_store import get_agent_system_prompts_tr, load_prompt_template
 from core.ai.constants import estimate_cost
 from core.chat import guidance as op_guidance
+from core.utils.html import sanitize_html_for_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -47,127 +48,6 @@ MEMORY_SUMMARIZATION_PROMPT = (
     "k\u0131sa paragraf olarak \u00f6zetle."
 )
 HISTORY_SUMMARY_SYSTEM_PREFIX = "\u00d6nceki sohbetlerin \u00f6zeti: "
-
-CHAT_OPTION_BUTTONS_INSTRUCTION = """SECENEK BUTON FORMATI (KRITIK — her zaman kullan):
-Kullaniciya soru sordugun, onay istedigin veya alternatif sundugunda
-yanitin sonuna asagidaki formatta bir JSON blogu ekle.
-Bu blok chat ekraninda tiklanabilir butonlara donusur.
-Kullanici butona tiklayarak secim yapar — yazarak cevap vermesine gerek kalmaz.
-
-Format:
-```json
-[{"tone": "Etiket", "value": "Buton uzerinde gorunecek aciklama"}]
-```
-
-Ornekler:
-
-1) Onay sorusu:
-```json
-[{"tone": "Evet", "value": "Evet, bu degisiklikleri uygula."}, {"tone": "Hayir", "value": "Hayir, simdilik bir sey yapma."}]
-```
-
-2) Yeniden yazim alternatifleri:
-```json
-[{"tone": "Profesyonel", "value": "Onerilen profesyonel ton icerigi..."}, {"tone": "Agresif", "value": "Onerilen agresif ton icerigi..."}, {"tone": "Minimal", "value": "Onerilen minimal ton icerigi..."}]
-```
-
-3) Sonraki adim secenekleri:
-```json
-[{"tone": "Meta Duzelt", "value": "Meta title ve description'i iyilestir."}, {"tone": "Aciklama Yaz", "value": "Urun aciklamasini yeniden yaz."}, {"tone": "Hepsini Analiz Et", "value": "Tum SEO alanlarini analiz et."}]
-```
-
-Kurallar:
-- Her yanit sonunda en az bir secenek blogu sun
-- Yeniden yazim istenirse 2 veya 3 alternatif sun, her birinin tonunu belirt
-- Onay gerektiren sorularda "Evet"/"Hayir" secenekleri sun
-- JSON blogunun disinda da Markdown ile aciklamani yaz
-- JSON blogu SADECE yanitinin en sonunda olsun
-- SOMUT SEO DEGER ONERISI VERIRKEN (meta title, meta description, urun adi, aciklama gibi) bu degerleri ASLA duz metin/madde olarak yazma; her zaman kart formatinda (```json blogu) sun.
-  Ornegin "Meta Title: ..." seklinde yazmak YASAK. Bunun yerine:
-```json
-[{"tone": "Meta Title", "value": "Onerilen meta title metni burada"}, {"tone": "Meta Desc", "value": "Onerilen meta description metni burada"}, {"tone": "Urun Adi", "value": "Onerilen urun adi burada"}]
-```
-  Bu sayede kullanici degerleri kart olarak gorur ve tek tikla secebilir.
-"""
-
-CHAT_FLOW_SYSTEM_PROMPT_TR = """Sen bir ikas e-ticaret magazasi SEO asistansin.
-Sen kullanicinin SEO danismani ve icra asistanisin. Kullanici teknik detaylarla ugrasmaz; sen arka planda gerekli islemleri halledersin.
-
-Ana gorevin:
-- Konusmayi secili urun etrafinda tut
-- Varsayilan olarak yalnizca mevcut SEO metrikleri, issue/suggestion alanlari ve promptta zaten bulunan urun bilgileri uzerinden tavsiye ver
-- Kullanici urun aciklamasi, meta title, meta description, kategori, etiket, SKU gibi eldeki alanlari yorumlamani isterse bunu local baglamla yap
-- Canli veri gerektiginde araclardan arka planda yararlan
-- Somut, uygulanabilir ve kisa yanit ver
-- Kullaniciyi urun bilgilerini duzeltmeye ve iyilestirmeye yonlendir
-
-KRITIK DÜRÜSTLÜK KURALLARI (ASLA IHLAL ETME):
-- ASLA yapmedigin bir islemi yaptigini iddia etme
-- Bir arac cagirmadan "guncelledim", "uyguladim", "degistirdim" DEME
-- Kullanici degisiklikleri onayladiginda arka planda uygun araclari cagir
-- Arac basarili sonuc dondurdugunde sonucu raporla; basarisiz olursa hatanin nedenini acikla
-- Emin olmadigin bilgiyi uydurma; bilmiyorsan "bilmiyorum" de
-
-ARAC KULLANIMI (KULLANICIYA ARAC ADLARINI GOSTERME):
-- Araclari arka planda sen kullanirsin; kullaniciya arac adi, API, MCP, GraphQL gibi teknik detaylari acma
-- Kullanici onay verdiginde degisiklikleri otomatik uygula
-- Taslak kaydetmek icin uygun araci arka planda cagir
-- Skorlama, dogrulama ve urun detayi icin gerekli araclari sessizce kullan
-
-Kurallar:
-- Turkce yanit ver; kullanici Ingilizce yazarsa Ingilizce yanit ver
-- Secili urunun promptta zaten bulunan statik SEO bilgileri icin yeniden arac cagirisi yapma
-- SEO onerilerini mevcut skor kirilimlari, sorunlar ve gorunen urun alanlariyla sinirli tut
-- Stok, fiyat, kampanya, siparis, musteri, kargo veya operasyonel konulara kullanici acikca istemedikce kendiliginden gecme
-- Veri eksigi veya belirsizlik varsa acikca soyle
-- Uretim tonu net, profesyonel ve kisa olsun
-- Markdown kullanabilirsin
-- Genis markdown tablolar yerine kisa listeler kullan; tabloyu yalnizca kullanici isterse kullan
-- ASLA kullaniciya "@ikas", "@local", "MCP", "GraphQL", arac adi veya komut yazmasi gerektigini soyleme
-- ASLA kullaniciya teknik arac cagirisi veya API detayi gosterme
-
-Yaniti mumkunse su duzende kur:
-1. Durum (mevcut durumu ozetle)
-2. Oneri (somut iyilestirme onerileri sun)
-3. Sonraki adim — asagidaki SECENEK BUTON FORMATI ile kullaniciya tiklanabilir secenekler sun
-
-SECENEK BUTON FORMATI (KRITIK — her zaman kullan):
-Kullaniciya soru sordugun, onay istedigin veya alternatif sundugunda
-yanitin sonuna asagidaki formatta bir JSON blogu ekle.
-Bu blok chat ekraninda tiklanabilir butonlara donusur.
-Kullanici butona tiklayarak secim yapar — yazarak cevap vermesine gerek kalmaz.
-
-Format:
-```json
-[{"tone": "Etiket", "value": "Buton uzerinde gorunecek aciklama"}]
-```
-
-Ornekler:
-
-1) Onay sorusu:
-```json
-[{"tone": "Evet", "value": "Evet, bu degisiklikleri uygula."}, {"tone": "Hayir", "value": "Hayir, simdilik bir sey yapma."}]
-```
-
-2) Yeniden yazim alternatifleri:
-```json
-[{"tone": "Profesyonel", "value": "Onerilen profesyonel ton icerigi..."}, {"tone": "Agresif", "value": "Onerilen agresif ton icerigi..."}, {"tone": "Minimal", "value": "Onerilen minimal ton icerigi..."}]
-```
-
-3) Sonraki adim secenekleri:
-```json
-[{"tone": "Meta Duzelt", "value": "Meta title ve description'i iyilestir."}, {"tone": "Aciklama Yaz", "value": "Urun aciklamasini yeniden yaz."}, {"tone": "Hepsini Analiz Et", "value": "Tum SEO alanlarini analiz et."}]
-```
-
-Kurallar:
-- Her yanit sonunda en az bir secenek blogu sun
-- Yeniden yazim istenirse 2 veya 3 alternatif sun, her birinin tonunu belirt
-- Onay gerektiren sorularda "Evet"/"Hayir" secenekleri sun
-- JSON blogunun disinda da Markdown ile aciklamani yaz
-- JSON blogu SADECE yanitinin en sonunda olsun
-
-{product_context}
-{score_context}"""
 
 CHAT_FLOW_PRODUCT_CONTEXT_TEMPLATE = """
 Su an secili urun:
@@ -194,66 +74,12 @@ SEO Skoru: {total_score}/100
 - Okunabilirlik: {readability_score}/5
 Sorunlar: {issues}"""
 
-IKAS_OPERATION_GUIDE_TR = """
-Davranis kurallari:
-- Urun alanlarini (name, description, meta_title, meta_description) guncelleyebilirsin. Kullanici onay verdiginde arka planda uygun araci cagir.
-- Bir arac cagirmadan "guncelledim" veya "uyguladim" DEME. Bu kullaniciyi yaniltir.
-- Yalnizca arac GERCEKTEN cagirilip basarili sonuc dondugunde islemi raporla.
-- Kullanici degisiklik uygulamak istediginde:
-  * Once degisiklikleri listele ve onay iste
-  * Onaydan sonra arka planda uygun araci cagir
-  * Sonucu kontrol et ve basarili/basarisiz durumu raporla
-- Canli magaza verisi gerektiginde arka planda uygun sorgu araclarini kullan.
-- Bu chat ekraninda varsayilan tavsiyeleri yalnizca mevcut SEO metrikleri ve secili urunun eldeki alanlariyla sinirla.
-- Mutation gerektiren adimlarda kullanicidan net onay iste.
-- Yanitin sonunda konusmayi ilerletecek tek bir sonraki adim veya soru oner.
-- ASLA gerceklestirmedigin bir islemi basariliymiş gibi raporlama.
-- ASLA kullaniciya arac adi, MCP, GraphQL, API gibi teknik detaylari gosterme.
-- Kullaniciya teknik komutlar onerme; bunun yerine dogal dilde onay iste ve tiklanabilir secenekler sun.
-"""
+# Legacy aliases kept for backward compat — not currently used by runtime code.
+IKAS_OPERATION_GUIDE_TR = ""  # loaded from file at runtime via load_prompt_template()
+CHAT_OPTION_BUTTONS_INSTRUCTION = ""  # loaded from file at runtime
 
-CHAT_SYSTEM_PROMPT_TR = """Sen bir ikas e-ticaret mağazası asistanısın. Mağaza sahibine ürünleri,
-SEO optimizasyonu, stok durumu ve mağaza yönetimi konularında yardım ediyorsun.
-
-Kurallar:
-- Türkçe yanıt ver (kullanıcı İngilizce yazarsa İngilizce yanıt ver)
-- Kısa ve öz yanıtlar ver, gereksiz uzatma
-- Ürün verisi gerektiğinde sana sağlanan araçları arka planda kullan
-- SEO önerilerinde somut ve uygulanabilir tavsiyeler ver
-- Fiyat, stok ve sipariş bilgilerini doğru aktar
-- Markdown formatında yanıt ver (başlıklar, listeler, kalın metin)
-- ASLA yapmadığın bir işlemi yaptığını iddia etme
-- Degisiklik uygulamak icin arka planda uygun araclari kullan; basarili oldugunda raporla
-- Degisiklik uygulamadan once kullaniciya degisiklikleri goster ve onay iste
-- Kullaniciya arac adi, MCP, GraphQL, API gibi teknik detaylari GOSTERME
-- Kullaniciya teknik komutlar onerme; dogal dilde onay iste ve tiklanabilir secenekler sun
-
-{product_context}
-{score_context}"""
-
-PRODUCT_CONTEXT_TEMPLATE = """
-Şu an seçili ürün:
-- Ad: {name}
-- Kategori: {category}
-- Fiyat: {price}
-- SKU: {sku}
-- Durum: {status}
-- Meta Title: {meta_title}
-- Meta Description: {meta_description}
-- Etiketler: {tags}
-- Açıklama (özet): {description_preview}"""
-
-SCORE_CONTEXT_TEMPLATE = """
-SEO Skoru: {total_score}/100
-- Başlık: {title_score}/15
-- Açıklama: {description_score}/20
-- Meta Title: {meta_score}/15
-- Meta Description: {meta_desc_score}/10
-- Anahtar Kelime: {keyword_score}/10
-- İçerik Kalitesi: {content_quality_score}/10
-- Teknik SEO: {technical_seo_score}/10
-- Okunabilirlik: {readability_score}/5
-Sorunlar: {issues}"""
+PRODUCT_CONTEXT_TEMPLATE = CHAT_FLOW_PRODUCT_CONTEXT_TEMPLATE  # backward-compat alias
+SCORE_CONTEXT_TEMPLATE = CHAT_FLOW_SCORE_CONTEXT_TEMPLATE  # backward-compat alias
 
 MATCH_NORMALIZATION_TABLE = str.maketrans({
     "\u00c7": "c",
@@ -635,8 +461,9 @@ def _build_product_context(
     score_ctx = ""
 
     if product:
-        desc_preview = (product.description or "")[:200]
-        if len(product.description or "") > 200:
+        desc_source = sanitize_html_for_prompt(product.description)
+        desc_preview = desc_source[:200]
+        if len(desc_source) > 200:
             desc_preview += "..."
         product_ctx = CHAT_FLOW_PRODUCT_CONTEXT_TEMPLATE.format(
             name=product.name,
@@ -667,7 +494,8 @@ def _build_product_context(
             issues="; ".join(score.issues[:5]) if score.issues else "Yok",
         )
 
-    template = AGENT_SYSTEM_PROMPTS_TR.get(agent_type, AGENT_SYSTEM_PROMPTS_TR["general"])
+    agent_prompts = get_agent_system_prompts_tr()
+    template = agent_prompts.get(agent_type, agent_prompts["general"])
     base_prompt = template.format(
         product_context=product_ctx,
         score_context=score_ctx,
@@ -679,9 +507,9 @@ def _build_product_context(
     return (
         base_prompt
         + "\n\n"
-        + CHAT_OPTION_BUTTONS_INSTRUCTION
+        + load_prompt_template("chat_option_buttons_system")
         + "\n\n"
-        + IKAS_OPERATION_GUIDE_TR
+        + load_prompt_template("ikas_operation_guide_system")
     )
 
 
@@ -708,14 +536,15 @@ def _build_tool_catalog_instruction(
 
 
 def _build_local_no_think_instruction(config: AppConfig) -> str | None:
-    if config.ai_provider not in ("ollama", "lm-studio"):
-        return None
     if config.ai_thinking_mode:
         return None
-    return (
-        "Yerel model kullaniyorsun. Ic muhakemeyi, <think> bloklarini ve uzun dusunce metinlerini "
-        "yazma; dogrudan nihai yaniti ver. /no_think"
-    )
+    # Providers whose models commonly produce <think> blocks
+    if config.ai_provider in ("ollama", "lm-studio", "openrouter", "custom"):
+        return (
+            "Ic muhakemeyi, <think> bloklarini ve uzun dusunce metinlerini "
+            "yazma; dogrudan nihai yaniti ver. /no_think"
+        )
+    return None
 
 
 def _normalize_matching_text(text: str) -> str:
@@ -1209,6 +1038,7 @@ class _StreamingVisibleTextFilter:
     def __init__(self) -> None:
         self._inside_think = False
         self._pending_tag = ""
+        self._thinking_buffer: list[str] = []
 
     def consume(self, chunk: str) -> str:
         if not chunk:
@@ -1238,9 +1068,19 @@ class _StreamingVisibleTextFilter:
 
             if not self._inside_think:
                 visible_parts.append(text[index])
+            else:
+                self._thinking_buffer.append(text[index])
             index += 1
 
         return "".join(visible_parts)
+
+    def drain_thinking(self) -> str:
+        """Return and clear any captured thinking content."""
+        if not self._thinking_buffer:
+            return ""
+        text = "".join(self._thinking_buffer)
+        self._thinking_buffer.clear()
+        return text
 
     def finalize(self) -> str:
         if self._inside_think or not self._pending_tag:
@@ -1314,11 +1154,12 @@ def _apply_choice_delta(
     choice: dict[str, Any],
     visible_text_filter: "_StreamingVisibleTextFilter",
     tool_calls_by_index: dict[int, dict[str, Any]],
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, str]:
     """Process one OpenAI-style choice delta. Mutates tool_calls_by_index.
 
-    Returns (content_delta, finish_reason, visible_chunk).
+    Returns (content_delta, finish_reason, visible_chunk, reasoning_delta).
     visible_chunk is empty when tool calls are already pending.
+    reasoning_delta carries ``reasoning_content`` from providers like LM Studio / Qwen.
     """
     delta = choice.get("delta", {})
     if not isinstance(delta, dict):
@@ -1334,13 +1175,17 @@ def _apply_choice_delta(
         if visible and not tool_calls_by_index:
             visible_chunk = visible
 
+    # Extract reasoning_content (used by LM Studio, Qwen, DeepSeek, etc.)
+    reasoning_raw = delta.get("reasoning_content")
+    reasoning_delta = reasoning_raw if isinstance(reasoning_raw, str) else ""
+
     delta_tool_calls = delta.get("tool_calls")
     if isinstance(delta_tool_calls, list):
         for tc_delta in delta_tool_calls:
             if isinstance(tc_delta, dict):
                 _merge_stream_tool_call(tool_calls_by_index, tc_delta)
 
-    return content_delta, finish_reason, visible_chunk
+    return content_delta, finish_reason, visible_chunk, reasoning_delta
 
 
 def _merge_stream_meta_payload(target: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:

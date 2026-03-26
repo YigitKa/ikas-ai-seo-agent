@@ -11,6 +11,9 @@ from api.schemas import (
     LMStudioLiveStatusResponse,
     LMStudioModelStatusResponse,
     PromptGroupResponse,
+    PromptLayeringFlowResponse,
+    PromptLayeringOrderResponse,
+    PromptLayerResponse,
     PromptResetRequest,
     PromptTemplateResponse,
     PromptTemplatesResponse,
@@ -41,6 +44,7 @@ def _build_prompt_templates_response() -> PromptTemplatesResponse:
                     title=str(meta.get("title") or prompt_key),
                     description=str(meta.get("description") or ""),
                     variables=[str(name) for name in meta.get("variables", ())],
+                    runtime_variables=[str(name) for name in meta.get("runtime_variables", ())],
                     height=int(meta.get("height", 150)),
                     content=settings_service.load_prompt_template(prompt_key),
                 )
@@ -93,6 +97,28 @@ async def update_settings(
 async def get_prompt_templates() -> PromptTemplatesResponse:
     """Return editable prompt templates with metadata."""
     return _build_prompt_templates_response()
+
+
+@router.get("/prompts/layering", response_model=PromptLayeringOrderResponse)
+async def get_prompt_layering_order() -> PromptLayeringOrderResponse:
+    """Return prompt layering order for UI visualization."""
+    from core.prompt_store import get_prompt_layering_order as _get_layering
+
+    flows: list[PromptLayeringFlowResponse] = []
+    for flow in _get_layering():
+        layers = [
+            PromptLayerResponse(**layer)  # type: ignore[arg-type]
+            for layer in flow.get("layers", [])  # type: ignore[union-attr]
+        ]
+        flows.append(
+            PromptLayeringFlowResponse(
+                id=str(flow["id"]),
+                title=str(flow["title"]),
+                description=str(flow["description"]),
+                layers=layers,
+            )
+        )
+    return PromptLayeringOrderResponse(flows=flows)
 
 
 @router.put("/prompts", response_model=MessageResponse)

@@ -749,7 +749,7 @@ async def test_handle_apply_intent_creates_suggestion(monkeypatch):
     assert response.suggestion_saved is not None
     assert response.suggestion_saved["product_id"] == product.id
     assert response.suggestion_saved["fields"]["suggested_meta_title"] == "Airontek 60X Tasinabilir Mikroskop | Mavi Isik"
-    assert response.suggestion_saved["fields"]["suggested_description"] == "Yeni urun aciklamasi"
+    assert response.suggestion_saved["fields"]["suggested_description"] == "<p>Yeni urun aciklamasi</p>"
     assert response.tool_results[0]["tool"] == SAVE_SEO_SUGGESTION_TOOL_NAME
 
 
@@ -883,7 +883,7 @@ async def test_stream_lm_studio_native_rejects_non_sse_content_type(monkeypatch)
 
 @pytest.mark.anyio
 async def test_stream_lm_studio_native_emits_reasoning_as_thinking_chunk(monkeypatch):
-    config = _make_config(ai_provider="lm-studio", ai_base_url="http://localhost:1234/v1")
+    config = _make_config(ai_provider="lm-studio", ai_base_url="http://localhost:1234/v1", ai_thinking_mode=True)
     service = ChatService(config)
 
     lines = [
@@ -926,6 +926,44 @@ async def test_stream_lm_studio_native_emits_reasoning_as_thinking_chunk(monkeyp
     assert events[0]["content"] == "plan"
     assert events[-1]["thinking"] == "plan"
     assert events[-1]["content"] == "Merhaba"
+
+
+@pytest.mark.anyio
+async def test_async_stream_chat_compat_emits_reasoning_content_as_thinking_chunk(monkeypatch):
+    """LM Studio / Qwen compat endpoint sends reasoning via delta.reasoning_content."""
+    config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1", ai_thinking_mode=True)
+    service = ChatService(config)
+
+    lines = [
+        'data: {"model":"qwen-test","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"Think"},"finish_reason":null}]}',
+        "",
+        'data: {"model":"qwen-test","choices":[{"index":0,"delta":{"reasoning_content":"ing..."},"finish_reason":null}]}',
+        "",
+        'data: {"model":"qwen-test","choices":[{"index":0,"delta":{"content":"Answer"},"finish_reason":null}]}',
+        "",
+        'data: {"model":"qwen-test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}',
+        "",
+        "data: [DONE]",
+        "",
+    ]
+
+    def fake_stream(self_client, method, url, **kwargs):
+        return _FakeStreamContext(_FakeStreamResponse(lines))
+
+    monkeypatch.setattr(httpx.AsyncClient, "stream", fake_stream)
+
+    events = [event async for event in service.async_stream_chat(
+        [{"role": "user", "content": "Test"}],
+        [{"type": "function", "function": {"name": "dummy_tool"}}],
+    )]
+
+    types = [e["type"] for e in events]
+    assert "thinking_chunk" in types, f"Expected thinking_chunk in {types}"
+    thinking_events = [e for e in events if e["type"] == "thinking_chunk"]
+    assert "".join(e["content"] for e in thinking_events) == "Thinking..."
+    completion = [e for e in events if e["type"] == "completion_result"][0]
+    assert completion["content"] == "Answer"
+    assert "Thinking..." in completion["thinking"]
 
 
 @pytest.mark.anyio

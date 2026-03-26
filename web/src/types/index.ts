@@ -96,6 +96,7 @@ export interface PromptTemplate {
   title: string;
   description: string;
   variables: string[];
+  runtime_variables: string[];
   height: number;
   content: string;
 }
@@ -103,6 +104,25 @@ export interface PromptTemplate {
 export interface PromptGroup {
   label: string;
   prompts: PromptTemplate[];
+}
+
+export interface PromptLayer {
+  order: number;
+  prompt_key: string | null;
+  label: string;
+  description: string;
+  linked_keys: string[];
+}
+
+export interface PromptLayeringFlow {
+  id: string;
+  title: string;
+  description: string;
+  layers: PromptLayer[];
+}
+
+export interface PromptLayeringOrder {
+  flows: PromptLayeringFlow[];
 }
 
 export interface RewriteResponse {

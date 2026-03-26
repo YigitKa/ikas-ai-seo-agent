@@ -13,6 +13,16 @@ from core.ai.constants import (
 )
 
 logger = logging.getLogger(__name__)
+_KNOWN_JSON_STRING_FIELDS = (
+    "suggested_name",
+    "suggested_meta_title",
+    "suggested_meta_description",
+    "suggested_description",
+    "suggested_description_en",
+    "summary",
+    "llms_summary",
+    "content",
+)
 
 
 def _get_system_prompt(config: AppConfig) -> str:
@@ -30,6 +40,47 @@ def _is_placeholder_json(data: dict) -> bool:
     if not str_values:
         return False
     return all(v.strip().strip('"').strip("'") in ("...", "\u2026", "") for v in str_values)
+
+
+def _is_placeholder_string(value: str) -> bool:
+    return (value or "").strip().strip('"').strip("'") in ("...", "\u2026", "")
+
+
+def _decode_json_string_fragment(value: str) -> str:
+    candidate = (value or "").strip()
+    if not candidate:
+        return ""
+    try:
+        return json.loads(f'"{candidate}"')
+    except Exception:
+        return (
+            candidate
+            .replace("\\/", "/")
+            .replace('\\"', '"')
+            .replace("\\n", "\n")
+            .replace("\\r", "\r")
+            .replace("\\t", "\t")
+        )
+
+
+def _extract_known_string_fields(text: str) -> dict[str, str]:
+    extracted: dict[str, str] = {}
+
+    for field_name in _KNOWN_JSON_STRING_FIELDS:
+        patterns = [
+            rf'"{field_name}"\s*:\s*"([\s\S]*?)"\s*(?:,|\}}|$)',
+            rf"'{field_name}'\s*:\s*'([\s\S]*?)'\s*(?:,|\}}|$)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if not match:
+                continue
+            candidate = _decode_json_string_fragment(match.group(1)).strip()
+            if candidate and not _is_placeholder_string(candidate):
+                extracted[field_name] = candidate
+                break
+
+    return extracted
 
 
 def _extract_thinking(raw_text: str) -> tuple[str, str]:
@@ -129,6 +180,12 @@ def _parse_response_text(raw_text: str) -> tuple[dict, str]:
                 return parsed, thinking_text
         except json.JSONDecodeError:
             pass
+
+    # 5) Tolerant field extraction for model outputs that keep the right keys
+    #    but break JSON with raw newlines inside HTML strings.
+    extracted = _extract_known_string_fields(text)
+    if extracted:
+        return extracted, thinking_text
 
     logger.error(f"Failed to parse AI response as JSON: {text[:300]}")
     raise ValueError("AI yaniti gecerli JSON degil. Model farkli formatta yanit dondu.")

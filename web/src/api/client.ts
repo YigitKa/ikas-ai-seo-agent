@@ -18,6 +18,7 @@ import type {
   ProductListResponse,
   ProductWithScore,
   PromptGroup,
+  PromptLayeringOrder,
   LMStudioLiveStatus,
   SettingsData,
   ProviderInfo,
@@ -44,6 +45,13 @@ export async function fetchProducts(
     search?: string;
     category?: string;
     score_threshold?: number;
+    title_score_threshold?: number;
+    description_score_threshold?: number;
+    english_description_score_threshold?: number;
+    meta_score_threshold?: number;
+    meta_desc_score_threshold?: number;
+    sort_by?: string;
+    sort_dir?: 'asc' | 'desc';
   } = {},
 ): Promise<ProductListResponse> {
   const params = new URLSearchParams({
@@ -54,6 +62,13 @@ export async function fetchProducts(
   if (options.search?.trim()) params.set('search', options.search.trim());
   if (options.category?.trim()) params.set('category', options.category.trim());
   if (typeof options.score_threshold === 'number') params.set('score_threshold', String(options.score_threshold));
+  if (typeof options.title_score_threshold === 'number') params.set('title_score_threshold', String(options.title_score_threshold));
+  if (typeof options.description_score_threshold === 'number') params.set('description_score_threshold', String(options.description_score_threshold));
+  if (typeof options.english_description_score_threshold === 'number') params.set('english_description_score_threshold', String(options.english_description_score_threshold));
+  if (typeof options.meta_score_threshold === 'number') params.set('meta_score_threshold', String(options.meta_score_threshold));
+  if (typeof options.meta_desc_score_threshold === 'number') params.set('meta_desc_score_threshold', String(options.meta_desc_score_threshold));
+  if (options.sort_by?.trim()) params.set('sort_by', options.sort_by.trim());
+  if (options.sort_dir) params.set('sort_dir', options.sort_dir);
   return request(`/api/products?${params.toString()}`);
 }
 
@@ -213,6 +228,10 @@ export async function resetPromptTemplates(
     method: 'POST',
     body: JSON.stringify({ prompt_keys: promptKeys }),
   });
+}
+
+export async function getPromptLayeringOrder(): Promise<PromptLayeringOrder> {
+  return request('/api/settings/prompts/layering');
 }
 
 export async function getProviders(): Promise<{ providers: ProviderInfo[] }> {

@@ -133,7 +133,7 @@ FIELD_MAX_OUTPUT_TOKENS = {
     "meta_title": 96,
     "meta_desc": 192,
     "desc_tr": 1024,
-    "desc_en": 1024,
+    "desc_en": 2048,
 }
 
 # ── Model pricing (USD per 1M tokens) ───────────────────────────────────

@@ -21,7 +21,6 @@ from core.chat.support import (
     HISTORY_SUMMARY_KEEP_RECENT_MESSAGES,
     HISTORY_SUMMARY_SYSTEM_PREFIX,
     HISTORY_SUMMARY_TRIGGER_MESSAGES,
-    IKAS_OPERATION_GUIDE_TR,
     MAX_HISTORY_MESSAGES,
     MAX_TOOL_ROUNDS,
     MEMORY_SUMMARIZATION_PROMPT,
@@ -729,10 +728,11 @@ class ChatServiceStreamingMixin:
                                         chunk = data.get("content", "")
                                         if isinstance(chunk, str) and chunk:
                                             thinking_content += chunk
-                                            yield {
-                                                "type": "thinking_chunk",
-                                                "content": chunk,
-                                            }
+                                            if self._config.ai_thinking_mode:
+                                                yield {
+                                                    "type": "thinking_chunk",
+                                                    "content": chunk,
+                                                }
                                     except json.JSONDecodeError:
                                         pass
 
@@ -824,16 +824,19 @@ class ChatServiceStreamingMixin:
                 streamed_chunk_emitted = True
                 yield {"type": "chunk", "content": trailing}
 
-            embedded_thinking = self._extract_thinking(message_content)
+            embedded_thinking = self._extract_thinking(message_content) if self._config.ai_thinking_mode else ""
             response_text = (
                 self._remove_thinking(message_content) if embedded_thinking else message_content
             )
-            if embedded_thinking and thinking_content:
-                thinking_text = f"{thinking_content}\n\n{embedded_thinking}".strip()
-            elif embedded_thinking:
-                thinking_text = embedded_thinking
+            if self._config.ai_thinking_mode:
+                if embedded_thinking and thinking_content:
+                    thinking_text = f"{thinking_content}\n\n{embedded_thinking}".strip()
+                elif embedded_thinking:
+                    thinking_text = embedded_thinking
+                else:
+                    thinking_text = thinking_content.strip()
             else:
-                thinking_text = thinking_content.strip()
+                thinking_text = ""
 
             if response_text and not streamed_chunk_emitted:
                 yield {"type": "chunk", "content": response_text}
@@ -900,6 +903,7 @@ class ChatServiceStreamingMixin:
                 headers = self._build_auth_headers()
 
                 message_content = ""
+                thinking_content = ""
                 finish_reason = "stop"
                 meta_payload: dict[str, Any] = {"model": model}
                 tool_calls: list[dict[str, Any]] = []
@@ -961,6 +965,9 @@ class ChatServiceStreamingMixin:
                                                 if isinstance(native_content, str) and native_content:
                                                     message_content += native_content
                                                     visible_chunk = visible_text_filter.consume(native_content)
+                                                    thinking_delta = visible_text_filter.drain_thinking()
+                                                    if thinking_delta and self._config.ai_thinking_mode:
+                                                        yield {"type": "thinking_chunk", "content": thinking_delta}
                                                     if visible_chunk and not tool_calls_by_index:
                                                         streamed_chunk_emitted = True
                                                         yield {"type": "chunk", "content": visible_chunk}
@@ -970,13 +977,20 @@ class ChatServiceStreamingMixin:
                                         if not isinstance(choice, dict):
                                             continue
 
-                                        content_delta, finish_reason_update, visible_chunk = _apply_choice_delta(
+                                        content_delta, finish_reason_update, visible_chunk, reasoning_delta = _apply_choice_delta(
                                             choice, visible_text_filter, tool_calls_by_index,
                                         )
                                         if content_delta:
                                             message_content += content_delta
                                         if finish_reason_update:
                                             finish_reason = finish_reason_update
+                                        # Emit reasoning_content from providers (LM Studio/Qwen/DeepSeek)
+                                        if reasoning_delta and self._config.ai_thinking_mode:
+                                            thinking_content += reasoning_delta
+                                            yield {"type": "thinking_chunk", "content": reasoning_delta}
+                                        thinking_delta = visible_text_filter.drain_thinking()
+                                        if thinking_delta and self._config.ai_thinking_mode:
+                                            yield {"type": "thinking_chunk", "content": thinking_delta}
                                         if visible_chunk:
                                             streamed_chunk_emitted = True
                                             yield {"type": "chunk", "content": visible_chunk}
@@ -1003,13 +1017,19 @@ class ChatServiceStreamingMixin:
                                             if isinstance(choices, list) and choices:
                                                 choice = choices[0]
                                                 if isinstance(choice, dict):
-                                                    content_delta, finish_reason_update, visible_chunk = _apply_choice_delta(
+                                                    content_delta, finish_reason_update, visible_chunk, reasoning_delta = _apply_choice_delta(
                                                         choice, visible_text_filter, tool_calls_by_index,
                                                     )
                                                     if content_delta:
                                                         message_content += content_delta
                                                     if finish_reason_update:
                                                         finish_reason = finish_reason_update
+                                                    if reasoning_delta and self._config.ai_thinking_mode:
+                                                        thinking_content += reasoning_delta
+                                                        yield {"type": "thinking_chunk", "content": reasoning_delta}
+                                                    thinking_delta = visible_text_filter.drain_thinking()
+                                                    if thinking_delta and self._config.ai_thinking_mode:
+                                                        yield {"type": "thinking_chunk", "content": thinking_delta}
                                                     if visible_chunk:
                                                         streamed_chunk_emitted = True
                                                         yield {"type": "chunk", "content": visible_chunk}
@@ -1102,8 +1122,15 @@ class ChatServiceStreamingMixin:
 
                     continue
 
-                thinking_text = self._extract_thinking(message_content)
-                response_text = self._remove_thinking(message_content) if thinking_text else message_content
+                embedded_thinking = self._extract_thinking(message_content) if self._config.ai_thinking_mode else ""
+                response_text = self._remove_thinking(message_content) if embedded_thinking else message_content
+
+                # Merge reasoning_content (from delta.reasoning_content) with <think> blocks
+                if self._config.ai_thinking_mode:
+                    parts = [p for p in (thinking_content.strip(), embedded_thinking) if p]
+                    thinking_text = "\n\n".join(parts)
+                else:
+                    thinking_text = ""
 
                 if response_text and not streamed_chunk_emitted:
                     yield {

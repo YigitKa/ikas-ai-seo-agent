@@ -8,6 +8,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Settings = lazy(() => import('./pages/settings/SettingsPage'));
 const LlmsLab = lazy(() => import('./pages/LlmsLab'));
 const BatchOperations = lazy(() => import('./pages/BatchOperations'));
+const PromptEditor = lazy(() => import('./pages/prompts/PromptEditorPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,6 +38,7 @@ export default function App() {
               <Route path="/llms" element={<LlmsLab />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/batch" element={<BatchOperations />} />
+              <Route path="/prompts" element={<PromptEditor />} />
             </Routes>
           </Suspense>
         </BrowserRouter>

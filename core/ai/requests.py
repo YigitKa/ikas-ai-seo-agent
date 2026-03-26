@@ -108,6 +108,18 @@ def _prepare_prompt_descriptions(product: Product, desc_limit: int) -> tuple[str
     return raw_desc, raw_desc_en
 
 
+def _prepare_full_translation_description(value: str) -> str:
+    text = html_to_plain_text(value, preserve_breaks=True)
+    text = re.sub(r"[ \t\f\v]+", " ", text).strip()
+    text = re.sub(r" *\n *", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text
+
+
+# Providers whose models commonly produce <think> blocks
+_THINK_TAG_PROVIDERS = frozenset({"ollama", "lm-studio", "openrouter", "custom"})
+
+
 def build_product_rewrite_request(
     config: AppConfig,
     provider: str,
@@ -121,7 +133,7 @@ def build_product_rewrite_request(
     raw_desc, raw_desc_en = _prepare_prompt_descriptions(product, desc_limit)
 
     system_content = _get_system_prompt(config)
-    if is_local and not config.ai_thinking_mode:
+    if provider in _THINK_TAG_PROVIDERS and not config.ai_thinking_mode:
         system_content += (
             "\n\nONEMLI: Dusunme surecini YAZMA. Dogrudan JSON ciktisi ver, "
             "baska hicbir sey yazma. /no_think"
@@ -156,7 +168,7 @@ def build_geo_rewrite_request(
     raw_desc, _ = _prepare_prompt_descriptions(product, desc_limit)
 
     system_content = load_prompt_template("geo_rewrite_system")
-    if is_local and not config.ai_thinking_mode:
+    if provider in _THINK_TAG_PROVIDERS and not config.ai_thinking_mode:
         system_content += (
             "\n\nONEMLI: Dusunme surecini YAZMA. Dogrudan JSON ciktisi ver, "
             "baska hicbir sey yazma. /no_think"
@@ -192,7 +204,7 @@ def build_llms_summary_request(
     raw_desc, _ = _prepare_prompt_descriptions(product, desc_limit)
 
     system_content = load_prompt_template("llms_summary_system")
-    if is_local and not config.ai_thinking_mode:
+    if provider in _THINK_TAG_PROVIDERS and not config.ai_thinking_mode:
         system_content += (
             "\n\nONEMLI: Dusunme surecini YAZMA. SADECE JSON ver. /no_think"
         )
@@ -231,7 +243,7 @@ def build_field_rewrite_request(
     max_tokens = _cap_field_max_tokens(field, config.ai_max_tokens, thinking_mode=thinking_mode)
 
     system_content = load_prompt_template("description_system") if field == "desc_tr" else _get_system_prompt(config)
-    if is_local and not thinking_mode:
+    if provider in _THINK_TAG_PROVIDERS and not thinking_mode:
         system_content += (
             "\n\nONEMLI: Dusunme surecini YAZMA. Dogrudan JSON ciktisi ver, "
             "baska hicbir sey yazma. /no_think"
@@ -250,11 +262,10 @@ def build_en_translation_request(
     product: Product,
 ) -> dict:
     is_local = provider in ("ollama", "lm-studio")
-    desc_limit = 800 if is_local else 2000
-    raw_desc, _ = _prepare_prompt_descriptions(product, desc_limit)
+    raw_desc = _prepare_full_translation_description(product.description)
 
     system_content = load_prompt_template("translation_system")
-    if is_local and not config.ai_thinking_mode:
+    if provider in _THINK_TAG_PROVIDERS and not config.ai_thinking_mode:
         system_content += (
             "\n\nONEMLI: Dusunme surecini YAZMA. Dogrudan JSON ciktisi ver, "
             "baska hicbir sey yazma. /no_think"

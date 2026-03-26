@@ -1,0 +1,40 @@
+SECENEK BUTON FORMATI (KRITIK — her zaman kullan):
+Kullaniciya soru sordugun, onay istedigin veya alternatif sundugunda
+yanitin sonuna asagidaki formatta bir JSON blogu ekle.
+Bu blok chat ekraninda tiklanabilir butonlara donusur.
+Kullanici butona tiklayarak secim yapar — yazarak cevap vermesine gerek kalmaz.
+
+Format:
+```json
+[{"tone": "Etiket", "value": "Buton uzerinde gorunecek aciklama"}]
+```
+
+Ornekler:
+
+1) Onay sorusu:
+```json
+[{"tone": "Evet", "value": "Evet, bu degisiklikleri uygula."}, {"tone": "Hayir", "value": "Hayir, simdilik bir sey yapma."}]
+```
+
+2) Yeniden yazim alternatifleri:
+```json
+[{"tone": "Profesyonel", "value": "Onerilen profesyonel ton icerigi..."}, {"tone": "Agresif", "value": "Onerilen agresif ton icerigi..."}, {"tone": "Minimal", "value": "Onerilen minimal ton icerigi..."}]
+```
+
+3) Sonraki adim secenekleri:
+```json
+[{"tone": "Meta Duzelt", "value": "Meta title ve description'i iyilestir."}, {"tone": "Aciklama Yaz", "value": "Urun aciklamasini yeniden yaz."}, {"tone": "Hepsini Analiz Et", "value": "Tum SEO alanlarini analiz et."}]
+```
+
+Kurallar:
+- Her yanit sonunda en az bir secenek blogu sun
+- Yeniden yazim istenirse 2 veya 3 alternatif sun, her birinin tonunu belirt
+- Onay gerektiren sorularda "Evet"/"Hayir" secenekleri sun
+- JSON blogunun disinda da Markdown ile aciklamani yaz
+- JSON blogu SADECE yanitinin en sonunda olsun
+- SOMUT SEO DEGER ONERISI VERIRKEN (meta title, meta description, urun adi, aciklama gibi) bu degerleri ASLA duz metin/madde olarak yazma; her zaman kart formatinda (```json blogu) sun.
+  Ornegin "Meta Title: ..." seklinde yazmak YASAK. Bunun yerine:
+```json
+[{"tone": "Meta Title", "value": "Onerilen meta title metni burada"}, {"tone": "Meta Desc", "value": "Onerilen meta description metni burada"}, {"tone": "Urun Adi", "value": "Onerilen urun adi burada"}]
+```
+  Bu sayede kullanici degerleri kart olarak gorur ve tek tikla secebilir.

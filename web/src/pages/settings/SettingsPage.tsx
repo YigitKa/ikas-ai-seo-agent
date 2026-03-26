@@ -5,31 +5,26 @@ import { useToast } from '../../shared/ui/Toast';
 import {
   getMcpStatus,
   getLmStudioLiveStatus,
-  getPromptTemplates,
   getProviderHealth,
   getProviderModels,
   getProviders,
   getSettings,
   initializeMcp,
   resetLocalProductData,
-  resetPromptTemplates,
-  savePromptTemplates,
   testConnection,
   updateSettings,
 } from '../../api/client';
-import type { PromptGroup, SettingsData } from '../../types';
+import type { SettingsData } from '../../types';
 import { StatusPill, type BannerTone } from '../../components/settings/UiPrimitives';
 import {
   PROVIDER_META,
   DISCOVERABLE_PROVIDERS,
   buildModelOptions,
   toneFromHealth,
-  flattenPromptValues,
   formatError,
 } from './constants';
 import StoreSettingsSection from './StoreSettingsSection';
 import ProviderSection from './ProviderSection';
-import PromptEditorSection from './PromptEditorSection';
 import ControlSidebar from './ControlSidebar';
 import LmStudioStatusCard from './LmStudioStatusCard';
 import LiveStatusCard from './LiveStatusCard';
@@ -41,16 +36,12 @@ export default function SettingsPage() {
   const qc = useQueryClient();
   const toast = useToast();
   const [form, setForm] = useState<SettingsData | null>(null);
-  const [promptGroups, setPromptGroups] = useState<PromptGroup[]>([]);
-  const [promptValues, setPromptValues] = useState<Record<string, string>>({});
-  const [activePromptGroup, setActivePromptGroup] = useState('');
   const [discoveredModels, setDiscoveredModels] = useState<Record<string, string[]>>({});
   const [banner, setBanner] = useState<BannerState>(null);
   const [downloadJobId, setDownloadJobId] = useState('');
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
 
   const settingsQ = useQuery({ queryKey: ['settings'], queryFn: getSettings });
-  const promptsQ = useQuery({ queryKey: ['prompt-templates'], queryFn: getPromptTemplates });
   const providersQ = useQuery({ queryKey: ['providers'], queryFn: getProviders });
   const healthQ = useQuery({ queryKey: ['provider-health'], queryFn: getProviderHealth });
   const mcpQ = useQuery({ queryKey: ['mcp-status'], queryFn: getMcpStatus });
@@ -66,11 +57,6 @@ export default function SettingsPage() {
   useEffect(() => {
     if (settingsQ.data) setForm((prev) => prev ?? settingsQ.data);
   }, [settingsQ.data]);
-
-  useEffect(() => {
-    if (!promptsQ.data || promptGroups.length > 0) return;
-    syncPromptGroups(promptsQ.data.groups);
-  }, [promptGroups.length, promptsQ.data]);
 
   useEffect(() => {
     if (!form) return;
@@ -99,16 +85,12 @@ export default function SettingsPage() {
   // ── Mutations ─────────────────────────────────────────────────────────────
 
   const saveAllMut = useMutation({
-    mutationFn: async (payload: { settings: SettingsData; prompts: Record<string, string> }) => {
-      await savePromptTemplates(payload.prompts);
-      return updateSettings(payload.settings as unknown as Record<string, unknown>);
-    },
+    mutationFn: (settings: SettingsData) => updateSettings(settings as unknown as Record<string, unknown>),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['settings'] });
-      qc.invalidateQueries({ queryKey: ['prompt-templates'] });
       qc.invalidateQueries({ queryKey: ['provider-health'] });
       qc.invalidateQueries({ queryKey: ['mcp-status'] });
-      setBanner({ tone: 'success', message: 'Ayarlar ve promptlar kaydedildi.' });
+      setBanner({ tone: 'success', message: 'Ayarlar kaydedildi.' });
       toast.success('Ayarlar kaydedildi.');
     },
     onError: (error) => {
@@ -116,19 +98,6 @@ export default function SettingsPage() {
       setBanner({ tone: 'error', message: msg });
       toast.error(msg);
     },
-  });
-
-  const resetPromptMut = useMutation({
-    mutationFn: (promptKeys: string[]) => resetPromptTemplates(promptKeys),
-    onSuccess: (data, promptKeys) => {
-      syncPromptGroups(data.groups);
-      qc.invalidateQueries({ queryKey: ['prompt-templates'] });
-      setBanner({
-        tone: 'success',
-        message: promptKeys.length === 1 ? 'Prompt varsayilan haline donduruldu.' : 'Tum promptlar varsayilan haline donduruldu.',
-      });
-    },
-    onError: (error) => setBanner({ tone: 'error', message: formatError(error, 'Prompt sifirlama basarisiz oldu.') }),
   });
 
   const testMut = useMutation({
@@ -184,7 +153,7 @@ export default function SettingsPage() {
 
   // ── Loading / Error ───────────────────────────────────────────────────────
 
-  if ((settingsQ.isLoading && !form) || (promptsQ.isLoading && promptGroups.length === 0)) {
+  if (settingsQ.isLoading && !form) {
     return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-300">Ayar arayuzu yukleniyor...</div>;
   }
   if (!form) {
@@ -196,14 +165,11 @@ export default function SettingsPage() {
   const currentProvider = form.ai_provider || 'none';
   const providerMeta = PROVIDER_META[currentProvider] ?? PROVIDER_META.none;
   const providerOptions = providersQ.data?.providers?.length ? providersQ.data.providers : [{ key: currentProvider, label: currentProvider }];
-  const availablePromptGroups = promptGroups.length > 0 ? promptGroups : promptsQ.data?.groups ?? [];
-  const selectedPromptGroup = availablePromptGroups.find((g) => g.label === activePromptGroup) ?? availablePromptGroups[0];
   const modelOptions = buildModelOptions(currentProvider, form.ai_model_name, discoveredModels[currentProvider] ?? []);
   const showApiKey = !['none', 'ollama', 'lm-studio'].includes(currentProvider);
   const showBaseUrl = ['openai', 'openrouter', 'ollama', 'lm-studio', 'custom'].includes(currentProvider);
   const useModelSelect = currentProvider !== 'custom' && modelOptions.length > 0;
   const canDiscoverModels = DISCOVERABLE_PROVIDERS.has(currentProvider);
-  const promptCount = availablePromptGroups.reduce((t, g) => t + g.prompts.length, 0);
 
   const setValue = <K extends keyof SettingsData>(key: K, value: SettingsData[K]) => setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
 
@@ -240,14 +206,13 @@ export default function SettingsPage() {
             <div>
               <h1 className="text-3xl font-semibold tracking-tight text-white">Ayar Merkezi</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-                AI provider, ikas baglantisi, SEO ayarlari ve prompt dosyalari tek ekrandan yonetilir. Prompt degisiklikleri bir sonraki AI isteginde aktif olur.
+                AI provider, ikas baglantisi ve SEO ayarlarini tek ekrandan yonetin.
               </p>
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
             <StatusPill label="Provider" value={healthQ.data?.message || currentProvider} tone={toneFromHealth(healthQ.data?.status)} />
             <StatusPill label="MCP" value={mcpQ.data?.message || 'Durum okunuyor'} tone={mcpQ.data?.initialized ? 'success' : 'info'} />
-            <StatusPill label="Prompt" value={`${promptCount} dosya aktif`} tone="info" />
           </div>
         </div>
 
@@ -270,22 +235,11 @@ export default function SettingsPage() {
               isDiscovering={discoverModelsMut.isPending}
               providerError={providersQ.error as Error | null}
             />
-            <PromptEditorSection
-              promptGroups={availablePromptGroups}
-              selectedGroup={selectedPromptGroup}
-
-              promptValues={promptValues}
-              onGroupChange={setActivePromptGroup}
-              onPromptChange={(key, value) => setPromptValues((prev) => ({ ...prev, [key]: value }))}
-              onPromptReset={(key) => { setBanner(null); resetPromptMut.mutate([key]); }}
-              onResetAll={() => { setBanner(null); resetPromptMut.mutate([]); }}
-              isResetting={resetPromptMut.isPending}
-            />
           </div>
 
           <aside className="space-y-6 xl:sticky xl:top-6 xl:self-start">
             <ControlSidebar
-              onSave={() => { setBanner(null); saveAllMut.mutate({ settings: form, prompts: promptValues }); }}
+              onSave={() => { setBanner(null); saveAllMut.mutate(form); }}
               onTest={() => { setBanner(null); testMut.mutate(form as unknown as Record<string, unknown>); }}
               onMcpInit={() => { setBanner(null); mcpInitMut.mutate(); }}
               onResetDb={() => setConfirmResetOpen(true)}
@@ -312,7 +266,6 @@ export default function SettingsPage() {
               storeName={form.store_name}
               languages={form.languages}
               keywords={form.keywords}
-              promptCount={promptCount}
             />
           </aside>
         </div>
@@ -320,12 +273,4 @@ export default function SettingsPage() {
     </div>
   );
 
-  function syncPromptGroups(groups: PromptGroup[]) {
-    setPromptGroups(groups);
-    setPromptValues(flattenPromptValues(groups));
-    setActivePromptGroup((prev) => {
-      if (prev && groups.some((g) => g.label === prev)) return prev;
-      return groups[0]?.label ?? '';
-    });
-  }
 }

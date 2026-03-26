@@ -144,6 +144,7 @@ class PromptTemplateResponse(BaseModel):
     title: str
     description: str
     variables: list[str] = Field(default_factory=list)
+    runtime_variables: list[str] = Field(default_factory=list)
     height: int = 150
     content: str = ""
 
@@ -163,6 +164,25 @@ class PromptTemplatesUpdateRequest(BaseModel):
 
 class PromptResetRequest(BaseModel):
     prompt_keys: list[str] = Field(default_factory=list)
+
+
+class PromptLayerResponse(BaseModel):
+    order: int
+    prompt_key: Optional[str] = None
+    label: str
+    description: str
+    linked_keys: list[str] = Field(default_factory=list)
+
+
+class PromptLayeringFlowResponse(BaseModel):
+    id: str
+    title: str
+    description: str
+    layers: list[PromptLayerResponse] = Field(default_factory=list)
+
+
+class PromptLayeringOrderResponse(BaseModel):
+    flows: list[PromptLayeringFlowResponse] = Field(default_factory=list)
 
 
 class ProviderHealthResponse(BaseModel):

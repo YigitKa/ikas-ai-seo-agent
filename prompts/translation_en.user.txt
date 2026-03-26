@@ -4,6 +4,9 @@ Kategori: {{category}}
 
 Bu urunun mevcut Turkce aciklamasini Ingilizceye cevir.
 Kurallar:
+- Tum Turkce aciklamayi bastan sona cevir; hicbir paragrafi, liste maddesini veya cumleyi atlama
+- Ozetleme, kisaltma, sadelestirme veya SEO icin yeniden yazma yapma
+- Kaynak metindeki kapsam ve sira mumkun oldugunca korunsun
 - Anlami koru, yeni ozellik uydurma
 - Dogal ve profesyonel urun Ingilizcesi kullan
 - Ciktiyi HTML formatinda ver; duz metin paragraf dondurme
