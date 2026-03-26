@@ -170,19 +170,19 @@ def test_build_product_context_without_product():
 def test_build_product_context_mentions_chat_roles():
     ctx = _build_product_context(None, None)
     assert "asistan" in ctx.lower()
-    assert "davranis kurallari" in ctx.lower()
+    assert "davranış kuralları" in ctx.lower()
 
 
 def test_build_product_context_mentions_supported_operations_and_next_step_behavior():
     ctx = _build_product_context(None, None)
     # Tool names are no longer listed in the system prompt to prevent LLM leaking them
-    assert "sonraki adim" in ctx.lower()
+    assert "sonraki adım" in ctx.lower()
 
 
 def test_build_product_context_limits_default_scope_to_current_seo_data():
     ctx = _build_product_context(None, None)
-    assert "yalnizca mevcut seo metrikleri" in ctx.lower()
-    assert "eldeki alanlariyla sinirla" in ctx.lower()
+    assert "yalnızca mevcut seo metrikleri" in ctx.lower()
+    assert "eldeki alanlarıyla sınırla" in ctx.lower()
 
 
 @pytest.mark.anyio
@@ -250,9 +250,9 @@ def test_build_product_context_includes_all_score_fields():
         ai_citability_score=8,
     )
     ctx = _build_product_context(product, score)
-    assert "EN Aciklama: 0/5" in ctx
-    assert "AI Alintilama: 8/10" in ctx
-    assert "ONCELIK KURALI" in ctx
+    assert "EN Açıklama: 0/5" in ctx
+    assert "AI Alıntılama: 8/10" in ctx
+    assert "ÖNCELİK KURALI" in ctx
 
 
 def test_build_product_context_includes_field_priority_options():
@@ -268,14 +268,14 @@ def test_build_product_context_includes_field_priority_options():
     )
     ctx = _build_product_context(product, score)
     # EN Aciklama (0/5) = 0% should come first
-    assert "EN Aciklama (0/5)" in ctx
+    assert "EN Açıklama (0/5)" in ctx
     # Meta Title (6/15) = 40% should come before Meta Description (5/10) = 50%
-    en_pos = ctx.index("EN Aciklama (0/5)")
+    en_pos = ctx.index("EN Açıklama (0/5)")
     meta_title_pos = ctx.index("Meta Title (6/15)")
     meta_desc_pos = ctx.index("Meta Description (5/10)")
     assert en_pos < meta_title_pos < meta_desc_pos
     # Description (18/20) = 90% should NOT appear (near perfect)
-    assert "ANALIZ SONRASI SECENEK KURALI" in ctx
+    assert "ANALİZ SONRASI SEÇENEK KURALI" in ctx
 
 
 def test_extract_thinking():
@@ -477,7 +477,7 @@ def test_build_chat_tools_always_includes_save_suggestion_tool():
     assert SAVE_SEO_SUGGESTION_TOOL_NAME in tool_names
     assert "apply_seo_to_ikas" in tool_names
     # Tool instruction no longer contains literal tool name to prevent LLM leaking it
-    assert any("oneri kaydetme" in instruction or "save_seo" in instruction for instruction in instructions)
+    assert any("öneri kaydetme" in instruction or "save_seo" in instruction for instruction in instructions)
 
 
 @pytest.mark.anyio

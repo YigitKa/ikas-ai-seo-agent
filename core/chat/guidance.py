@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from core.prompt_store import load_prompt_template
+
 DEFAULT_SAVE_SEO_SUGGESTION_TOOL_NAME = "save_seo_suggestion"
 
 MATCH_NORMALIZATION_TABLE = str.maketrans({
@@ -62,13 +64,11 @@ FALSE_ACTION_CONFIRMATION_NORMALIZED_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-FALSE_ACTION_DISCLAIMER_TR = (
-    "\n\n---\n"
-    "⚠️ **Not:** Yukarıdaki öneriler henüz uygulanmadı. "
-    "Degisiklikleri chat uzerinden secili urunde uygulamak icin:\n"
-    "- 'Uygula' veya 'kaydet' diyerek onay akisina girin,\n"
-    "- Sohbetteki **Öneriler** kartlarindan birini onaylayin."
-)
+def _get_false_action_disclaimer() -> str:
+    return "\n\n" + load_prompt_template("chat_false_action_disclaimer_system")
+
+
+FALSE_ACTION_DISCLAIMER_TR = _get_false_action_disclaimer()  # backward-compat
 
 
 def normalize_matching_text(text: str) -> str:
@@ -156,4 +156,4 @@ def append_false_action_disclaimer(response_text: str, tool_results: list[dict[s
         return response_text
     if "henuz uygulanmadi" in normalized_response:
         return response_text
-    return response_text + FALSE_ACTION_DISCLAIMER_TR
+    return response_text + _get_false_action_disclaimer()

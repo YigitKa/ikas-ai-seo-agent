@@ -42,50 +42,58 @@ MAX_TOOL_ROUNDS = 5  # Max sequential tool-call rounds per message
 MAX_HISTORY_MESSAGES = 40  # Keep conversation manageable for context window
 HISTORY_SUMMARY_TRIGGER_MESSAGES = 12
 HISTORY_SUMMARY_KEEP_RECENT_MESSAGES = 4
-MEMORY_SUMMARIZATION_PROMPT = (
-    "A\u015fa\u011f\u0131daki sohbet ge\u00e7mi\u015fini, kullan\u0131c\u0131n\u0131n "
-    "niyetini, tercihlerini ve onaylanan i\u015fleri kaybetmeden tek bir "
-    "k\u0131sa paragraf olarak \u00f6zetle."
-)
-HISTORY_SUMMARY_SYSTEM_PREFIX = "\u00d6nceki sohbetlerin \u00f6zeti: "
 
-CHAT_FLOW_PRODUCT_CONTEXT_TEMPLATE = """
-Su an secili urun:
-- Ad: {name}
-- Kategori: {category}
-- Fiyat: {price}
-- SKU: {sku}
-- Durum: {status}
-- Meta Title: {meta_title}
-- Meta Description: {meta_description}
-- Etiketler: {tags}
-- Aciklama (ozet): {description_preview}"""
 
-CHAT_FLOW_SCORE_CONTEXT_TEMPLATE = """
-SEO Skoru: {total_score}/100
-- Ozet Lensler: SEO {seo_score}/100 | GEO {geo_score}/100 | AEO {aeo_score}/100
-- Baslik: {title_score}/15
-- Aciklama: {description_score}/20
-- EN Aciklama: {english_description_score}/5
-- Meta Title: {meta_score}/15
-- Meta Description: {meta_desc_score}/10
-- Anahtar Kelime: {keyword_score}/10
-- Icerik Kalitesi: {content_quality_score}/10
-- Teknik SEO: {technical_seo_score}/10
-- Okunabilirlik: {readability_score}/5
-- AI Alintilama: {ai_citability_score}/10
-Sorunlar: {issues}
+def _get_memory_summarization_prompt() -> str:
+    return load_prompt_template("chat_memory_summarization_system")
 
-ONCELIK KURALI: Analiz ve oneri sunarken EN DUSUK yuzdelik skora sahip alanlardan basla.
-0 puan olan alanlar KRITIK onceliklidir ve mutlaka ilk sirada belirtilmelidir.
-Yuksek puan alan alanlari (>=80%) "guclu" olarak isle ve onlari degistirmeyi onceliklendirme.
 
-ANALIZ SONRASI SECENEK KURALI:
-Ilk SEO analizi yaptiktan sonra yanitin sonunda kullaniciya alanlari TEKER TEKER iyilestirmek
-icin secenekler sun. Secenekler asagidaki sirada verilmeli (en dusuk yuzdelik skor birinci):
-{field_priority_options}
-Bu secenekleri aynen bu sirada ve formatta yanitin sonuna JSON olarak ekle.
-Kullanici bir alani sectikten sonra SADECE o alan icin somut bir SEO degeri olustur."""
+def _get_history_summary_prefix() -> str:
+    return load_prompt_template("chat_history_prefix_system")
+
+
+def _get_product_context_template() -> str:
+    return load_prompt_template("chat_product_context_system")
+
+
+def _get_score_context_template() -> str:
+    return load_prompt_template("chat_score_context_system")
+
+
+def _get_semantic_routing_prompt() -> str:
+    return load_prompt_template("chat_semantic_routing_system")
+
+
+def _get_save_tool_instruction() -> str:
+    return load_prompt_template("chat_save_tool_system")
+
+
+def _get_apply_extraction_prompt() -> str:
+    return load_prompt_template("chat_apply_extraction_system")
+
+
+def _get_suggestion_options_instruction() -> str:
+    return load_prompt_template("chat_suggestion_options_system")
+
+
+def _get_false_action_disclaimer() -> str:
+    return "\n\n" + load_prompt_template("chat_false_action_disclaimer_system")
+
+
+def _get_compact_options_instruction() -> str:
+    return load_prompt_template("chat_compact_options_system")
+
+
+# Backward-compat module-level aliases (stale snapshots; prefer getter functions above)
+MEMORY_SUMMARIZATION_PROMPT = _get_memory_summarization_prompt()
+HISTORY_SUMMARY_SYSTEM_PREFIX = _get_history_summary_prefix()
+CHAT_FLOW_PRODUCT_CONTEXT_TEMPLATE = _get_product_context_template()
+CHAT_FLOW_SCORE_CONTEXT_TEMPLATE = _get_score_context_template()
+SEMANTIC_ROUTING_SYSTEM_PROMPT = _get_semantic_routing_prompt()
+SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION = _get_save_tool_instruction()
+APPLY_INTENT_EXTRACTION_SYSTEM_PROMPT = _get_apply_extraction_prompt()
+STRUCTURED_SUGGESTION_OPTIONS_INSTRUCTION = _get_suggestion_options_instruction()
+FALSE_ACTION_DISCLAIMER_TR = _get_false_action_disclaimer()
 
 # Legacy aliases kept for backward compat — not currently used by runtime code.
 IKAS_OPERATION_GUIDE_TR = ""  # loaded from file at runtime via load_prompt_template()
@@ -115,14 +123,6 @@ SEO_OPERATION_HINT_PATTERN = re.compile(
 SUGGESTION_REQUEST_HINT_PATTERN = re.compile(
     r"\boneri\b|\bsuggestion\b|\balternatif\b|\bsecenek\b|\bopsiyon\b|\bvaryant\b|\bvariant\b|\byeniden yaz\b|\brewrite\b|\bolustur\b|\buret\b|\byaz\b|\bhazirla\b",
     re.IGNORECASE,
-)
-SEMANTIC_ROUTING_SYSTEM_PROMPT = (
-    "Sen bir niyet tespit (intent detection) asistanisin. "
-    "Kullanicinin mesajini 3 ajandan birine yonlendir: seo, operator veya general. "
-    "Eger mesaj stok, fiyat, siparis, musteri, varyant veya canli magaza verisi gerektiriyorsa operator. "
-    "Eger mesaj SEO, metin yazarligi, icerik onerisi veya yeniden yazim ise seo. "
-    "Diger durumlarda general don. "
-    'SADECE ASAGIDAKI GIBI GECERLI BIR JSON DON: {"agent_type": "seo"|"operator"|"general"}'
 )
 SEMANTIC_ROUTING_JSON_PATTERN = re.compile(r"\{.*\}", re.DOTALL)
 
@@ -154,40 +154,8 @@ FALSE_ACTION_CONFIRMATION_NORMALIZED_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-FALSE_ACTION_DISCLAIMER_TR = (
-    "\n\n---\n"
-    "⚠️ **Not:** Yukarıdaki öneriler henüz uygulanmadı. "
-    "Degisiklikleri uygulamak icin:\n"
-    "- 'Uygula' veya 'onayla' diyerek onay verin,\n"
-    "- Sohbetteki secenek kartlarindan birini secin."
-)
-
 SAVE_SEO_SUGGESTION_TOOL_NAME = "save_seo_suggestion"
 SUGGESTION_SAVE_SUCCESS_MESSAGE = "\u00d6neri ba\u015far\u0131yla kaydedildi"
-SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION = (
-    "Kullanici sohbet sirasinda sunulan SEO degisikliklerini onaylayip "
-    "'uygula', 'kaydet', 'evet' veya 'bunu sectim' dediginde "
-    "arka planda SEO oneri kaydetme aracini cagir. Bu arac degisiklikleri "
-    "aninda uygulamaz; sadece bu chat oturumunda bekleyen taslak olarak tutar. "
-    "Kullaniciya arac adini, teknik detaylari veya operasyon rehberini GOSTERME; "
-    "onay aldiktan sonra sessizce cagir."
-)
-APPLY_INTENT_EXTRACTION_SYSTEM_PROMPT = (
-    "Sen bir SEO suggestion extraction asistansisin. Gorevin, sadece sohbet gecmisindeki "
-    "acik ve uygulanabilir SEO degisikliklerini secili urun icin `save_seo_suggestion` "
-    "aracina donusturmektir. Asla yeni icerik uydurma. Sadece gecmiste net olarak gecen "
-    "nihai degerleri kaydet. Kullanici kapsam daralttiysa (orn: sadece meta title), sadece o alanlari kaydet. "
-    "Desteklenen alanlar: suggested_name, suggested_meta_title, suggested_meta_description, "
-    "suggested_description, suggested_description_en. Kaydedilecek net bir deger yoksa tool cagirma ve "
-    "yalnizca `NO_SUGGESTION_FOUND` yaz."
-)
-STRUCTURED_SUGGESTION_OPTIONS_INSTRUCTION = (
-    "Eger birden fazla secenek uretiyorsan, yanitinin sonuna "
-    "```json\n"
-    '[{"tone":"Agresif","value":"..."}]\n'
-    "``` "
-    "formatinda gizli bir blok ekle. Bu blok yalnizca gecerli bir JSON dizisi icersin."
-)
 SAVE_SEO_SUGGESTION_FIELD_MAP = {
     "suggested_name": ("name", "suggested_name"),
     "suggested_meta_title": ("meta_title", "suggested_meta_title"),
@@ -451,25 +419,21 @@ def _parse_agent_type(content: str) -> str | None:
     return None
 
 
-_COMPACT_OPTION_BUTTONS_INSTRUCTION = (
-    'Analiz sonrasi skor context\'teki "ANALIZ SONRASI SECENEK KURALI" bolumundeki '
-    "hazir JSON secenek listesini AYNEN yanitin sonuna ekle. Kendi listeni uydurma.\n"
-    "SEO deger onerisi verirken degerleri duz metin degil, JSON formatinda sun."
-)
+_COMPACT_OPTION_BUTTONS_INSTRUCTION = _get_compact_options_instruction()  # backward-compat
 
 
 # Field metadata: (score_attr, max_points, label for buttons, description)
 _FIELD_PRIORITY_DEFS: list[tuple[str, int, str, str]] = [
-    ("english_description_score", 5, "EN Aciklama", "Ingilizce aciklamayi olustur/iyilestir"),
-    ("title_score", 15, "Urun Adi", "Urun adini SEO icin optimize et"),
-    ("meta_score", 15, "Meta Title", "Meta title'i iyilestir"),
-    ("meta_desc_score", 10, "Meta Description", "Meta description'i iyilestir"),
-    ("description_score", 20, "TR Aciklama", "Turkce aciklamayi iyilestir"),
+    ("english_description_score", 5, "EN Açıklama", "İngilizce açıklamayı oluştur/iyileştir"),
+    ("title_score", 15, "Ürün Adı", "Ürün adını SEO için optimize et"),
+    ("meta_score", 15, "Meta Title", "Meta title'ı iyileştir"),
+    ("meta_desc_score", 10, "Meta Description", "Meta description'ı iyileştir"),
+    ("description_score", 20, "TR Açıklama", "Türkçe açıklamayı iyileştir"),
     ("keyword_score", 10, "Anahtar Kelime", "Anahtar kelime optimizasyonu yap"),
-    ("content_quality_score", 10, "Icerik Kalitesi", "Icerik kalitesini artir"),
-    ("technical_seo_score", 10, "Teknik SEO", "Teknik SEO sorunlarini duzelt"),
-    ("readability_score", 5, "Okunabilirlik", "Okunabilirlik skorunu artir"),
-    ("ai_citability_score", 10, "AI Alintilama", "AI alintilama skorunu artir"),
+    ("content_quality_score", 10, "İçerik Kalitesi", "İçerik kalitesini artır"),
+    ("technical_seo_score", 10, "Teknik SEO", "Teknik SEO sorunlarını düzelt"),
+    ("readability_score", 5, "Okunabilirlik", "Okunabilirlik skorunu artır"),
+    ("ai_citability_score", 10, "AI Alıntılama", "AI alıntılama skorunu artır"),
 ]
 
 
@@ -477,7 +441,7 @@ def _build_field_priority_options(score: "SeoScore") -> str:
     """Build a priority-sorted JSON option list from score breakdown.
 
     Returns a string like:
-    [{"tone":"EN Aciklama (0/5)","value":"Ingilizce aciklamayi olustur/iyilestir"}, ...]
+    [{"tone":"EN Açıklama (0/5)","value":"İngilizce açıklamayı oluştur/iyileştir"}, ...]
     sorted by score percentage ascending (worst fields first).
     """
     field_scores: list[tuple[float, str, int, int, str]] = []
@@ -497,7 +461,7 @@ def _build_field_priority_options(score: "SeoScore") -> str:
         options.append({"tone": tag, "value": desc})
 
     if not options:
-        return '[{"tone":"Tum alanlar iyi","value":"Tum SEO alanlari yeterli seviyede."}]'
+        return '[{"tone":"Tüm alanlar iyi","value":"Tüm SEO alanları yeterli seviyede."}]'
 
     return json.dumps(options, ensure_ascii=False)
 
@@ -522,7 +486,7 @@ def _build_product_context(
         desc_preview = desc_source[:200]
         if len(desc_source) > 200:
             desc_preview += "..."
-        product_ctx = CHAT_FLOW_PRODUCT_CONTEXT_TEMPLATE.format(
+        product_ctx = _get_product_context_template().format(
             name=product.name,
             category=product.category or "-",
             price=f"{product.price:.2f} TL" if product.price else "-",
@@ -536,7 +500,7 @@ def _build_product_context(
 
     if score:
         field_priority_options = _build_field_priority_options(score)
-        score_ctx = CHAT_FLOW_SCORE_CONTEXT_TEMPLATE.format(
+        score_ctx = _get_score_context_template().format(
             total_score=score.total_score,
             seo_score=score.seo_score,
             geo_score=score.geo_score,
@@ -563,7 +527,7 @@ def _build_product_context(
     )
 
     if compact:
-        return base_prompt + "\n\n" + _COMPACT_OPTION_BUTTONS_INSTRUCTION
+        return base_prompt + "\n\n" + _get_compact_options_instruction()
 
     return (
         base_prompt

@@ -14,23 +14,17 @@ import httpx
 
 from core.agent.tools import AgentToolkit, create_chat_toolkit
 from core.chat.support import (
-    APPLY_INTENT_EXTRACTION_SYSTEM_PROMPT,
     APPLY_SEO_TO_IKAS_TOOL_NAME,
     CHAT_ACTION_PATTERN,
     GENERATE_SUGGESTION_PATTERN,
     HISTORY_SUMMARY_KEEP_RECENT_MESSAGES,
-    HISTORY_SUMMARY_SYSTEM_PREFIX,
     HISTORY_SUMMARY_TRIGGER_MESSAGES,
     MAX_HISTORY_MESSAGES,
     MAX_TOOL_ROUNDS,
-    MEMORY_SUMMARIZATION_PROMPT,
     SAVE_INTENT_PATTERN,
     SAVE_SEO_SUGGESTION_FIELD_MAP,
-    SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION,
     SAVE_SEO_SUGGESTION_TOOL_NAME,
     SEMANTIC_ROUTING_JSON_PATTERN,
-    SEMANTIC_ROUTING_SYSTEM_PROMPT,
-    STRUCTURED_SUGGESTION_OPTIONS_INSTRUCTION,
     SINGLE_PRODUCT_APPLY_ACTIONS,
     SUGGESTION_APPLY_FIELD_CONFIG,
     SUGGESTION_SAVE_SUCCESS_MESSAGE,
@@ -78,6 +72,7 @@ from core.chat.support import (
 from core.clients.ikas import IkasClient
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.clients.mcp import IkasMCPClient, MCPError
+from core.prompt_store import load_prompt_template
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +171,7 @@ class ChatServiceStreamingMixin:
                 _build_product_context(self._product, self._score, agent_type, compact=compact),
             ]
             if _should_request_structured_suggestion_options(cleaned_message):
-                system_parts.append(STRUCTURED_SUGGESTION_OPTIONS_INSTRUCTION)
+                system_parts.append(load_prompt_template("chat_suggestion_options_system"))
 
             # Skip verbose routing / MCP instructions for compact (local) models
             if not compact:

@@ -1,0 +1,11 @@
+
+Şu an seçili ürün:
+- Ad: {name}
+- Kategori: {category}
+- Fiyat: {price}
+- SKU: {sku}
+- Durum: {status}
+- Meta Title: {meta_title}
+- Meta Description: {meta_description}
+- Etiketler: {tags}
+- Açıklama (özet): {description_preview}

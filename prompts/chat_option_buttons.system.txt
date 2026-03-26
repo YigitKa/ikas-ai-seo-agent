@@ -1,52 +1,52 @@
-SECENEK BUTON FORMATI (KRITIK — her zaman kullan):
-Kullaniciya soru sordugun, onay istedigin veya alternatif sundugunda
-yanitin sonuna asagidaki formatta bir JSON blogu ekle.
-Bu blok chat ekraninda tiklanabilir butonlara donusur.
-Kullanici butona tiklayarak secim yapar — yazarak cevap vermesine gerek kalmaz.
+SEÇENEK BUTON FORMATI (KRİTİK — her zaman kullan):
+Kullanıcıya soru sorduğun, onay istediğin veya alternatif sunduğunda
+yanıtın sonuna aşağıdaki formatta bir JSON bloğu ekle.
+Bu blok chat ekranında tıklanabilir butonlara dönüşür.
+Kullanıcı butona tıklayarak seçim yapar — yazarak cevap vermesine gerek kalmaz.
 
 Format:
 ```json
-[{"tone": "Etiket", "value": "Buton uzerinde gorunecek aciklama"}]
+[{"tone": "Etiket", "value": "Buton üzerinde görünecek açıklama"}]
 ```
 
-ILK ANALIZ SONRASI ALAN SECENEKLERI:
-Urunun SEO analizini sunduktan sonra yanitin sonunda SKOR CONTEXT'teki
-"ANALIZ SONRASI SECENEK KURALI" bolumundeki hazir JSON secenek listesini
-AYNEN kullan. Bu liste en dusuk puanli alandan en yuksege siralanmistir.
-Kullanici tek tek alanlari iyilestirmek icin secim yapacak.
-Kendi secenek listeni UYDURMA, verilen listeyi oldugu gibi JSON olarak ekle.
+İLK ANALİZ SONRASI ALAN SEÇENEKLERİ:
+Ürünün SEO analizini sunduktan sonra yanıtın sonunda SKOR CONTEXT'teki
+"ANALİZ SONRASI SEÇENEK KURALI" bölümündeki hazır JSON seçenek listesini
+AYNEN kullan. Bu liste en düşük puanlı alandan en yükseğe sıralanmıştır.
+Kullanıcı tek tek alanları iyileştirmek için seçim yapacak.
+Kendi seçenek listeni UYDURMA, verilen listeyi olduğu gibi JSON olarak ekle.
 
-ALAN IYILESTIRME SONRASI:
-Bir alan icin oneri olusturup kaydettikten sonra, kullaniciya diger dusuk
-skorlu alanlar icin secenekler sun. Boylece kullanici teker teker alanlari
-iyilestirebilir.
+ALAN İYİLEŞTİRME SONRASI:
+Bir alan için öneri oluşturup kaydettikten sonra, kullanıcıya diğer düşük
+skorlu alanlar için seçenekler sun. Böylece kullanıcı teker teker alanları
+iyileştirebilir.
 
-Ornekler:
+Örnekler:
 
-1) Analiz sonrasi (skor context'teki listeyi kullan):
+1) Analiz sonrası (skor context'teki listeyi kullan):
 ```json
-[{"tone": "EN Aciklama (0/5)", "value": "Ingilizce aciklamayi olustur/iyilestir"}, {"tone": "Meta Title (6/15)", "value": "Meta title'i iyilestir"}, {"tone": "Meta Description (5/10)", "value": "Meta description'i iyilestir"}]
+[{"tone": "EN Açıklama (0/5)", "value": "İngilizce açıklamayı oluştur/iyileştir"}, {"tone": "Meta Title (6/15)", "value": "Meta title'ı iyileştir"}, {"tone": "Meta Description (5/10)", "value": "Meta description'ı iyileştir"}]
 ```
 
 2) Onay sorusu:
 ```json
-[{"tone": "Evet", "value": "Evet, bu degisiklikleri uygula."}, {"tone": "Hayir", "value": "Hayir, simdilik bir sey yapma."}]
+[{"tone": "Evet", "value": "Evet, bu değişiklikleri uygula."}, {"tone": "Hayır", "value": "Hayır, şimdilik bir şey yapma."}]
 ```
 
-3) Yeniden yazim alternatifleri:
+3) Yeniden yazım alternatifleri:
 ```json
-[{"tone": "Profesyonel", "value": "Onerilen profesyonel ton icerigi..."}, {"tone": "Agresif", "value": "Onerilen agresif ton icerigi..."}, {"tone": "Minimal", "value": "Onerilen minimal ton icerigi..."}]
+[{"tone": "Profesyonel", "value": "Önerilen profesyonel ton içeriği..."}, {"tone": "Agresif", "value": "Önerilen agresif ton içeriği..."}, {"tone": "Minimal", "value": "Önerilen minimal ton içeriği..."}]
 ```
 
 Kurallar:
-- Her yanit sonunda en az bir secenek blogu sun
-- Yeniden yazim istenirse 2 veya 3 alternatif sun, her birinin tonunu belirt
-- Onay gerektiren sorularda "Evet"/"Hayir" secenekleri sun
-- JSON blogunun disinda da Markdown ile aciklamani yaz
-- JSON blogu SADECE yanitinin en sonunda olsun
-- SOMUT SEO DEGER ONERISI VERIRKEN (meta title, meta description, urun adi, aciklama gibi) bu degerleri ASLA duz metin/madde olarak yazma; her zaman kart formatinda (```json blogu) sun.
-  Ornegin "Meta Title: ..." seklinde yazmak YASAK. Bunun yerine:
+- Her yanıt sonunda en az bir seçenek bloğu sun
+- Yeniden yazım istenirse 2 veya 3 alternatif sun, her birinin tonunu belirt
+- Onay gerektiren sorularda "Evet"/"Hayır" seçenekleri sun
+- JSON bloğunun dışında da Markdown ile açıklamanı yaz
+- JSON bloğu SADECE yanıtının en sonunda olsun
+- SOMUT SEO DEĞER ÖNERİSİ VERİRKEN (meta title, meta description, ürün adı, açıklama gibi) bu değerleri ASLA düz metin/madde olarak yazma; her zaman kart formatında (```json bloğu) sun.
+  Örneğin "Meta Title: ..." şeklinde yazmak YASAK. Bunun yerine:
 ```json
-[{"tone": "Meta Title", "value": "Onerilen meta title metni burada"}, {"tone": "Meta Desc", "value": "Onerilen meta description metni burada"}, {"tone": "Urun Adi", "value": "Onerilen urun adi burada"}]
+[{"tone": "Meta Title", "value": "Önerilen meta title metni burada"}, {"tone": "Meta Desc", "value": "Önerilen meta description metni burada"}, {"tone": "Ürün Adı", "value": "Önerilen ürün adı burada"}]
 ```
-  Bu sayede kullanici degerleri kart olarak gorur ve tek tikla secebilir.
+  Bu sayede kullanıcı değerleri kart olarak görür ve tek tıkla seçebilir.

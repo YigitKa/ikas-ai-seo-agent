@@ -1,0 +1,5 @@
+Eğer birden fazla seçenek üretiyorsan, yanıtının sonuna
+```json
+[{"tone":"Agresif","value":"..."}]
+```
+formatında gizli bir blok ekle. Bu blok yalnızca geçerli bir JSON dizisi içersin.

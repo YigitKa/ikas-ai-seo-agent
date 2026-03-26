@@ -1,0 +1,25 @@
+
+SEO Skoru: {total_score}/100
+- Özet Lensler: SEO {seo_score}/100 | GEO {geo_score}/100 | AEO {aeo_score}/100
+- Başlık: {title_score}/15
+- Açıklama: {description_score}/20
+- EN Açıklama: {english_description_score}/5
+- Meta Title: {meta_score}/15
+- Meta Description: {meta_desc_score}/10
+- Anahtar Kelime: {keyword_score}/10
+- İçerik Kalitesi: {content_quality_score}/10
+- Teknik SEO: {technical_seo_score}/10
+- Okunabilirlik: {readability_score}/5
+- AI Alıntılama: {ai_citability_score}/10
+Sorunlar: {issues}
+
+ÖNCELİK KURALI: Analiz ve öneri sunarken EN DÜŞÜK yüzdelik skora sahip alanlardan başla.
+0 puan olan alanlar KRİTİK önceliklidir ve mutlaka ilk sırada belirtilmelidir.
+Yüksek puan alan alanları (>=80%) "güçlü" olarak işle ve onları değiştirmeyi önceliklendirme.
+
+ANALİZ SONRASI SEÇENEK KURALI:
+İlk SEO analizi yaptıktan sonra yanıtın sonunda kullanıcıya alanları TEKER TEKER iyileştirmek
+için seçenekler sun. Seçenekler aşağıdaki sırada verilmeli (en düşük yüzdelik skor birinci):
+{field_priority_options}
+Bu seçenekleri aynen bu sırada ve formatta yanıtın sonuna JSON olarak ekle.
+Kullanıcı bir alanı seçtikten sonra SADECE o alan için somut bir SEO değeri oluştur.

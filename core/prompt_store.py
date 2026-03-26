@@ -24,6 +24,17 @@ PROMPT_FILES = {
     # Chat flow layers
     "chat_option_buttons_system": "chat_option_buttons.system.txt",
     "ikas_operation_guide_system": "ikas_operation_guide.system.txt",
+    # Chat flow internal prompts
+    "chat_memory_summarization_system": "chat_memory_summarization.system.txt",
+    "chat_history_prefix_system": "chat_history_prefix.system.txt",
+    "chat_product_context_system": "chat_product_context.system.txt",
+    "chat_score_context_system": "chat_score_context.system.txt",
+    "chat_semantic_routing_system": "chat_semantic_routing.system.txt",
+    "chat_save_tool_system": "chat_save_tool.system.txt",
+    "chat_apply_extraction_system": "chat_apply_extraction.system.txt",
+    "chat_suggestion_options_system": "chat_suggestion_options.system.txt",
+    "chat_false_action_disclaimer_system": "chat_false_action_disclaimer.system.txt",
+    "chat_compact_options_system": "chat_compact_options.system.txt",
     # Autonomous agent prompts
     "rewrite_agent_system": "rewrite_agent.system.txt",
     "batch_agent_system": "batch_agent.system.txt",
@@ -72,6 +83,21 @@ PROMPT_EDITOR_GROUPS = [
         (
             "chat_option_buttons_system",
             "ikas_operation_guide_system",
+            "chat_semantic_routing_system",
+            "chat_save_tool_system",
+            "chat_apply_extraction_system",
+            "chat_suggestion_options_system",
+            "chat_compact_options_system",
+            "chat_memory_summarization_system",
+            "chat_history_prefix_system",
+            "chat_false_action_disclaimer_system",
+        ),
+    ),
+    (
+        "Chat Baglam Sablonlari",
+        (
+            "chat_product_context_system",
+            "chat_score_context_system",
         ),
     ),
     (
@@ -207,61 +233,114 @@ Kurallar:
 
 {product_context}
 {score_context}""",
-    "chat_option_buttons_system": """SECENEK BUTON FORMATI (KRITIK — her zaman kullan):
-Kullaniciya soru sordugun, onay istedigin veya alternatif sundugunda
-yanitin sonuna asagidaki formatta bir JSON blogu ekle.
-Bu blok chat ekraninda tiklanabilir butonlara donusur.
-Kullanici butona tiklayarak secim yapar — yazarak cevap vermesine gerek kalmaz.
+    "chat_option_buttons_system": """SEÇENEK BUTON FORMATI (KRİTİK — her zaman kullan):
+Kullanıcıya soru sorduğun, onay istediğin veya alternatif sunduğunda
+yanıtın sonuna aşağıdaki formatta bir JSON bloğu ekle.
+Bu blok chat ekranında tıklanabilir butonlara dönüşür.
+Kullanıcı butona tıklayarak seçim yapar — yazarak cevap vermesine gerek kalmaz.
 
 Format:
 ```json
-[{"tone": "Etiket", "value": "Buton uzerinde gorunecek aciklama"}]
+[{"tone": "Etiket", "value": "Buton üzerinde görünecek açıklama"}]
 ```
 
-Ornekler:
+Örnekler:
 
 1) Onay sorusu:
 ```json
-[{"tone": "Evet", "value": "Evet, bu degisiklikleri uygula."}, {"tone": "Hayir", "value": "Hayir, simdilik bir sey yapma."}]
+[{"tone": "Evet", "value": "Evet, bu değişiklikleri uygula."}, {"tone": "Hayır", "value": "Hayır, şimdilik bir şey yapma."}]
 ```
 
-2) Yeniden yazim alternatifleri:
+2) Yeniden yazım alternatifleri:
 ```json
-[{"tone": "Profesyonel", "value": "Onerilen profesyonel ton icerigi..."}, {"tone": "Agresif", "value": "Onerilen agresif ton icerigi..."}, {"tone": "Minimal", "value": "Onerilen minimal ton icerigi..."}]
+[{"tone": "Profesyonel", "value": "Önerilen profesyonel ton içeriği..."}, {"tone": "Agresif", "value": "Önerilen agresif ton içeriği..."}, {"tone": "Minimal", "value": "Önerilen minimal ton içeriği..."}]
 ```
 
-3) Sonraki adim secenekleri:
+3) Sonraki adım seçenekleri:
 ```json
-[{"tone": "Meta Duzelt", "value": "Meta title ve description'i iyilestir."}, {"tone": "Aciklama Yaz", "value": "Urun aciklamasini yeniden yaz."}, {"tone": "Hepsini Analiz Et", "value": "Tum SEO alanlarini analiz et."}]
+[{"tone": "Meta Düzelt", "value": "Meta title ve description'ı iyileştir."}, {"tone": "Açıklama Yaz", "value": "Ürün açıklamasını yeniden yaz."}, {"tone": "Hepsini Analiz Et", "value": "Tüm SEO alanlarını analiz et."}]
 ```
 
 Kurallar:
-- Her yanit sonunda en az bir secenek blogu sun
-- Yeniden yazim istenirse 2 veya 3 alternatif sun, her birinin tonunu belirt
-- Onay gerektiren sorularda "Evet"/"Hayir" secenekleri sun
-- JSON blogunun disinda da Markdown ile aciklamani yaz
-- JSON blogu SADECE yanitinin en sonunda olsun
-- SOMUT SEO DEGER ONERISI VERIRKEN (meta title, meta description, urun adi, aciklama gibi) bu degerleri ASLA duz metin/madde olarak yazma; her zaman kart formatinda (```json blogu) sun.
-  Ornegin "Meta Title: ..." seklinde yazmak YASAK. Bunun yerine:
+- Her yanıt sonunda en az bir seçenek bloğu sun
+- Yeniden yazım istenirse 2 veya 3 alternatif sun, her birinin tonunu belirt
+- Onay gerektiren sorularda "Evet"/"Hayır" seçenekleri sun
+- JSON bloğunun dışında da Markdown ile açıklamanı yaz
+- JSON bloğu SADECE yanıtının en sonunda olsun
+- SOMUT SEO DEĞER ÖNERİSİ VERİRKEN (meta title, meta description, ürün adı, açıklama gibi) bu değerleri ASLA düz metin/madde olarak yazma; her zaman kart formatında (```json bloğu) sun.
+  Örneğin "Meta Title: ..." şeklinde yazmak YASAK. Bunun yerine:
 ```json
-[{"tone": "Meta Title", "value": "Onerilen meta title metni burada"}, {"tone": "Meta Desc", "value": "Onerilen meta description metni burada"}, {"tone": "Urun Adi", "value": "Onerilen urun adi burada"}]
+[{"tone": "Meta Title", "value": "Önerilen meta title metni burada"}, {"tone": "Meta Desc", "value": "Önerilen meta description metni burada"}, {"tone": "Ürün Adı", "value": "Önerilen ürün adı burada"}]
 ```
-  Bu sayede kullanici degerleri kart olarak gorur ve tek tikla secebilir.""",
-    "ikas_operation_guide_system": """Davranis kurallari:
-- Urun alanlarini (name, description, meta_title, meta_description) guncelleyebilirsin. Kullanici onay verdiginde arka planda uygun araci cagir.
-- Bir arac cagirmadan "guncelledim" veya "uyguladim" DEME. Bu kullaniciyi yaniltir.
-- Yalnizca arac GERCEKTEN cagirilip basarili sonuc dondugunde islemi raporla.
-- Kullanici degisiklik uygulamak istediginde:
-  * Once degisiklikleri listele ve onay iste
-  * Onaydan sonra arka planda uygun araci cagir
-  * Sonucu kontrol et ve basarili/basarisiz durumu raporla
-- Canli magaza verisi gerektiginde arka planda uygun sorgu araclarini kullan.
-- Bu chat ekraninda varsayilan tavsiyeleri yalnizca mevcut SEO metrikleri ve secili urunun eldeki alanlariyla sinirla.
-- Mutation gerektiren adimlarda kullanicidan net onay iste.
-- Yanitin sonunda konusmayi ilerletecek tek bir sonraki adim veya soru oner.
-- ASLA gerceklestirmedigin bir islemi basariliymiş gibi raporlama.
-- ASLA kullaniciya arac adi, MCP, GraphQL, API gibi teknik detaylari gosterme.
-- Kullaniciya teknik komutlar onerme; bunun yerine dogal dilde onay iste ve tiklanabilir secenekler sun.""",
+  Bu sayede kullanıcı değerleri kart olarak görür ve tek tıkla seçebilir.""",
+    "ikas_operation_guide_system": """Davranış kuralları:
+- Ürün alanlarını (name, description, meta_title, meta_description) güncelleyebilirsin. Kullanıcı onay verdiğinde arka planda uygun aracı çağır.
+- Bir araç çağırmadan "güncelledim" veya "uyguladım" DEME. Bu kullanıcıyı yanıltır.
+- Yalnızca araç GERÇEKTEN çağırılıp başarılı sonuç döndüğünde işlemi raporla.
+- Kullanıcı değişiklik uygulamak istediğinde:
+  * Önce değişiklikleri listele ve onay iste
+  * Onaydan sonra arka planda uygun aracı çağır
+  * Sonucu kontrol et ve başarılı/başarısız durumu raporla
+- Canlı mağaza verisi gerektiğinde arka planda uygun sorgu araçlarını kullan.
+- Bu chat ekranında varsayılan tavsiyeleri yalnızca mevcut SEO metrikleri ve seçili ürünün eldeki alanlarıyla sınırla.
+- Mutation gerektiren adımlarda kullanıcıdan net onay iste.
+- Yanıtın sonunda konuşmayı ilerletecek tek bir sonraki adım veya soru öner.
+- ASLA gerçekleştirmediğin bir işlemi başarılıymış gibi raporlama.
+- ASLA kullanıcıya araç adı, MCP, GraphQL, API gibi teknik detayları gösterme.
+- Kullanıcıya teknik komutlar önerme; bunun yerine doğal dilde onay iste ve tıklanabilir seçenekler sun.""",
+    "chat_memory_summarization_system": """Aşağıdaki sohbet geçmişini, kullanıcının niyetini, tercihlerini ve onaylanan işleri kaybetmeden tek bir kısa paragraf olarak özetle.""",
+    "chat_history_prefix_system": """Önceki sohbetlerin özeti: """,
+    "chat_product_context_system": """
+Şu an seçili ürün:
+- Ad: {name}
+- Kategori: {category}
+- Fiyat: {price}
+- SKU: {sku}
+- Durum: {status}
+- Meta Title: {meta_title}
+- Meta Description: {meta_description}
+- Etiketler: {tags}
+- Açıklama (özet): {description_preview}""",
+    "chat_score_context_system": """
+SEO Skoru: {total_score}/100
+- Özet Lensler: SEO {seo_score}/100 | GEO {geo_score}/100 | AEO {aeo_score}/100
+- Başlık: {title_score}/15
+- Açıklama: {description_score}/20
+- EN Açıklama: {english_description_score}/5
+- Meta Title: {meta_score}/15
+- Meta Description: {meta_desc_score}/10
+- Anahtar Kelime: {keyword_score}/10
+- İçerik Kalitesi: {content_quality_score}/10
+- Teknik SEO: {technical_seo_score}/10
+- Okunabilirlik: {readability_score}/5
+- AI Alıntılama: {ai_citability_score}/10
+Sorunlar: {issues}
+
+ÖNCELİK KURALI: Analiz ve öneri sunarken EN DÜŞÜK yüzdelik skora sahip alanlardan başla.
+0 puan olan alanlar KRİTİK önceliklidir ve mutlaka ilk sırada belirtilmelidir.
+Yüksek puan alan alanları (>=80%) "güçlü" olarak işle ve onları değiştirmeyi önceliklendirme.
+
+ANALİZ SONRASI SEÇENEK KURALI:
+İlk SEO analizi yaptıktan sonra yanıtın sonunda kullanıcıya alanları TEKER TEKER iyileştirmek
+için seçenekler sun. Seçenekler aşağıdaki sırada verilmeli (en düşük yüzdelik skor birinci):
+{field_priority_options}
+Bu seçenekleri aynen bu sırada ve formatta yanıtın sonuna JSON olarak ekle.
+Kullanıcı bir alanı seçtikten sonra SADECE o alan için somut bir SEO değeri oluştur.""",
+    "chat_semantic_routing_system": """Sen bir niyet tespit (intent detection) asistanısın. Kullanıcının mesajını 3 ajandan birine yönlendir: seo, operator veya general. Eğer mesaj stok, fiyat, sipariş, müşteri, varyant veya canlı mağaza verisi gerektiriyorsa operator. Eğer mesaj SEO, metin yazarlığı, içerik önerisi veya yeniden yazım ise seo. Diğer durumlarda general dön. SADECE AŞAĞIDAKİ GİBİ GEÇERLİ BİR JSON DÖN: {"agent_type": "seo"|"operator"|"general"}""",
+    "chat_save_tool_system": """Kullanıcı sohbet sırasında sunulan SEO değişikliklerini onaylayıp 'uygula', 'kaydet', 'evet' veya 'bunu seçtim' dediğinde arka planda SEO öneri kaydetme aracını çağır. Bu araç değişiklikleri anında uygulamaz; sadece bu chat oturumunda bekleyen taslak olarak tutar. Kullanıcıya araç adını, teknik detayları veya operasyon rehberini GÖSTERME; onay aldıktan sonra sessizce çağır.""",
+    "chat_apply_extraction_system": """Sen bir SEO suggestion extraction asistanısın. Görevin, sadece sohbet geçmişindeki açık ve uygulanabilir SEO değişikliklerini seçili ürün için `save_seo_suggestion` aracına dönüştürmektir. Asla yeni içerik uydurma. Sadece geçmişte net olarak geçen nihai değerleri kaydet. Kullanıcı kapsam daralttıysa (orn: sadece meta title), sadece o alanları kaydet. Desteklenen alanlar: suggested_name, suggested_meta_title, suggested_meta_description, suggested_description, suggested_description_en. Kaydedilecek net bir değer yoksa tool çağırma ve yalnızca `NO_SUGGESTION_FOUND` yaz.""",
+    "chat_suggestion_options_system": """Eğer birden fazla seçenek üretiyorsan, yanıtının sonuna
+```json
+[{"tone":"Agresif","value":"..."}]
+```
+formatında gizli bir blok ekle. Bu blok yalnızca geçerli bir JSON dizisi içersin.""",
+    "chat_false_action_disclaimer_system": """
+---
+⚠️ **Not:** Yukarıdaki öneriler henüz uygulanmadı. Değişiklikleri chat üzerinden seçili üründe uygulamak için:
+- 'Uygula' veya 'kaydet' diyerek onay akışına girin,
+- Sohbetteki **Öneriler** kartlarından birini onaylayın.""",
+    "chat_compact_options_system": """Analiz sonrası skor context'teki "ANALİZ SONRASI SEÇENEK KURALI" bölümündeki hazır JSON seçenek listesini AYNEN yanıtın sonuna ekle. Kendi listeni uydurma.
+SEO değer önerisi verirken değerleri düz metin değil, JSON formatında sun.""",
     "rewrite_agent_system": """Sen bir SEO optimizasyon agentisin.
 Görevin verilen ürünü analiz edip, SEO skorunu maximize edecek şekilde optimize etmek.
 
@@ -456,6 +535,69 @@ PROMPT_EDITOR_META = {
         "variables": (),
         "height": 200,
     },
+    # Chat flow internal prompts
+    "chat_memory_summarization_system": {
+        "title": "Gecmis Ozetleme Promptu",
+        "description": "Uzun sohbet gecmisini tek paragrafa ozetlemek icin AI'a gonderilen talimat.",
+        "variables": (),
+        "height": 80,
+    },
+    "chat_history_prefix_system": {
+        "title": "Gecmis Ozet Oneki",
+        "description": "Ozetlenmis sohbet gecmisi sistem mesajina eklenirken kullanilan onek metni.",
+        "variables": (),
+        "height": 40,
+    },
+    "chat_product_context_system": {
+        "title": "Urun Baglam Sablonu",
+        "description": "Secili urunun bilgilerini AI'a iletmek icin kullanilan sablon. Runtime'da {name}, {category} vb. enjekte edilir.",
+        "variables": (),
+        "runtime_variables": ("name", "category", "price", "sku", "status", "meta_title", "meta_description", "tags", "description_preview"),
+        "height": 180,
+    },
+    "chat_score_context_system": {
+        "title": "SEO Skor Baglam Sablonu",
+        "description": "Urunun SEO skor kirilimini AI'a iletmek icin kullanilan sablon. Runtime'da skor alanlari ve {field_priority_options} enjekte edilir.",
+        "variables": (),
+        "runtime_variables": ("total_score", "seo_score", "geo_score", "aeo_score", "title_score", "description_score", "english_description_score", "meta_score", "meta_desc_score", "keyword_score", "content_quality_score", "technical_seo_score", "readability_score", "ai_citability_score", "issues", "field_priority_options"),
+        "height": 300,
+    },
+    "chat_semantic_routing_system": {
+        "title": "Semantik Yonlendirme Promptu",
+        "description": "Kullanici mesajini seo/operator/general ajanlarindan birine yonlendirmek icin AI'a gonderilen talimat.",
+        "variables": (),
+        "height": 120,
+    },
+    "chat_save_tool_system": {
+        "title": "Oneri Kaydetme Arac Talimati",
+        "description": "AI'a save_seo_suggestion aracini ne zaman ve nasil cagirmasi gerektigini bildiren talimat.",
+        "variables": (),
+        "height": 120,
+    },
+    "chat_apply_extraction_system": {
+        "title": "Oneri Cikarma Promptu",
+        "description": "Sohbet gecmisinden uygulanabilir SEO degisikliklerini cikarmak icin AI'a gonderilen talimat.",
+        "variables": (),
+        "height": 150,
+    },
+    "chat_suggestion_options_system": {
+        "title": "Secenek Formati Talimati",
+        "description": "Birden fazla secenek uretildiginde JSON blok formatini tanimlar.",
+        "variables": (),
+        "height": 80,
+    },
+    "chat_false_action_disclaimer_system": {
+        "title": "Yanlis Islem Uyarisi",
+        "description": "AI gerceklestirmeden islem yaptigini iddia ettiginde eklenen uyari metni.",
+        "variables": (),
+        "height": 80,
+    },
+    "chat_compact_options_system": {
+        "title": "Kompakt Secenek Talimati",
+        "description": "Yerel modeller (Ollama, LM Studio) icin kisaltilmis secenek buton talimati.",
+        "variables": (),
+        "height": 60,
+    },
     # Autonomous agent prompts
     "rewrite_agent_system": {
         "title": "Rewrite Agent",
@@ -487,7 +629,7 @@ PROMPT_LAYERING_ORDER: list[dict[str, object]] = [
         "layers": [
             {
                 "order": 1,
-                "prompt_key": None,
+                "prompt_key": "chat_semantic_routing_system",
                 "label": "Agent Persona (Routing)",
                 "description": "Semantik routing ile seo / operator / general ajanlarindan biri secilir.",
                 "linked_keys": ["agent_seo_expert_system", "agent_store_operator_system", "agent_general_system"],
@@ -508,14 +650,14 @@ PROMPT_LAYERING_ORDER: list[dict[str, object]] = [
             },
             {
                 "order": 4,
-                "prompt_key": None,
+                "prompt_key": "chat_product_context_system",
                 "label": "Urun Baglami",
                 "description": "Secili urunun adi, kategorisi, fiyati, SKU, meta alanlari ve aciklama ozeti.",
                 "linked_keys": [],
             },
             {
                 "order": 5,
-                "prompt_key": None,
+                "prompt_key": "chat_score_context_system",
                 "label": "SEO Skor Baglami",
                 "description": "Urunun 100 uzerinden SEO skoru, alan bazli kirilimlar ve sorunlar listesi.",
                 "linked_keys": [],

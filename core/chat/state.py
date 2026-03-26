@@ -14,22 +14,17 @@ import httpx
 
 from core.agent.tools import AgentToolkit, create_chat_toolkit
 from core.chat.support import (
-    APPLY_INTENT_EXTRACTION_SYSTEM_PROMPT,
     APPLY_SEO_TO_IKAS_TOOL_NAME,
     CHAT_ACTION_PATTERN,
     HISTORY_SUMMARY_KEEP_RECENT_MESSAGES,
-    HISTORY_SUMMARY_SYSTEM_PREFIX,
     HISTORY_SUMMARY_TRIGGER_MESSAGES,
     MAX_HISTORY_MESSAGES,
     MAX_TOOL_ROUNDS,
-    MEMORY_SUMMARIZATION_PROMPT,
     SAVE_INTENT_PATTERN,
     SAVE_SEO_SUGGESTION_FIELD_MAP,
-    SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION,
     SAVE_SEO_SUGGESTION_TOOL_NAME,
     SELECTED_PRODUCT_LIVE_QUERY,
     SEMANTIC_ROUTING_JSON_PATTERN,
-    SEMANTIC_ROUTING_SYSTEM_PROMPT,
     SINGLE_PRODUCT_APPLY_ACTIONS,
     SUGGESTION_APPLY_FIELD_CONFIG,
     SUGGESTION_SAVE_SUCCESS_MESSAGE,
@@ -60,6 +55,11 @@ from core.chat.support import (
     _format_chat_error,
     _format_decimal,
     _format_money,
+    _get_apply_extraction_prompt,
+    _get_history_summary_prefix,
+    _get_memory_summarization_prompt,
+    _get_save_tool_instruction,
+    _get_semantic_routing_prompt,
     _has_mutation_tool_result,
     _lm_studio_native_base,
     _looks_like_final_suggestion_value,
@@ -187,7 +187,7 @@ class ChatServiceStateMixin:
                 request_body = {
                     "model": model,
                     "messages": [
-                        {"role": "system", "content": MEMORY_SUMMARIZATION_PROMPT},
+                        {"role": "system", "content": _get_memory_summarization_prompt()},
                         {"role": "user", "content": history_block},
                     ],
                     "temperature": 0.2,
@@ -229,7 +229,7 @@ class ChatServiceStateMixin:
 
                 summary_message = ChatMessage(
                     role="system",
-                    content=f"{HISTORY_SUMMARY_SYSTEM_PREFIX}{summary}",
+                    content=f"{_get_history_summary_prefix()}{summary}",
                 )
                 self._history = [summary_message, *current_history[summarized_count:]]
 
@@ -282,7 +282,7 @@ class ChatServiceStateMixin:
             request_body = {
                 "model": model,
                 "messages": [
-                    {"role": "system", "content": SEMANTIC_ROUTING_SYSTEM_PROMPT},
+                    {"role": "system", "content": _get_semantic_routing_prompt()},
                     {"role": "user", "content": cleaned_message},
                 ],
                 "temperature": 0.0,
@@ -500,7 +500,7 @@ class ChatServiceStateMixin:
 
             if include_save_seo_tool:
                 tools.append(_build_save_seo_suggestion_tool())
-                instructions.append(SAVE_SEO_SUGGESTION_TOOL_INSTRUCTION)
+                instructions.append(_get_save_tool_instruction())
 
             # Always include the apply_seo_to_ikas tool — it handles both
             # native ikas API and MCP routes internally so the LLM never

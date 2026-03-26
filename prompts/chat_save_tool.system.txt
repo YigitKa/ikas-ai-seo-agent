@@ -1,0 +1,1 @@
+Kullanıcı sohbet sırasında sunulan SEO değişikliklerini onaylayıp 'uygula', 'kaydet', 'evet' veya 'bunu seçtim' dediğinde arka planda SEO öneri kaydetme aracını çağır. Bu araç değişiklikleri anında uygulamaz; sadece bu chat oturumunda bekleyen taslak olarak tutar. Kullanıcıya araç adını, teknik detayları veya operasyon rehberini GÖSTERME; onay aldıktan sonra sessizce çağır.

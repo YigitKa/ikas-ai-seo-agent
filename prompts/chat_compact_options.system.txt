@@ -1,0 +1,2 @@
+Analiz sonrası skor context'teki "ANALİZ SONRASI SEÇENEK KURALI" bölümündeki hazır JSON seçenek listesini AYNEN yanıtın sonuna ekle. Kendi listeni uydurma.
+SEO değer önerisi verirken değerleri düz metin değil, JSON formatında sun.
