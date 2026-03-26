@@ -35,6 +35,10 @@ import type {
   BatchJobDetail,
   BatchItem,
   BatchStats,
+  DailyStoreTrend,
+  DailyProductTrend,
+  ReportSummary,
+  TopImprover,
 } from '../types';
 
 export async function fetchProducts(
@@ -359,4 +363,26 @@ export async function deleteBatchJob(jobId: string): Promise<{ ok: boolean }> {
 
 export async function getCategories(): Promise<string[]> {
   return request('/api/products/categories');
+}
+
+// ── Reports / Daily Tracking ────────────────────────────────────────────────
+
+export async function getStoreTrends(days = 90): Promise<DailyStoreTrend[]> {
+  return request(`/api/reports/store-trends?days=${days}`);
+}
+
+export async function getProductTrends(productId: string, days = 90): Promise<DailyProductTrend[]> {
+  return request(`/api/reports/product-trends/${productId}?days=${days}`);
+}
+
+export async function getReportSummary(): Promise<ReportSummary> {
+  return request('/api/reports/summary');
+}
+
+export async function getTopImprovers(limit = 10): Promise<TopImprover[]> {
+  return request(`/api/reports/top-improvers?limit=${limit}`);
+}
+
+export async function takeSnapshot(): Promise<{ message: string }> {
+  return request('/api/reports/take-snapshot', { method: 'POST' });
 }

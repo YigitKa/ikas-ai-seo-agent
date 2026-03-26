@@ -337,3 +337,63 @@ export interface BatchStats {
   avg_score_improvement: number;
   active_job: BatchJob | null;
 }
+
+// ── Reports / Daily Tracking ────────────────────────────────────────────────
+
+export interface DailyStoreTrend {
+  snapshot_date: string;
+  product_count: number;
+  avg_total: number;
+  avg_seo: number;
+  avg_geo: number;
+  avg_aeo: number;
+  avg_title: number;
+  avg_description: number;
+  avg_english_description: number;
+  avg_meta: number;
+  avg_meta_desc: number;
+  avg_keyword: number;
+  avg_content_quality: number;
+  avg_technical_seo: number;
+  avg_readability: number;
+  avg_ai_citability: number;
+  avg_issues: number;
+}
+
+export interface DailyProductTrend {
+  snapshot_date: string;
+  total_score: number;
+  seo_score: number;
+  geo_score: number;
+  aeo_score: number;
+  title_score: number;
+  description_score: number;
+  english_description_score: number;
+  meta_score: number;
+  meta_desc_score: number;
+  keyword_score: number;
+  content_quality_score: number;
+  technical_seo_score: number;
+  readability_score: number;
+  ai_citability_score: number;
+  issues_count: number;
+}
+
+export interface ReportSummary {
+  first_date: string | null;
+  latest_date: string | null;
+  days_tracked: number;
+  total_products: number;
+  snapshot_count: number;
+  first_avg: Record<string, number>;
+  latest_avg: Record<string, number>;
+  improvement: Record<string, number>;
+}
+
+export interface TopImprover {
+  product_id: string;
+  product_name: string;
+  first_score: number;
+  latest_score: number;
+  delta: number;
+}

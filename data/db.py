@@ -131,6 +131,35 @@ CREATE TABLE IF NOT EXISTS batch_items (
 
 CREATE INDEX IF NOT EXISTS idx_batch_items_job ON batch_items(job_id);
 CREATE INDEX IF NOT EXISTS idx_batch_items_product ON batch_items(product_id);
+
+CREATE TABLE IF NOT EXISTS daily_score_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_date TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    product_name TEXT,
+    total_score INTEGER,
+    seo_score INTEGER,
+    geo_score INTEGER,
+    aeo_score INTEGER,
+    title_score INTEGER,
+    description_score INTEGER,
+    english_description_score INTEGER,
+    meta_score INTEGER,
+    meta_desc_score INTEGER,
+    keyword_score INTEGER,
+    content_quality_score INTEGER,
+    technical_seo_score INTEGER,
+    readability_score INTEGER,
+    ai_citability_score INTEGER,
+    issues_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_snapshots_date_product
+ON daily_score_snapshots(snapshot_date, product_id);
+
+CREATE INDEX IF NOT EXISTS idx_daily_snapshots_date
+ON daily_score_snapshots(snapshot_date);
 """
 
 
@@ -1116,3 +1145,297 @@ async def get_batch_stats() -> dict:
         "avg_score_improvement": avg_improvement,
         "active_job": _row_to_batch_job(active_row) if active_row else None,
     }
+
+
+# ── Daily score snapshot helpers ─────────────────────────────────────────────
+
+
+async def has_daily_snapshot(snapshot_date: str) -> bool:
+    """Check if a daily snapshot already exists for the given date (YYYY-MM-DD)."""
+    async with connection() as conn:
+        async with conn.execute(
+            "SELECT COUNT(*) AS count FROM daily_score_snapshots WHERE snapshot_date = ?",
+            (snapshot_date,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return int(row["count"]) > 0 if row else False
+
+
+async def save_daily_snapshots(
+    snapshot_date: str,
+    results: list[tuple["Product", "SeoScore"]],
+) -> None:
+    """Bulk-insert daily score snapshots. Uses INSERT OR IGNORE for idempotency."""
+    if not results:
+        return
+
+    now = _now_iso()
+    rows = [
+        (
+            snapshot_date,
+            product.id,
+            product.name,
+            score.total_score,
+            score.seo_score,
+            score.geo_score,
+            score.aeo_score,
+            score.title_score,
+            score.description_score,
+            score.english_description_score,
+            score.meta_score,
+            score.meta_desc_score,
+            score.keyword_score,
+            score.content_quality_score,
+            score.technical_seo_score,
+            score.readability_score,
+            score.ai_citability_score,
+            len(score.issues),
+            now,
+        )
+        for product, score in results
+    ]
+
+    async with connection() as conn:
+        await conn.executemany(
+            """
+            INSERT OR IGNORE INTO daily_score_snapshots (
+                snapshot_date, product_id, product_name,
+                total_score, seo_score, geo_score, aeo_score,
+                title_score, description_score, english_description_score,
+                meta_score, meta_desc_score, keyword_score,
+                content_quality_score, technical_seo_score,
+                readability_score, ai_citability_score,
+                issues_count, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        await conn.commit()
+
+
+async def get_store_daily_trends(days: int = 90) -> list[dict]:
+    """Return store-wide daily averages for the last N days."""
+    async with connection() as conn:
+        async with conn.execute(
+            """
+            SELECT
+                snapshot_date,
+                COUNT(*) AS product_count,
+                ROUND(AVG(total_score), 1) AS avg_total,
+                ROUND(AVG(seo_score), 1) AS avg_seo,
+                ROUND(AVG(geo_score), 1) AS avg_geo,
+                ROUND(AVG(aeo_score), 1) AS avg_aeo,
+                ROUND(AVG(title_score), 1) AS avg_title,
+                ROUND(AVG(description_score), 1) AS avg_description,
+                ROUND(AVG(english_description_score), 1) AS avg_english_description,
+                ROUND(AVG(meta_score), 1) AS avg_meta,
+                ROUND(AVG(meta_desc_score), 1) AS avg_meta_desc,
+                ROUND(AVG(keyword_score), 1) AS avg_keyword,
+                ROUND(AVG(content_quality_score), 1) AS avg_content_quality,
+                ROUND(AVG(technical_seo_score), 1) AS avg_technical_seo,
+                ROUND(AVG(readability_score), 1) AS avg_readability,
+                ROUND(AVG(ai_citability_score), 1) AS avg_ai_citability,
+                ROUND(AVG(issues_count), 1) AS avg_issues
+            FROM daily_score_snapshots
+            WHERE snapshot_date >= DATE('now', ? || ' days')
+            GROUP BY snapshot_date
+            ORDER BY snapshot_date ASC
+            """,
+            (f"-{days}",),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+async def get_product_daily_trends(product_id: str, days: int = 90) -> list[dict]:
+    """Return daily score history for a single product."""
+    async with connection() as conn:
+        async with conn.execute(
+            """
+            SELECT
+                snapshot_date,
+                total_score, seo_score, geo_score, aeo_score,
+                title_score, description_score, english_description_score,
+                meta_score, meta_desc_score, keyword_score,
+                content_quality_score, technical_seo_score,
+                readability_score, ai_citability_score,
+                issues_count
+            FROM daily_score_snapshots
+            WHERE product_id = ? AND snapshot_date >= DATE('now', ? || ' days')
+            ORDER BY snapshot_date ASC
+            """,
+            (product_id, f"-{days}"),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+async def get_daily_summary() -> dict:
+    """Compare first snapshot date averages vs latest snapshot date averages."""
+    async with connection() as conn:
+        # Get first and latest snapshot dates
+        async with conn.execute(
+            "SELECT MIN(snapshot_date) AS first_date, MAX(snapshot_date) AS latest_date FROM daily_score_snapshots"
+        ) as cursor:
+            dates_row = await cursor.fetchone()
+
+        if not dates_row or not dates_row["first_date"]:
+            return {
+                "first_date": None, "latest_date": None, "days_tracked": 0,
+                "total_products": 0, "snapshot_count": 0,
+                "first_avg": {}, "latest_avg": {}, "improvement": {},
+            }
+
+        first_date = dates_row["first_date"]
+        latest_date = dates_row["latest_date"]
+
+        # Count distinct snapshot dates
+        async with conn.execute(
+            "SELECT COUNT(DISTINCT snapshot_date) AS cnt FROM daily_score_snapshots"
+        ) as cursor:
+            snap_row = await cursor.fetchone()
+            snapshot_count = int(snap_row["cnt"]) if snap_row else 0
+
+        # Count products in latest snapshot
+        async with conn.execute(
+            "SELECT COUNT(*) AS cnt FROM daily_score_snapshots WHERE snapshot_date = ?",
+            (latest_date,),
+        ) as cursor:
+            cnt_row = await cursor.fetchone()
+            total_products = int(cnt_row["cnt"]) if cnt_row else 0
+
+        # Get averages for first date
+        async with conn.execute(
+            """
+            SELECT
+                ROUND(AVG(total_score), 1) AS total,
+                ROUND(AVG(seo_score), 1) AS seo,
+                ROUND(AVG(geo_score), 1) AS geo,
+                ROUND(AVG(aeo_score), 1) AS aeo,
+                ROUND(AVG(title_score), 1) AS title,
+                ROUND(AVG(description_score), 1) AS description,
+                ROUND(AVG(english_description_score), 1) AS english_description,
+                ROUND(AVG(meta_score), 1) AS meta,
+                ROUND(AVG(meta_desc_score), 1) AS meta_desc,
+                ROUND(AVG(keyword_score), 1) AS keyword,
+                ROUND(AVG(content_quality_score), 1) AS content_quality,
+                ROUND(AVG(technical_seo_score), 1) AS technical_seo,
+                ROUND(AVG(readability_score), 1) AS readability,
+                ROUND(AVG(ai_citability_score), 1) AS ai_citability,
+                ROUND(AVG(issues_count), 1) AS issues
+            FROM daily_score_snapshots WHERE snapshot_date = ?
+            """,
+            (first_date,),
+        ) as cursor:
+            first_row = await cursor.fetchone()
+
+        # Get averages for latest date
+        async with conn.execute(
+            """
+            SELECT
+                ROUND(AVG(total_score), 1) AS total,
+                ROUND(AVG(seo_score), 1) AS seo,
+                ROUND(AVG(geo_score), 1) AS geo,
+                ROUND(AVG(aeo_score), 1) AS aeo,
+                ROUND(AVG(title_score), 1) AS title,
+                ROUND(AVG(description_score), 1) AS description,
+                ROUND(AVG(english_description_score), 1) AS english_description,
+                ROUND(AVG(meta_score), 1) AS meta,
+                ROUND(AVG(meta_desc_score), 1) AS meta_desc,
+                ROUND(AVG(keyword_score), 1) AS keyword,
+                ROUND(AVG(content_quality_score), 1) AS content_quality,
+                ROUND(AVG(technical_seo_score), 1) AS technical_seo,
+                ROUND(AVG(readability_score), 1) AS readability,
+                ROUND(AVG(ai_citability_score), 1) AS ai_citability,
+                ROUND(AVG(issues_count), 1) AS issues
+            FROM daily_score_snapshots WHERE snapshot_date = ?
+            """,
+            (latest_date,),
+        ) as cursor:
+            latest_row = await cursor.fetchone()
+
+    first_avg = dict(first_row) if first_row else {}
+    latest_avg = dict(latest_row) if latest_row else {}
+
+    improvement = {}
+    for key in first_avg:
+        f_val = float(first_avg.get(key) or 0)
+        l_val = float(latest_avg.get(key) or 0)
+        improvement[key] = round(l_val - f_val, 1)
+
+    return {
+        "first_date": first_date,
+        "latest_date": latest_date,
+        "days_tracked": snapshot_count,
+        "total_products": total_products,
+        "snapshot_count": snapshot_count,
+        "first_avg": first_avg,
+        "latest_avg": latest_avg,
+        "improvement": improvement,
+    }
+
+
+async def get_top_improvers(limit: int = 10) -> list[dict]:
+    """Return products with the biggest total_score improvement (first vs latest snapshot)."""
+    async with connection() as conn:
+        async with conn.execute(
+            "SELECT MIN(snapshot_date) AS first_date, MAX(snapshot_date) AS latest_date FROM daily_score_snapshots"
+        ) as cursor:
+            dates_row = await cursor.fetchone()
+
+        if not dates_row or not dates_row["first_date"] or dates_row["first_date"] == dates_row["latest_date"]:
+            return []
+
+        first_date = dates_row["first_date"]
+        latest_date = dates_row["latest_date"]
+
+        async with conn.execute(
+            """
+            SELECT
+                f.product_id,
+                f.product_name,
+                f.total_score AS first_score,
+                l.total_score AS latest_score,
+                (l.total_score - f.total_score) AS delta
+            FROM daily_score_snapshots f
+            JOIN daily_score_snapshots l
+                ON f.product_id = l.product_id
+            WHERE f.snapshot_date = ? AND l.snapshot_date = ?
+            ORDER BY delta DESC
+            LIMIT ?
+            """,
+            (first_date, latest_date, limit),
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+    return [dict(row) for row in rows]
+
+
+async def get_snapshot_dates() -> list[str]:
+    """Return all distinct snapshot dates."""
+    async with connection() as conn:
+        async with conn.execute(
+            "SELECT DISTINCT snapshot_date FROM daily_score_snapshots ORDER BY snapshot_date ASC"
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [row["snapshot_date"] for row in rows]
+
+
+async def get_snapshot_products(snapshot_date: str) -> list[dict]:
+    """Return all product scores for a specific snapshot date."""
+    async with connection() as conn:
+        async with conn.execute(
+            """
+            SELECT product_id, product_name, total_score, seo_score, geo_score, aeo_score,
+                   title_score, description_score, english_description_score,
+                   meta_score, meta_desc_score, keyword_score,
+                   content_quality_score, technical_seo_score,
+                   readability_score, ai_citability_score, issues_count
+            FROM daily_score_snapshots
+            WHERE snapshot_date = ?
+            ORDER BY total_score DESC
+            """,
+            (snapshot_date,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(row) for row in rows]

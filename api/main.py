@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -13,9 +14,10 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.dependencies import close_manager
-from api.routers import products, seo, suggestions, settings, chat, llms, batch
+from api.routers import products, seo, suggestions, settings, chat, llms, batch, reports
 from data import db
 from core.llms.service import llms_service
+from core.services.daily_tracker import run_daily_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +36,20 @@ class SPAStaticFiles(StaticFiles):
             return await super().get_response("index.html", scope)
 
 
+async def _run_daily_snapshot_safe() -> None:
+    """Run daily snapshot in background, never crash the server."""
+    try:
+        await run_daily_snapshot()
+    except Exception:
+        logger.warning("Daily score snapshot failed", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting ikas AI SEO Agent API")
     await db.init_db()
     await llms_service.bootstrap()
+    asyncio.create_task(_run_daily_snapshot_safe())
     yield
     await close_manager()
     logger.info("Shut down ikas AI SEO Agent API")
@@ -66,6 +77,7 @@ app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(llms.router, prefix="/api/llms", tags=["llms"])
 app.include_router(batch.router, prefix="/api/batch", tags=["batch"])
 app.include_router(chat.router, tags=["chat"])
+app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 
 
 # ── Health check ─────────────────────────────────────────────────────────────
