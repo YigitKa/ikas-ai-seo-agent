@@ -34,7 +34,7 @@ def _build_config(**overrides) -> AppConfig:
         "ai_model_name": "",
         "ai_temperature": 0.7,
         "ai_max_tokens": 2000,
-        "ai_thinking_mode": False,
+        "ai_thinking_mode_batch": False,
         "store_languages": ["tr"],
     }
     values.update(overrides)
@@ -155,10 +155,10 @@ def test_anthropic_client_prefers_ai_api_key_over_legacy():
 
 def test_anthropic_client_thinking_mode_flag():
     with patch("anthropic.Anthropic"):
-        client = AnthropicAIClient(_build_config(ai_thinking_mode=True))
+        client = AnthropicAIClient(_build_config(ai_thinking_mode_batch=True))
         assert client._thinking_mode is True
 
-        client2 = AnthropicAIClient(_build_config(ai_thinking_mode=False))
+        client2 = AnthropicAIClient(_build_config(ai_thinking_mode_batch=False))
         assert client2._thinking_mode is False
 
 
@@ -167,7 +167,7 @@ def test_anthropic_client_thinking_mode_flag():
 
 def test_build_create_kwargs_normal_mode():
     with patch("anthropic.Anthropic"):
-        client = AnthropicAIClient(_build_config(ai_thinking_mode=False))
+        client = AnthropicAIClient(_build_config(ai_thinking_mode_batch=False))
         kwargs = client._build_create_kwargs("System", "User msg", 2000)
 
     assert kwargs["model"] == DEFAULT_MODELS["anthropic"]
@@ -180,7 +180,7 @@ def test_build_create_kwargs_normal_mode():
 
 def test_build_create_kwargs_thinking_mode():
     with patch("anthropic.Anthropic"):
-        client = AnthropicAIClient(_build_config(ai_thinking_mode=True))
+        client = AnthropicAIClient(_build_config(ai_thinking_mode_batch=True))
         kwargs = client._build_create_kwargs("System", "User", 2000)
 
     assert kwargs["temperature"] == 1  # Required for extended thinking
@@ -191,7 +191,7 @@ def test_build_create_kwargs_thinking_mode():
 
 def test_build_create_kwargs_thinking_budget_minimum():
     with patch("anthropic.Anthropic"):
-        client = AnthropicAIClient(_build_config(ai_thinking_mode=True, ai_max_tokens=500))
+        client = AnthropicAIClient(_build_config(ai_thinking_mode_batch=True, ai_max_tokens=500))
         kwargs = client._build_create_kwargs("Sys", "User", 500)
 
     assert kwargs["thinking"]["budget_tokens"] == 1024  # Minimum 1024
@@ -212,7 +212,7 @@ def test_extract_response_text_only():
 
 def test_extract_response_with_native_thinking():
     with patch("anthropic.Anthropic"):
-        client = AnthropicAIClient(_build_config(ai_thinking_mode=True))
+        client = AnthropicAIClient(_build_config(ai_thinking_mode_batch=True))
 
     response = _mock_anthropic_response(
         '{"suggested_name": "Optimized"}',
@@ -340,7 +340,7 @@ def test_rewrite_product_with_thinking_mode():
     mock_client.messages.create.return_value = response
 
     with patch("anthropic.Anthropic", return_value=mock_client):
-        client = AnthropicAIClient(_build_config(ai_thinking_mode=True))
+        client = AnthropicAIClient(_build_config(ai_thinking_mode_batch=True))
         suggestion = client.rewrite_product(_build_product(), _build_score())
 
     assert suggestion.thinking_text != ""
@@ -408,7 +408,7 @@ def test_rewrite_field_with_thinking_returns_tuple():
     mock_client.messages.create.return_value = response
 
     with patch("anthropic.Anthropic", return_value=mock_client):
-        client = AnthropicAIClient(_build_config(ai_thinking_mode=True))
+        client = AnthropicAIClient(_build_config(ai_thinking_mode_batch=True))
         result = client.rewrite_field("name", _build_product(), _build_score())
 
     assert isinstance(result, tuple)
@@ -467,7 +467,7 @@ def test_translate_description_to_en_with_thinking():
     mock_client.messages.create.return_value = response
 
     with patch("anthropic.Anthropic", return_value=mock_client):
-        client = AnthropicAIClient(_build_config(ai_thinking_mode=True))
+        client = AnthropicAIClient(_build_config(ai_thinking_mode_batch=True))
         result = client.translate_description_to_en(_build_product())
 
     assert isinstance(result, tuple)
@@ -608,7 +608,7 @@ def test_stream_message_with_thinking_events():
     mock_client.messages.stream.return_value = mock_stream_ctx
 
     with patch("anthropic.Anthropic", return_value=mock_client):
-        client = AnthropicAIClient(_build_config(ai_thinking_mode=True))
+        client = AnthropicAIClient(_build_config(ai_thinking_mode_batch=True))
         events = list(client.stream_message("System", "User"))
 
     thinking_events = [(t, c) for t, c in events if t in ("thinking", "thinking_start")]
@@ -635,7 +635,7 @@ def test_build_product_rewrite_request_for_anthropic():
 
 
 def test_build_field_rewrite_request_no_no_think_for_anthropic():
-    config = _build_config(ai_thinking_mode=False)
+    config = _build_config(ai_thinking_mode_batch=False)
     request = build_field_rewrite_request(config, "anthropic", "name", _build_product())
     assert "/no_think" not in request["system_prompt"]
 

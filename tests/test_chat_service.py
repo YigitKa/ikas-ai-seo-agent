@@ -242,6 +242,19 @@ def test_build_product_context_with_score():
     assert "Baslik cok kisa" in ctx
 
 
+def test_build_product_context_includes_all_score_fields():
+    product = _make_product()
+    score = _make_score(
+        total_score=76,
+        english_description_score=0,
+        ai_citability_score=8,
+    )
+    ctx = _build_product_context(product, score)
+    assert "EN Aciklama: 0/5" in ctx
+    assert "AI Alintilama: 8/10" in ctx
+    assert "ONCELIK KURALI" in ctx
+
+
 def test_extract_thinking():
     text = "Some text <think>This is my reasoning</think> Final answer"
     result = ChatService._extract_thinking(text)
@@ -446,7 +459,7 @@ def test_build_chat_tools_always_includes_save_suggestion_tool():
 
 @pytest.mark.anyio
 async def test_send_message_local_passes_only_save_suggestion_tool_even_if_mcp_ready():
-    config = _make_config(ai_provider="lm-studio", ai_thinking_mode=False)
+    config = _make_config(ai_provider="lm-studio", ai_thinking_mode_chat=False)
     service = ChatService(config)
     product = _make_product()
     service.set_product_context(product, _make_score())
@@ -483,7 +496,7 @@ async def test_send_message_local_passes_only_save_suggestion_tool_even_if_mcp_r
 
 @pytest.mark.anyio
 async def test_send_message_schedules_history_summarization_in_background(monkeypatch):
-    service = ChatService(_make_config(ai_provider="lm-studio", ai_thinking_mode=False))
+    service = ChatService(_make_config(ai_provider="lm-studio", ai_thinking_mode_chat=False))
     _stub_routing(service, False)
     scheduled: dict[str, str] = {}
 
@@ -506,7 +519,7 @@ async def test_send_message_schedules_history_summarization_in_background(monkey
 
 @pytest.mark.anyio
 async def test_send_message_appends_seo_operation_suggestion_for_existing_product_fields():
-    config = _make_config(ai_provider="lm-studio", ai_thinking_mode=False)
+    config = _make_config(ai_provider="lm-studio", ai_thinking_mode_chat=False)
     service = ChatService(config)
     service.set_product_context(_make_product(name="Bud Candy 250 ML"), _make_score())
 
@@ -636,7 +649,7 @@ def test_has_mutation_tool_result_detects_mutations():
 @pytest.mark.anyio
 async def test_send_message_adds_disclaimer_when_llm_hallucinates_action():
     """End-to-end: LLM claims it updated something in general mode → disclaimer appended."""
-    config = _make_config(ai_provider="lm-studio", ai_thinking_mode=False)
+    config = _make_config(ai_provider="lm-studio", ai_thinking_mode_chat=False)
     service = ChatService(config)
     service.set_product_context(_make_product(), _make_score())
 
@@ -883,7 +896,7 @@ async def test_stream_lm_studio_native_rejects_non_sse_content_type(monkeypatch)
 
 @pytest.mark.anyio
 async def test_stream_lm_studio_native_emits_reasoning_as_thinking_chunk(monkeypatch):
-    config = _make_config(ai_provider="lm-studio", ai_base_url="http://localhost:1234/v1", ai_thinking_mode=True)
+    config = _make_config(ai_provider="lm-studio", ai_base_url="http://localhost:1234/v1", ai_thinking_mode_chat=True)
     service = ChatService(config)
 
     lines = [
@@ -931,7 +944,7 @@ async def test_stream_lm_studio_native_emits_reasoning_as_thinking_chunk(monkeyp
 @pytest.mark.anyio
 async def test_async_stream_chat_compat_emits_reasoning_content_as_thinking_chunk(monkeypatch):
     """LM Studio / Qwen compat endpoint sends reasoning via delta.reasoning_content."""
-    config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1", ai_thinking_mode=True)
+    config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1", ai_thinking_mode_chat=True)
     service = ChatService(config)
 
     lines = [

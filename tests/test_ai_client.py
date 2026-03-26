@@ -31,7 +31,7 @@ def _build_config(**overrides) -> AppConfig:
         "ai_model_name": "qwen/qwen3.5-9b",
         "ai_temperature": 0.2,
         "ai_max_tokens": 4069,
-        "ai_thinking_mode": False,
+        "ai_thinking_mode_batch": False,
         "store_languages": ["tr"],
     }
     values.update(overrides)
@@ -71,8 +71,8 @@ def test_cap_field_max_tokens_limits_short_fields():
 
 
 def test_build_field_rewrite_request_adds_no_think_only_when_disabled():
-    thinking_off = build_field_rewrite_request(_build_config(ai_thinking_mode=False), "lm-studio", "name", _build_product())
-    thinking_on = build_field_rewrite_request(_build_config(ai_thinking_mode=True), "lm-studio", "name", _build_product())
+    thinking_off = build_field_rewrite_request(_build_config(ai_thinking_mode_batch=False), "lm-studio", "name", _build_product())
+    thinking_on = build_field_rewrite_request(_build_config(ai_thinking_mode_batch=True), "lm-studio", "name", _build_product())
 
     assert "/no_think" in thinking_off["system_prompt"]
     assert "/no_think" not in thinking_on["system_prompt"]
@@ -80,7 +80,7 @@ def test_build_field_rewrite_request_adds_no_think_only_when_disabled():
 
 
 def test_build_en_translation_request_uses_translation_prompt():
-    request = build_en_translation_request(_build_config(ai_thinking_mode=False), "lm-studio", _build_product())
+    request = build_en_translation_request(_build_config(ai_thinking_mode_batch=False), "lm-studio", _build_product())
 
     assert "Ingilizceye cevir" in request["user_prompt"]
     assert "SEO icin yeniden yazma, ceviri yap" in request["user_prompt"]
@@ -116,7 +116,7 @@ def test_build_desc_tr_request_loads_prompt_from_prompt_store(monkeypatch):
     monkeypatch.setattr("core.ai.requests.load_prompt_template", fake_load_prompt_template)
 
     request = build_field_rewrite_request(
-        _build_config(ai_thinking_mode=False, seo_target_keywords=["mikroskop", "mercek"]),
+        _build_config(ai_thinking_mode_batch=False, seo_target_keywords=["mikroskop", "mercek"]),
         "lm-studio",
         "desc_tr",
         _build_product(),
@@ -137,7 +137,7 @@ def test_build_translation_request_loads_prompt_from_prompt_store(monkeypatch):
 
     monkeypatch.setattr("core.ai.requests.load_prompt_template", fake_load_prompt_template)
 
-    request = build_en_translation_request(_build_config(ai_thinking_mode=False), "lm-studio", _build_product())
+    request = build_en_translation_request(_build_config(ai_thinking_mode_batch=False), "lm-studio", _build_product())
 
     assert request["system_prompt"].startswith("CUSTOM TRANSLATION SYSTEM")
     assert "Cevir: Nike Air Max 270 Kadin Spor Ayakkabi" in request["user_prompt"]

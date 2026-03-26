@@ -129,7 +129,8 @@ class SettingsResponse(BaseModel):
     ai_model_name: str = ""
     ai_temperature: float = 0.7
     ai_max_tokens: int = 2000
-    ai_thinking_mode: bool = False
+    ai_thinking_mode_chat: bool = False
+    ai_thinking_mode_batch: bool = False
     languages: str = "tr"
     keywords: str = ""
     dry_run: bool = True

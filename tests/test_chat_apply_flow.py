@@ -59,7 +59,7 @@ def _stub_routing(service: ChatService, agent_type: str = "general") -> None:
 
 @pytest.mark.anyio
 async def test_apply_uses_save_flow_then_returns_confirmation_options(monkeypatch):
-    service = ChatService(_make_config(ai_thinking_mode=False))
+    service = ChatService(_make_config(ai_thinking_mode_chat=False))
     _stub_routing(service)
     product = _make_product()
     service.set_product_context(product, _make_score())
@@ -95,7 +95,7 @@ async def test_apply_uses_save_flow_then_returns_confirmation_options(monkeypatc
 
 @pytest.mark.anyio
 async def test_save_intent_uses_deterministic_history_extraction_and_populates_panel(monkeypatch):
-    service = ChatService(_make_config(ai_thinking_mode=False))
+    service = ChatService(_make_config(ai_thinking_mode_chat=False))
     _stub_routing(service)
     product = _make_product(name="60X Mikroskop", meta_title="60X Mikroskop")
     service.set_product_context(product, _make_score())
@@ -135,7 +135,7 @@ async def test_save_intent_uses_deterministic_history_extraction_and_populates_p
 
 @pytest.mark.anyio
 async def test_explicit_ikas_apply_uses_deterministic_parser_when_llm_extractor_fails(monkeypatch):
-    service = ChatService(_make_config(ai_thinking_mode=False))
+    service = ChatService(_make_config(ai_thinking_mode_chat=False))
     _stub_routing(service)
     product = _make_product(name="60X Mikroskop", meta_title="60X Mikroskop")
     service.set_product_context(product, _make_score())

@@ -37,7 +37,8 @@ KEY_MAP = {
     "ai_model_name": "AI_MODEL_NAME",
     "ai_temperature": "AI_TEMPERATURE",
     "ai_max_tokens": "AI_MAX_TOKENS",
-    "ai_thinking_mode": "AI_THINKING_MODE",
+    "ai_thinking_mode_chat": "AI_THINKING_MODE_CHAT",
+    "ai_thinking_mode_batch": "AI_THINKING_MODE_BATCH",
     "languages": "STORE_LANGUAGES",
     "keywords": "SEO_TARGET_KEYWORDS",
     "dry_run": "DRY_RUN",
@@ -191,7 +192,8 @@ def get_config() -> AppConfig:
         ai_model_name=_getenv("AI_MODEL_NAME", overrides, ""),
         ai_temperature=_parse_float(_getenv("AI_TEMPERATURE", overrides) or None, 0.7),
         ai_max_tokens=_parse_int(_getenv("AI_MAX_TOKENS", overrides) or None, 2000),
-        ai_thinking_mode=_parse_bool(_getenv("AI_THINKING_MODE", overrides) or None, default=False),
+        ai_thinking_mode_chat=_parse_bool(_getenv("AI_THINKING_MODE_CHAT", overrides) or _getenv("AI_THINKING_MODE", overrides) or None, default=False),
+        ai_thinking_mode_batch=_parse_bool(_getenv("AI_THINKING_MODE_BATCH", overrides) or _getenv("AI_THINKING_MODE", overrides) or None, default=False),
         seo_low_score_threshold=_parse_int(_getenv("SEO_LOW_SCORE_THRESHOLD", overrides) or None, 70),
     )
     return _config

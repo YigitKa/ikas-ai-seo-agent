@@ -75,7 +75,8 @@ export interface SettingsData {
   ai_model_name: string;
   ai_temperature: number;
   ai_max_tokens: number;
-  ai_thinking_mode: boolean;
+  ai_thinking_mode_chat: boolean;
+  ai_thinking_mode_batch: boolean;
   languages: string;
   keywords: string;
   dry_run: boolean;

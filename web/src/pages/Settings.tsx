@@ -459,10 +459,16 @@ export default function Settings() {
                   onChange={(checked) => setValue('dry_run', checked)}
                 />
                 <ToggleField
-                  title="Thinking Mode"
-                  description="Destekleyen providerlarda daha detayli reasoning ister."
-                  checked={form.ai_thinking_mode}
-                  onChange={(checked) => setValue('ai_thinking_mode', checked)}
+                  title="Chat Thinking Mode"
+                  description="Chat akisinda derin dusunme (reasoning) ciktisini gosterir."
+                  checked={form.ai_thinking_mode_chat}
+                  onChange={(checked) => setValue('ai_thinking_mode_chat', checked)}
+                />
+                <ToggleField
+                  title="Toplu Islem Thinking Mode"
+                  description="Rewrite, ceviri ve toplu islemlerde derin dusunme aktif olur."
+                  checked={form.ai_thinking_mode_batch}
+                  onChange={(checked) => setValue('ai_thinking_mode_batch', checked)}
                 />
               </div>
             </SectionCard>

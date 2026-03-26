@@ -140,8 +140,14 @@ class AppConfig(BaseModel):
     ai_model_name: str = ""
     ai_temperature: float = 0.7
     ai_max_tokens: int = 2000
-    ai_thinking_mode: bool = False
+    ai_thinking_mode_chat: bool = False
+    ai_thinking_mode_batch: bool = False
     seo_low_score_threshold: int = 70
+
+    @property
+    def ai_thinking_mode(self) -> bool:
+        """Backward-compat alias — returns batch setting."""
+        return self.ai_thinking_mode_batch
 
 
 # ── Agent Architecture Models ────────────────────────────────────────────

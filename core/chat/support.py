@@ -66,13 +66,19 @@ SEO Skoru: {total_score}/100
 - Ozet Lensler: SEO {seo_score}/100 | GEO {geo_score}/100 | AEO {aeo_score}/100
 - Baslik: {title_score}/15
 - Aciklama: {description_score}/20
+- EN Aciklama: {english_description_score}/5
 - Meta Title: {meta_score}/15
 - Meta Description: {meta_desc_score}/10
 - Anahtar Kelime: {keyword_score}/10
 - Icerik Kalitesi: {content_quality_score}/10
 - Teknik SEO: {technical_seo_score}/10
 - Okunabilirlik: {readability_score}/5
-Sorunlar: {issues}"""
+- AI Alintilama: {ai_citability_score}/10
+Sorunlar: {issues}
+
+ONCELIK KURALI: Analiz ve oneri sunarken EN DUSUK yuzdelik skora sahip alanlardan basla.
+0 puan olan alanlar KRITIK onceliklidir ve mutlaka ilk sirada belirtilmelidir.
+Yuksek puan alan alanlari (>=80%) "guclu" olarak isle ve onlari degistirmeyi onceliklendirme."""
 
 # Legacy aliases kept for backward compat — not currently used by runtime code.
 IKAS_OPERATION_GUIDE_TR = ""  # loaded from file at runtime via load_prompt_template()
@@ -485,13 +491,15 @@ def _build_product_context(
             aeo_score=score.aeo_score,
             title_score=score.title_score,
             description_score=score.description_score,
+            english_description_score=score.english_description_score,
             meta_score=score.meta_score,
             meta_desc_score=score.meta_desc_score,
             keyword_score=score.keyword_score,
             content_quality_score=score.content_quality_score,
             technical_seo_score=score.technical_seo_score,
             readability_score=score.readability_score,
-            issues="; ".join(score.issues[:5]) if score.issues else "Yok",
+            ai_citability_score=score.ai_citability_score,
+            issues="; ".join(score.issues[:8]) if score.issues else "Yok",
         )
 
     agent_prompts = get_agent_system_prompts_tr()
@@ -536,7 +544,7 @@ def _build_tool_catalog_instruction(
 
 
 def _build_local_no_think_instruction(config: AppConfig) -> str | None:
-    if config.ai_thinking_mode:
+    if config.ai_thinking_mode_chat:
         return None
     # Providers whose models commonly produce <think> blocks
     if config.ai_provider in ("ollama", "lm-studio", "openrouter", "custom"):

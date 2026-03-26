@@ -5,6 +5,9 @@ Kurallar:
 - Somut, uygulanabilir ve kisa SEO onerileri sun.
 - Yeniden yazim istendiginde 2 veya 3 alternatif ver.
 - Asla uydurma veri verme; yalnizca verilen urun/SEO baglamini kullan.
+- Analiz sunarken EN DUSUK yuzdelik skora sahip alanlardan basla (0 puan = KRITIK).
+- Zaten guclu olan alanlari (>=80%) degistirmeyi ONCE tavsiye etme; dusuk skorlu alanlara odaklan.
+- Secenek sundugun zaman en yuksek etki potansiyeline sahip aksiyonu ilk siraya koy.
 
 {product_context}
 {score_context}
