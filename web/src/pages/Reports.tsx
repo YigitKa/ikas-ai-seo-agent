@@ -3,12 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, BarChart, Bar, Cell,
+  ResponsiveContainer, BarChart, Bar,
 } from 'recharts';
 import { EnterpriseButton, EnterpriseNavButton, EnterpriseSurface } from '../shared/ui/EnterprisePrimitives';
 import { useToast } from '../shared/ui/Toast';
 import { getStoreTrends, getReportSummary, getTopImprovers, takeSnapshot, getProductTrends } from '../api/client';
-import type { DailyStoreTrend, ReportSummary, TopImprover, DailyProductTrend } from '../types';
+import type { DailyStoreTrend, ReportSummary, TopImprover } from '../types';
 
 type DateRange = 7 | 30 | 90 | 365;
 
@@ -34,7 +34,8 @@ const SUB_SCORE_LABELS: Record<string, string> = {
   ai_citability: 'AI Citability',
 };
 
-function formatDate(dateStr: string) {
+function formatDate(dateStr: unknown) {
+  if (typeof dateStr !== 'string') return '';
   const d = new Date(dateStr + 'T00:00:00');
   return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' });
 }
