@@ -162,6 +162,16 @@ graph LR
 | Yapılandırılmış Veri | %10 |
 | Platform Optimizasyonu | %10 |
 
+### llms.txt Studio
+
+AI arama motorları ve asistanlar için daha okunabilir içerik blokları üretmek üzere `llms.txt` akışı ayrı bir stüdyo ekranında yönetilir. Sistem yeni veya güncellenen ürünleri kuyruklar, özetleri batch halinde üretir ve indirilebilir bir `llms.txt` çıktısına dönüştürür.
+
+<p align="center">
+  <img src="./assets/llmstxt.png" alt="llms.txt Studio ekranı" width="1100" />
+</p>
+
+<p align="center"><i>Özet kuyrukları, son üretilen bloklar ve indirilebilir `llms.txt` çıktısı tek ekranda yönetilir</i></p>
+
 ### Semantik Yönlendirmeli Multi-Agent Chat
 
 Chat paneli tek bir chatbot değil — **üç uzman ajan** ve otomatik yönlendirme:
@@ -195,6 +205,12 @@ graph TD
 
 Her kullanıcı mesajı LLM tarafından semantik olarak sınıflandırılır — etiket veya komut gerekmez. Stok sorguladığınızda Operatör'e, başlık optimize etmek istediğinizde SEO Uzmanı'na yönlendirilirsiniz.
 
+<p align="center">
+  <video src="./assets/ikasseo1.mp4" controls muted playsinline width="1100"></video>
+</p>
+
+<p align="center"><i>Chat kullanım videosu README önizlemesinde gömülü görünmezse <a href="./assets/ikasseo1.mp4">buradan açabilirsiniz</a></i></p>
+
 ### Uygulama Sonrası Doğrulama ve Skor Karşılaştırması
 
 Değişiklikler ikas'a uygulandıktan sonra sistem otomatik olarak:
@@ -202,6 +218,12 @@ Değişiklikler ikas'a uygulandıktan sonra sistem otomatik olarak:
 2. Lokal ürün verisini ve veritabanını günceller
 3. SEO analizini yeniden çalıştırır
 4. Eski/yeni skor farkını alan bazlı gösterir (ör: 📈 65/100 → 74/100, +9 puan)
+
+<p align="center">
+  <img src="./assets/batch1.png" alt="Karar ve uygulama masası ekranı" width="1100" />
+</p>
+
+<p align="center"><i>İnceleme masasında alan bazlı farklar görülür, öneriler tek tek veya toplu olarak onaylanabilir</i></p>
 
 ### Yapısal Seçenek Butonları
 
@@ -627,6 +649,12 @@ graph LR
     style VERIFY fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
 ```
 
+<p align="center">
+  <img src="./assets/dashboard.png" alt="ikas AI SEO Agent dashboard ekranı" width="1200" />
+</p>
+
+<p align="center"><i>Ürün listesi, SEO/GEO/AEO skorları ve çalışan ajan durumu aynı dashboard üzerinde izlenir</i></p>
+
 ### Katmanlı Prompt Mimarisi
 
 Tüm katmanlar **tek bir `system` mesajında** birleştirilir (qwen, llama gibi modellerin jinja template'leri birden fazla system mesajını desteklemez).
@@ -654,6 +682,12 @@ graph TB
 ```
 
 > **Compact Mode (Yerel Modeller):** LM Studio ve Ollama kullanılırken 3. katman (Operasyon Rehberi), 5. katman (Yönlendirme Talimatı) ve verbose tool talimatları otomatik olarak atlanır. Bunların yerine kısa bir JSON buton formatı talimatı eklenir. Bu sayede ~10K token'lık tam prompt yerine ~2-3K token'lık minimal prompt gönderilir.
+
+<p align="center">
+  <img src="./assets/promptsstudio.png" alt="Prompt Studio ekranı" width="900" />
+</p>
+
+<p align="center"><i>Prompt Studio ile sistem ve kullanıcı prompt'ları tek yerden düzenlenip katmanlı yapı korunur</i></p>
 
 ---
 
