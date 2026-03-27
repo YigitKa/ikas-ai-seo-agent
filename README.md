@@ -299,6 +299,40 @@ graph LR
 
 Bir AI analizi devam ederken başka bir ürüne tıklanırsa **ürün-geçiş koruma modali** açılır: analizi durdurup geç, bitmesini bekle veya iptal et seçenekleri sunulur.
 
+### Toplu SEO Optimizasyonu
+
+Yüzlerce ürünü tek tıklamayla optimize eden **5 aşamalı batch iş akışı**:
+
+```mermaid
+graph LR
+    S1["1. 🎯 Seç<br/><i>Skor eşiği, kategori<br/>stok durumu filtresi</i>"] --> S2["2. 🔍 Analiz<br/><i>AI paralel skorlama<br/>ve öneri üretimi</i>"]
+    S2 --> S3["3. 📋 İncele<br/><i>Alan bazlı onay/ret<br/>Yeniden üretim</i>"]
+    S3 --> S4["4. ⚙️ Uygula<br/><i>Gerçek zamanlı ilerleme<br/>ikas'a yazım</i>"]
+    S4 --> S5["5. ✅ Tamamlandı<br/><i>İş geçmişi + geri alma<br/>Skor karşılaştırması</i>"]
+
+    style S1 fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style S2 fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
+    style S3 fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style S4 fill:#1e293b,stroke:#10b981,color:#e2e8f0
+    style S5 fill:#1e293b,stroke:#10b981,color:#e2e8f0
+```
+
+- **Threshold tabanlı filtreleme** — skor eşiği, kategori ve stok durumuna göre ürün seçimi
+- **Toplu onay/ret** — tüm önerileri tek seferde ya da alan bazında onaylayın
+- **Alan bazlı yeniden üretim** — beğenmediğiniz tek bir alanı yeniden oluşturun
+- **Tam geri alma desteği** — tekil ürün veya tüm batch geri alınabilir
+
+### SEO/GEO Raporlama
+
+Skor geçmişini izleyen ve iyileşmeleri görselleştiren **analitik dashboard**:
+
+- **Trend grafikleri** — 7/30/90/365 günlük dönemlerde mağaza geneli skor eğrisi
+- **Alt-skor karşılaştırması** — ilk ve son anlık görüntü arasında 10+ boyutta bar grafiği (başlık, açıklama, meta alanlar, içerik kalitesi, okunabilirlik vb.)
+- **En çok gelişenler** — skor artışına göre sıralı ürün listesi
+- **Ürün bazlı drilldown** — her ürünün kendi trend grafiği
+- **Sorun trendi** — zaman içinde ortalama sorun sayısı takibi
+- **Anlık görüntü** — karşılaştırma için mevcut durumu elle kaydedin
+
 ### Varsayılan Olarak Güvenli
 
 `DRY_RUN=true` varsayılandır. Siz açıkça izin vermeden ikas mağazanıza hiçbir şey yazılmaz. Her öneri, uygulanmadan önce bir insan onay adımından geçer.
@@ -594,7 +628,8 @@ python -m pytest tests/ -v
 | `AI_MODEL_NAME` | Provider varsayılanı | Model seçimini geçersiz kıl |
 | `AI_TEMPERATURE` | `0.7` | Üretim yaratıcılığı |
 | `AI_MAX_TOKENS` | `2000` | Maks çıktı token |
-| `AI_THINKING_MODE` | `false` | Native extended thinking (Anthropic Claude - `temperature=1` zorunlu, budget otomatik ayarlanir) |
+| `AI_THINKING_MODE_CHAT` | `false` | Native extended thinking for chat (Anthropic Claude — `temperature=1` zorunlu, budget otomatik ayarlanır) |
+| `AI_THINKING_MODE_BATCH` | `false` | Native extended thinking for batch/agentic rewrites (Anthropic Claude — `temperature=1` zorunlu, budget otomatik ayarlanır) |
 | `IKAS_MCP_TOKEN` | — | Chat'te canlı mağaza sorgularını etkinleştirir |
 | `STORE_LANGUAGES` | `tr,en` | Desteklenen içerik dilleri |
 | `SEO_TARGET_KEYWORDS` | — | Virgülle ayrılmış hedef anahtar kelimeler |
@@ -725,7 +760,7 @@ ikas-ai-seo-agent/
 │   └── routers/                # products, seo, suggestions, settings, chat
 │
 ├── web/src/                    # React/TypeScript SPA
-│   ├── pages/                  # Dashboard, Settings, LlmsLab
+│   ├── pages/                  # Dashboard, Settings, LlmsLab, BatchOperations, Reports
 │   ├── components/             # ChatPanel, ProductTable, ScoreCard (Quick Wins)
 │   │   ├── chat/messages/      # MessageBubble, ToolResultCard (SEO agent + MCP), ThinkingBlock, CostCard
 │   │   └── dashboard/          # DashboardHeader (sync butonu), DashboardSidebar (boş arama durumu)
@@ -773,6 +808,35 @@ ikas-ai-seo-agent/
 | `PATCH` | `/api/suggestions/{id}/approve` | Öneriyi onayla |
 | `POST` | `/api/suggestions/apply` | Onaylananları ikas'a uygula |
 
+### Toplu İşlemler
+| Metod | Endpoint | Açıklama |
+|---|---|---|
+| `GET` | `/api/batch/stats` | Batch dashboard istatistikleri |
+| `GET` | `/api/batch/jobs` | Tüm batch işleri listele |
+| `POST` | `/api/batch/jobs` | Yeni batch iş oluştur ve analizi başlat |
+| `GET` | `/api/batch/jobs/{id}` | Batch iş detayı (öğelerle birlikte) |
+| `GET` | `/api/batch/jobs/{id}/stream` | SSE ile gerçek zamanlı ilerleme |
+| `POST` | `/api/batch/jobs/{id}/apply` | Onaylı önerileri ikas'a uygula |
+| `POST` | `/api/batch/jobs/{id}/stop` | Çalışan işi durdur |
+| `DELETE` | `/api/batch/jobs/{id}` | Batch işi sil |
+| `POST` | `/api/batch/jobs/{id}/rollback` | Tüm batch'i geri al |
+| `POST` | `/api/batch/items/{id}/rollback` | Tekil öğeyi geri al |
+| `POST` | `/api/batch/items/{id}/regenerate` | Öğeyi yeniden üret |
+| `POST` | `/api/batch/items/{id}/fields/{field}/regenerate` | Tek alanı yeniden üret |
+| `PATCH` | `/api/batch/items/{id}` | Öğeyi onayla / reddet |
+| `POST` | `/api/batch/items/bulk-decision` | Toplu onayla / reddet |
+
+### Raporlar
+| Metod | Endpoint | Açıklama |
+|---|---|---|
+| `GET` | `/api/reports/store-trends` | Mağaza geneli günlük skor ortalamaları |
+| `GET` | `/api/reports/product-trends/{id}` | Ürün bazlı skor geçmişi |
+| `GET` | `/api/reports/summary` | İlk / son anlık görüntü karşılaştırması |
+| `GET` | `/api/reports/top-improvers` | En çok gelişen ürünler |
+| `GET` | `/api/reports/snapshot-dates` | Tüm anlık görüntü tarihleri |
+| `GET` | `/api/reports/snapshot/{date}` | Belirli bir tarihin tüm skor verileri |
+| `POST` | `/api/reports/take-snapshot` | Anlık görüntü al (idempotent) |
+
 ### Gerçek Zamanlı
 | Protokol | Endpoint | Açıklama |
 |---|---|---|
@@ -819,7 +883,8 @@ Diger saglayicilar OpenAI-compatible endpoint kullanirken, Claude **native Anthr
 AI_PROVIDER=anthropic
 AI_API_KEY=sk-ant-api03-...  # Anthropic Console'dan alin
 AI_MODEL_NAME=claude-haiku-4-5-20251001  # Opsiyonel, varsayilan zaten bu
-AI_THINKING_MODE=false  # Derin dusunme icin true yapin
+AI_THINKING_MODE_CHAT=false   # Chat icin derin dusunme, true yapin
+AI_THINKING_MODE_BATCH=false  # Batch/agentic rewrite icin derin dusunme, true yapin
 ```
 
 ### Agentic Pipeline ile Claude
