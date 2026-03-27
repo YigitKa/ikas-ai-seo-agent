@@ -322,6 +322,69 @@ graph LR
 - **Alan bazlı yeniden üretim** — beğenmediğiniz tek bir alanı yeniden oluşturun
 - **Tam geri alma desteği** — tekil ürün veya tüm batch geri alınabilir
 
+### llms.txt Studio
+
+**Tüm ürün kataloğunu** `ChatGPT`, `Perplexity` ve `Claude` gibi AI motorlarının alıntılayabileceği ansiklopedik özetlere dönüştüren, yönetilen iş kuyruğu. Çıktı, standart `llms.txt` formatında export edilir.
+
+```mermaid
+graph LR
+    START["▶️ Görevi Başlat"] --> QUEUE["📋 Tüm ürünler\nkuyruğa alındı"]
+    QUEUE --> WORKER["🤖 Arka Plan Worker\nSıradaki ürünü al"]
+    WORKER --> AI["✍️ AI Özeti Üret\nAnsiklopedik format"]
+    AI --> SAVE["💾 Kaydet ve\nilerlemeyi güncelle"]
+    SAVE --> MORE{"Kuyruk\nboş mu?"}
+    MORE -->|Hayır| WORKER
+    MORE -->|Evet| DONE["✅ Tamamlandı\nllms.txt indir"]
+    WORKER -->|Kullanıcı| CTRL["⏸️ Duraklat / ⏹️ Durdur"]
+    CTRL -->|Devam et| WORKER
+
+    style START fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style QUEUE fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
+    style WORKER fill:#1e293b,stroke:#10b981,color:#e2e8f0
+    style AI fill:#1e293b,stroke:#10b981,color:#e2e8f0
+    style SAVE fill:#1e293b,stroke:#64748b,color:#e2e8f0
+    style MORE fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style DONE fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style CTRL fill:#0f172a,stroke:#ef4444,color:#e2e8f0
+```
+
+- **Yönetilen iş kuyruğu** — Start / Pause / Resume / Stop kontrolleriyle çalışan async arka plan worker
+- **Gerçek zamanlı sayaçlar** — toplam / işlendi / bekliyor / başarısız canlı takibi; tıklanabilir stat kartları listeyi filtreler
+- **Tekil yeniden üretim** — beğenmediğiniz tek bir ürün özetini anında yeniden oluşturma
+- **Kesintiden devam** — backend yeniden başlatılsa bile yarıda kalan iş otomatik sürdürülür
+- **Tek tıkla indirme** — tüm özetler standart `llms.txt` formatında dışa aktarılır
+
+### Prompts Studio
+
+Sistemdeki **tüm AI prompt şablonlarını** düzenleyip yönetebileceğiniz tam özellikli editör. Hiçbir Python dosyasına dokunmadan, Settings sayfasından canlı olarak her prompt'u güncelleyebilirsiniz.
+
+```mermaid
+graph TD
+    EDITOR["📝 Prompts Studio"] --> G1["📄 Açıklama Yeniden Yazım\nsystem + user"]
+    EDITOR --> G2["🌐 İngilizce Çeviri\nsystem + user"]
+    EDITOR --> G3["🤖 GEO Yeniden Yazım\nsystem + user"]
+    EDITOR --> G4["📋 llms.txt Özet\nsystem + user"]
+    EDITOR --> G5["🎭 Chat Ajanları\nSEO · Operatör · Genel"]
+    EDITOR --> G6["💬 Chat Akışı + Bağlam\nrouting · buttons · context"]
+    EDITOR --> G7["⚙️ Otonom Ajanlar\nrewrite · batch · GEO"]
+
+    style EDITOR fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style G1 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style G2 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style G3 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style G4 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style G5 fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0
+    style G6 fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0
+    style G7 fill:#0f172a,stroke:#f59e0b,color:#e2e8f0
+```
+
+- **7 grup, 20+ şablon** — ürün yeniden yazımı, çeviri, GEO, llms.txt özeti, chat ajanı personaları, akış bağlamı ve otonom ajan prompt'ları
+- **`{{değişken}}` doğrulama** — tanımsız placeholder kullanımında kayıt öncesi uyarı; her prompt için kullanılabilir değişkenler listelidir
+- **Değişiklik takibi** — kaydedilmemiş prompt'lar görsel olarak işaretlenir; tek seferde toplu kayıt
+- **Varsayılana sıfırlama** — tekil prompt veya tüm grubu tek tıkla kod içi varsayılana döndürme
+- **Anlık arama** — tüm prompt başlık ve içeriklerinde canlı filtreleme
+- **Prompt katman görselleştirmesi** — hangi prompt'un hangi pipeline'da nasıl birleştiğini gösteren diyagram; akışı anlamak için Settings sayfasında "Katmanlama" sekmesi
+
 ### SEO/GEO Raporlama
 
 Skor geçmişini izleyen ve iyileşmeleri görselleştiren **analitik dashboard**:
@@ -797,8 +860,20 @@ ikas-ai-seo-agent/
 |---|---|---|
 | `POST` | `/api/seo/analyze` | Tüm ürünleri skorla |
 | `POST` | `/api/seo/analyze/{id}` | Tekil ürün skorla |
-| `GET` | `/api/seo/generate-llms-txt` | AI tarayıcılar için `llms.txt` üret |
+| `GET` | `/api/seo/generate-llms-txt` | AI tarayıcılar için `llms.txt` üret ve indir |
 | `POST` | `/api/seo/geo-audit` | Tam GEO site denetimi |
+
+### llms.txt Studio
+| Metod | Endpoint | Açıklama |
+|---|---|---|
+| `GET` | `/api/llms/status` | İş durumu, sayaçlar, aktif ürün, son özetler |
+| `POST` | `/api/llms/start` | Yeni özetleme işi oluştur ve başlat |
+| `POST` | `/api/llms/pause` | Aktif işi duraklat (kuyruk konumu korunur) |
+| `POST` | `/api/llms/resume` | Duraklatılmış işi kaldığı yerden sürdür |
+| `POST` | `/api/llms/stop` | İşi tamamen durdur |
+| `GET` | `/api/llms/processed` | İşlenmiş özetleri listele (sayfalandırılmış) |
+| `GET` | `/api/llms/pending` | İşlenmemiş ürünleri listele |
+| `POST` | `/api/llms/regenerate/{productId}` | Tek ürün özetini yeniden üret |
 
 ### Öneriler
 | Metod | Endpoint | Açıklama |
@@ -842,6 +917,26 @@ ikas-ai-seo-agent/
 |---|---|---|
 | WebSocket | `/ws/chat` | Multi-agent AI chat |
 | WebSocket | `/ws/progress` | Operasyon ilerleme durumu |
+
+### Ayarlar & Prompts
+| Metod | Endpoint | Açıklama |
+|---|---|---|
+| `GET` | `/api/settings` | Mevcut konfigürasyonu getir |
+| `PUT` | `/api/settings` | Ayarları kaydet (`.cache/user_settings.json`'a yazar) |
+| `GET` | `/api/settings/prompts` | Tüm prompt şablonlarını grup metadata'sıyla getir |
+| `PUT` | `/api/settings/prompts` | Prompt şablonlarını kaydet (diske yazar) |
+| `POST` | `/api/settings/prompts/reset` | Seçili veya tüm prompt'ları hardcoded varsayılana sıfırla |
+| `GET` | `/api/settings/providers` | AI sağlayıcılarını etiket + model bilgisiyle listele |
+| `GET` | `/api/settings/health` | Seçili sağlayıcı sağlık kontrolü |
+| `GET` | `/api/settings/models/{provider}` | Sağlayıcıya ait kullanılabilir modelleri getir |
+| `POST` | `/api/settings/test-connection` | Sağlayıcı bağlantısını test et |
+
+### MCP
+| Metod | Endpoint | Açıklama |
+|---|---|---|
+| `GET` | `/api/mcp/status` | MCP bağlantı durumu |
+| `POST` | `/api/mcp/initialize` | MCP oturumu başlat |
+| `POST` | `/api/chat/clear` | Sohbet geçmişini temizle |
 
 ---
 
