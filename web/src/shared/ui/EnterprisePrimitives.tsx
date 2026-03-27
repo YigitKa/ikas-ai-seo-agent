@@ -58,6 +58,8 @@ export function EnterpriseButton({
   tone = 'neutral',
   className,
   type = 'button',
+  size = 'md',
+  fullWidth = false,
 }: {
   children: ReactNode;
   onClick?: () => void;
@@ -65,14 +67,23 @@ export function EnterpriseButton({
   tone?: 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
   className?: string;
   type?: 'button' | 'submit';
+  size?: 'sm' | 'md' | 'lg';
+  fullWidth?: boolean;
 }) {
+  const sizeClasses = {
+    sm: 'px-3 py-1.5 text-xs',
+    md: 'px-3.5 py-2 text-[13px]',
+    lg: 'h-11 px-4 text-sm',
+  };
   return (
     <button
       type={type}
       onClick={onClick}
       disabled={disabled}
       className={classNames(
-        'rounded-xl px-3.5 py-2 text-[13px] font-medium transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40',
+        'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40',
+        sizeClasses[size],
+        fullWidth && 'w-full',
         className,
       )}
       style={TONE_STYLES[tone]}
@@ -114,18 +125,27 @@ export function EnterpriseNavButton({
 export function EnterprisePill({
   children,
   className,
+  tone = 'neutral',
 }: {
   children: ReactNode;
   className?: string;
+  tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'primary';
 }) {
+  const toneStyleMap: Record<string, CSSProperties> = {
+    neutral: {
+      background: 'rgba(15, 23, 42, 0.76)',
+      border: '1px solid rgba(148, 163, 184, 0.22)',
+      color: 'var(--color-text-secondary)',
+    },
+    primary: TONE_STYLES.primary,
+    success: TONE_STYLES.success,
+    warning: TONE_STYLES.warning,
+    danger: TONE_STYLES.danger,
+  };
   return (
     <span
       className={classNames('inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]', className)}
-      style={{
-        background: 'rgba(15, 23, 42, 0.76)',
-        border: '1px solid rgba(148, 163, 184, 0.22)',
-        color: 'var(--color-text-secondary)',
-      }}
+      style={toneStyleMap[tone]}
     >
       {children}
     </span>
@@ -154,5 +174,204 @@ export function EnterpriseInput({
         className,
       )}
     />
+  );
+}
+
+// ── Settings-grade form primitives ────────────────────────────────────────
+
+export function EnterpriseField({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  placeholder,
+  hint,
+  disabled = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  placeholder?: string;
+  hint?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
+        {label}
+      </span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        className="enterprise-field rounded-xl placeholder:text-[color:var(--color-text-muted)]"
+      />
+      {hint && (
+        <span className="mt-1.5 block text-xs leading-5" style={{ color: 'var(--color-text-muted)' }}>
+          {hint}
+        </span>
+      )}
+    </label>
+  );
+}
+
+export function EnterpriseSelectField({
+  label,
+  value,
+  onChange,
+  options,
+  hint,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+  hint?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="enterprise-field rounded-xl"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      {hint && (
+        <span className="mt-1.5 block text-xs leading-5" style={{ color: 'var(--color-text-muted)' }}>
+          {hint}
+        </span>
+      )}
+    </label>
+  );
+}
+
+export function EnterpriseToggleField({
+  title,
+  description,
+  checked,
+  onChange,
+}: {
+  title: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="enterprise-list-item flex cursor-pointer items-start gap-4 rounded-xl p-4 transition-all duration-200">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 h-4 w-4 rounded"
+        style={{ accentColor: 'var(--color-primary)' }}
+      />
+      <span className="block">
+        <span className="block text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
+          {title}
+        </span>
+        <span className="mt-1 block text-xs leading-5" style={{ color: 'var(--color-text-secondary)' }}>
+          {description}
+        </span>
+      </span>
+    </label>
+  );
+}
+
+export function EnterpriseSectionCard({
+  eyebrow,
+  title,
+  description,
+  actions,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="enterprise-surface rounded-2xl p-5 sm:p-6">
+      <div
+        className="mb-5 flex flex-col gap-4 pb-5 md:flex-row md:items-end md:justify-between"
+        style={{ borderBottom: '1px solid rgba(148,163,184,0.14)' }}
+      >
+        <div>
+          <div
+            className="text-[11px] font-semibold uppercase tracking-[0.24em]"
+            style={{ color: 'var(--color-accent-light)' }}
+          >
+            {eyebrow}
+          </div>
+          <h2 className="mt-2 text-[17px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+            {title}
+          </h2>
+          <p className="mt-2 max-w-3xl text-[13px] leading-6" style={{ color: 'var(--color-text-secondary)' }}>
+            {description}
+          </p>
+        </div>
+        {actions}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export function EnterpriseBanner({
+  tone,
+  message,
+  className = '',
+}: {
+  tone: 'success' | 'error' | 'info';
+  message: string;
+  className?: string;
+}) {
+  const styleMap: Record<string, CSSProperties> = {
+    success: TONE_STYLES.success,
+    error: TONE_STYLES.danger,
+    info: TONE_STYLES.primary,
+  };
+  return (
+    <div className={classNames('rounded-xl px-4 py-3 text-[13px]', className)} style={styleMap[tone]}>
+      {message}
+    </div>
+  );
+}
+
+export function EnterpriseStatusRow({
+  label,
+  value,
+  mono = true,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div
+      className="flex items-start justify-between gap-3 pb-4 last:pb-0"
+      style={{ borderBottom: '1px solid rgba(148,163,184,0.1)' }}
+    >
+      <dt className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
+        {label}
+      </dt>
+      <dd
+        className={classNames('max-w-[60%] text-right text-[13px]', mono ? 'font-mono text-xs' : '')}
+        style={{ color: 'var(--color-text-primary)' }}
+      >
+        {value}
+      </dd>
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-import { SectionCard, StatusRow } from '../../components/settings/UiPrimitives';
+import { EnterpriseSectionCard, EnterpriseStatusRow } from '../../shared/ui/EnterprisePrimitives';
 
 interface LiveStatusCardProps {
   provider: string;
@@ -16,18 +16,18 @@ export default function LiveStatusCard({
   keywords,
 }: LiveStatusCardProps) {
   return (
-    <SectionCard
+    <EnterpriseSectionCard
       eyebrow="Durum"
       title="Canli Ozet"
       description="Kayitli konfigirasyonun aktif durumu."
     >
-      <dl className="space-y-4 text-sm">
-        <StatusRow label="Secili provider" value={provider} />
-        <StatusRow label="Model" value={model || 'Secilmedi'} />
-        <StatusRow label="Magaza" value={storeName || 'Tanimlanmadi'} />
-        <StatusRow label="Diller" value={languages || 'tr'} />
-        <StatusRow label="Keywords" value={keywords || 'Tanimsiz'} mono={false} />
+      <dl className="space-y-4">
+        <EnterpriseStatusRow label="Secili provider" value={provider} />
+        <EnterpriseStatusRow label="Model" value={model || 'Secilmedi'} />
+        <EnterpriseStatusRow label="Magaza" value={storeName || 'Tanimlanmadi'} />
+        <EnterpriseStatusRow label="Diller" value={languages || 'tr'} />
+        <EnterpriseStatusRow label="Keywords" value={keywords || 'Tanimsiz'} mono={false} />
       </dl>
-    </SectionCard>
+    </EnterpriseSectionCard>
   );
 }

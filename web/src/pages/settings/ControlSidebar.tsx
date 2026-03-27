@@ -1,4 +1,8 @@
-import { Banner, SectionCard } from '../../components/settings/UiPrimitives';
+import {
+  EnterpriseButton,
+  EnterpriseBanner,
+  EnterpriseSectionCard,
+} from '../../shared/ui/EnterprisePrimitives';
 import type { BannerTone } from '../../components/settings/UiPrimitives';
 
 type BannerState = {
@@ -20,6 +24,15 @@ interface ControlSidebarProps {
   testResult?: { message: string } | null;
 }
 
+function SpinIcon() {
+  return (
+    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
+  );
+}
+
 export default function ControlSidebar({
   onSave,
   onTest,
@@ -34,83 +47,85 @@ export default function ControlSidebar({
   testResult,
 }: ControlSidebarProps) {
   return (
-    <SectionCard
+    <EnterpriseSectionCard
       eyebrow="Kontrol"
       title="Kaydet ve Test Et"
       description="Tum degisiklikler bu panelden yonetilir."
     >
       <div className="space-y-3">
-        <button
+        <EnterpriseButton
           onClick={onSave}
           disabled={isSaving}
-          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-sky-500 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
+          tone="primary"
+          size="lg"
+          fullWidth
         >
-          {isSaving && (
-            <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          )}
+          {isSaving && <SpinIcon />}
           {isSaving ? 'Kaydediliyor...' : 'Tumunu Kaydet'}
-        </button>
-        <button
+        </EnterpriseButton>
+
+        <EnterpriseButton
           onClick={onTest}
           disabled={isTesting}
-          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/70 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          tone="neutral"
+          size="lg"
+          fullWidth
         >
-          {isTesting && (
-            <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          )}
+          {isTesting && <SpinIcon />}
           {isTesting ? 'Test Ediliyor...' : 'Baglanti Testi'}
-        </button>
+        </EnterpriseButton>
+
+        {/* MCP button keeps its own fuchsia theme */}
         <button
+          type="button"
           onClick={onMcpInit}
           disabled={isMcpConnecting || mcpDisabled}
-          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-fuchsia-500/35 bg-fuchsia-500/10 text-sm font-medium text-fuchsia-100 transition hover:bg-fuchsia-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-medium transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40"
+          style={{
+            background: 'rgba(168,85,247,0.14)',
+            border: '1px solid rgba(168,85,247,0.38)',
+            color: '#e9d5ff',
+          }}
         >
-          {isMcpConnecting && (
-            <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          )}
+          {isMcpConnecting && <SpinIcon />}
           {isMcpConnecting ? 'Baglaniyor...' : 'MCP Baglan'}
         </button>
       </div>
 
-      {banner && <Banner tone={banner.tone} message={banner.message} className="mt-4" />}
+      {banner && <EnterpriseBanner tone={banner.tone} message={banner.message} className="mt-4" />}
 
       {testResult && (
-        <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-300">
-          <div className="font-medium text-white">Son baglanti testi</div>
-          <p className="mt-2 leading-6">{testResult.message}</p>
+        <div className="enterprise-list-item mt-4 rounded-xl p-4 transition-all duration-200">
+          <div className="text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
+            Son baglanti testi
+          </div>
+          <p className="mt-2 text-[13px] leading-6" style={{ color: 'var(--color-text-secondary)' }}>
+            {testResult.message}
+          </p>
         </div>
       )}
 
-      <div className="mt-6 border-t border-slate-800 pt-5">
-        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-red-400/70">
+      <div className="mt-6 pt-5" style={{ borderTop: '1px solid rgba(148,163,184,0.14)' }}>
+        <div
+          className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
+          style={{ color: 'rgba(239,68,68,0.7)' }}
+        >
           Tehlikeli Islemler
         </div>
-        <button
+        <EnterpriseButton
           onClick={onResetDb}
           disabled={isResettingDb}
-          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-2xl border border-red-500/25 bg-red-500/8 text-sm font-medium text-red-300 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+          tone="danger"
+          size="lg"
+          fullWidth
         >
-          {isResettingDb && (
-            <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          )}
+          {isResettingDb && <SpinIcon />}
           {isResettingDb ? 'Sifirlaniyor...' : 'DB Sifirla'}
-        </button>
-        <p className="mt-1.5 text-center text-[11px] text-slate-500">
+        </EnterpriseButton>
+        <p className="mt-1.5 text-center text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
           Urun onbellegi, skorlar ve oneriler silinir
         </p>
       </div>
-    </SectionCard>
+    </EnterpriseSectionCard>
   );
 }

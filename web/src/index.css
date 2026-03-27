@@ -436,6 +436,43 @@ body {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
 }
 
+/* ── Enterprise field (inputs + selects) ─────────────────────────────────── */
+.enterprise-field {
+  height: 2.75rem;
+  width: 100%;
+  padding: 0 1rem;
+  font-size: 0.8125rem;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: var(--color-text-primary);
+  outline: none;
+  transition: border-color 200ms, box-shadow 200ms;
+}
+
+.enterprise-field:focus {
+  border-color: rgba(99, 102, 241, 0.66);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.enterprise-field:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.enterprise-field option {
+  background: #0f172a;
+  color: var(--color-text-primary);
+}
+
+/* ── Page background ─────────────────────────────────────────────────────── */
+.page-bg {
+  background:
+    radial-gradient(circle at 15% 10%, rgba(79, 70, 229, 0.14), transparent 30%),
+    radial-gradient(circle at 85% 5%,  rgba(14, 165, 233, 0.10), transparent 26%),
+    var(--color-bg-base);
+  min-height: 100vh;
+}
+
 /* ── Toast notification animation ───────────────────────────────────────── */
 @keyframes toast-in {
   from {

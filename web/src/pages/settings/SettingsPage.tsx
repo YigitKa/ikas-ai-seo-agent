@@ -15,7 +15,7 @@ import {
   updateSettings,
 } from '../../api/client';
 import type { SettingsData } from '../../types';
-import { StatusPill, type BannerTone } from '../../components/settings/UiPrimitives';
+import type { BannerTone } from '../../components/settings/UiPrimitives';
 import {
   PROVIDER_META,
   DISCOVERABLE_PROVIDERS,
@@ -154,10 +154,18 @@ export default function SettingsPage() {
   // ── Loading / Error ───────────────────────────────────────────────────────
 
   if (settingsQ.isLoading && !form) {
-    return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-300">Ayar arayuzu yukleniyor...</div>;
+    return (
+      <div className="page-bg flex min-h-screen items-center justify-center" style={{ color: 'var(--color-text-secondary)' }}>
+        Ayar arayuzu yukleniyor...
+      </div>
+    );
   }
   if (!form) {
-    return <div className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-center text-slate-300">{formatError(settingsQ.error, 'Ayarlar okunamadi.')}</div>;
+    return (
+      <div className="page-bg flex min-h-screen items-center justify-center px-6 text-center" style={{ color: 'var(--color-text-secondary)' }}>
+        {formatError(settingsQ.error, 'Ayarlar okunamadi.')}
+      </div>
+    );
   }
 
   // ── Derived ───────────────────────────────────────────────────────────────
@@ -188,7 +196,7 @@ export default function SettingsPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(37,99,235,0.25),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(14,165,233,0.18),_transparent_24%),linear-gradient(180deg,_#020617,_#0f172a_42%,_#020617)] text-slate-100">
+    <div className="page-bg" style={{ color: 'var(--color-text-primary)' }}>
       <ConfirmDialog
         open={confirmResetOpen}
         title="Veritabanını Sıfırla"
@@ -200,19 +208,39 @@ export default function SettingsPage() {
         onCancel={() => setConfirmResetOpen(false)}
       />
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-slate-800/80 bg-slate-950/65 p-6 shadow-2xl shadow-slate-950/40 backdrop-blur md:flex-row md:items-end md:justify-between">
+        <div className="enterprise-surface mb-6 flex flex-col gap-4 rounded-2xl p-6 md:flex-row md:items-end md:justify-between">
           <div className="space-y-3">
-            <Link to="/" className="inline-flex text-sm text-sky-300 transition hover:text-sky-200">&larr; Dashboard</Link>
+            <Link
+              to="/"
+              className="inline-flex text-[13px] transition"
+              style={{ color: 'var(--color-accent-light)' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-accent)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-accent-light)'; }}
+            >
+              &larr; Dashboard
+            </Link>
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-white">Ayar Merkezi</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+              <h1 className="text-3xl font-semibold tracking-tight" style={{ color: 'var(--color-text-primary)' }}>
+                Ayar Merkezi
+              </h1>
+              <p className="mt-2 max-w-2xl text-[13px] leading-6" style={{ color: 'var(--color-text-secondary)' }}>
                 AI provider, ikas baglantisi ve SEO ayarlarini tek ekrandan yonetin.
               </p>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <StatusPill label="Provider" value={healthQ.data?.message || currentProvider} tone={toneFromHealth(healthQ.data?.status)} />
-            <StatusPill label="MCP" value={mcpQ.data?.message || 'Durum okunuyor'} tone={mcpQ.data?.initialized ? 'success' : 'info'} />
+          <div className="flex flex-wrap gap-3">
+            <div className="rounded-xl p-3" style={{ background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.16)' }}>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-muted)' }}>Provider</div>
+              <div className="mt-1 text-[13px] font-medium" style={{ color: toneFromHealth(healthQ.data?.status) === 'success' ? 'var(--color-success)' : toneFromHealth(healthQ.data?.status) === 'error' ? 'var(--color-danger)' : 'var(--color-text-secondary)' }}>
+                {healthQ.data?.message || currentProvider}
+              </div>
+            </div>
+            <div className="rounded-xl p-3" style={{ background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.16)' }}>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-muted)' }}>MCP</div>
+              <div className="mt-1 text-[13px] font-medium" style={{ color: mcpQ.data?.initialized ? 'var(--color-success)' : 'var(--color-text-secondary)' }}>
+                {mcpQ.data?.message || 'Durum okunuyor'}
+              </div>
+            </div>
           </div>
         </div>
 

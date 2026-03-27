@@ -1,4 +1,9 @@
-import { Field, SectionCard, SelectField } from '../../components/settings/UiPrimitives';
+import {
+  EnterpriseButton,
+  EnterpriseField,
+  EnterpriseSectionCard,
+  EnterpriseSelectField,
+} from '../../shared/ui/EnterprisePrimitives';
 import type { ProviderInfo, SettingsData } from '../../types';
 import type { ProviderMeta } from './constants';
 
@@ -36,14 +41,14 @@ export default function ProviderSection({
   providerError,
 }: ProviderSectionProps) {
   return (
-    <SectionCard
+    <EnterpriseSectionCard
       eyebrow="AI"
       title="Provider ve Model"
       description={providerMeta.summary}
     >
       <div className="grid gap-4 md:grid-cols-2">
         <div className="md:col-span-2">
-          <SelectField
+          <EnterpriseSelectField
             label="Provider"
             value={currentProvider}
             onChange={onProviderChange}
@@ -55,7 +60,7 @@ export default function ProviderSection({
         </div>
 
         {showApiKey && (
-          <Field
+          <EnterpriseField
             label={providerMeta.apiKeyLabel || 'API Key'}
             value={form.ai_api_key}
             onChange={(value) => setValue('ai_api_key', value)}
@@ -65,7 +70,7 @@ export default function ProviderSection({
         )}
 
         {showBaseUrl && (
-          <Field
+          <EnterpriseField
             label={providerMeta.baseUrlLabel || 'Base URL'}
             value={providerMeta.lockedBaseUrl || form.ai_base_url}
             onChange={(value) => setValue('ai_base_url', value)}
@@ -75,13 +80,13 @@ export default function ProviderSection({
           />
         )}
 
-        <Field
+        <EnterpriseField
           label="Temperature"
           value={String(form.ai_temperature)}
           onChange={(value) => setValue('ai_temperature', Number.parseFloat(value) || 0.7)}
           placeholder="0.7"
         />
-        <Field
+        <EnterpriseField
           label="Max Tokens"
           value={String(form.ai_max_tokens)}
           onChange={(value) => setValue('ai_max_tokens', Number.parseInt(value, 10) || 2000)}
@@ -90,7 +95,7 @@ export default function ProviderSection({
 
         <div className="md:col-span-2">
           {useModelSelect ? (
-            <SelectField
+            <EnterpriseSelectField
               label="Model"
               value={form.ai_model_name}
               onChange={(value) => setValue('ai_model_name', value)}
@@ -98,7 +103,7 @@ export default function ProviderSection({
               hint={providerMeta.modelHint}
             />
           ) : (
-            <Field
+            <EnterpriseField
               label="Model"
               value={form.ai_model_name}
               onChange={(value) => setValue('ai_model_name', value)}
@@ -110,28 +115,33 @@ export default function ProviderSection({
       </div>
 
       {canDiscoverModels && (
-        <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 md:flex-row md:items-center md:justify-between">
+        <div
+          className="enterprise-list-item mt-5 flex flex-col gap-3 rounded-xl p-4 transition-all duration-200 md:flex-row md:items-center md:justify-between"
+        >
           <div>
-            <div className="text-sm font-medium text-white">Yerel model tarama</div>
-            <p className="mt-1 text-sm text-slate-400">
+            <div className="text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
+              Yerel model tarama
+            </div>
+            <p className="mt-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
               Base URL uzerinden kurulu modelleri okuyup dropdown'u doldurur.
             </p>
           </div>
-          <button
+          <EnterpriseButton
             onClick={onModelDiscovery}
             disabled={isDiscovering}
-            className="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-500/40 bg-sky-500/10 px-4 text-sm font-medium text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            tone="primary"
+            size="lg"
           >
             {isDiscovering ? 'Taraniyor...' : 'Modelleri Tara'}
-          </button>
+          </EnterpriseButton>
         </div>
       )}
 
       {providerError && (
-        <p className="mt-4 text-sm text-amber-300">
+        <p className="mt-4 text-[13px]" style={{ color: 'var(--color-warning)' }}>
           Provider listesi API'den alinamadi. Mevcut secim korunuyor.
         </p>
       )}
-    </SectionCard>
+    </EnterpriseSectionCard>
   );
 }

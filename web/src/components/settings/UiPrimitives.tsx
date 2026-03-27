@@ -69,24 +69,61 @@ export function ToggleField({ title, description, checked, onChange }: { title: 
 
 export function PromptCard({ template, value, onChange, onReset, disabled }: { template: PromptTemplate; value: string; onChange: (value: string) => void; onReset: () => void; disabled: boolean; }) {
   return (
-    <article className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
-      <div className="flex flex-col gap-3 border-b border-slate-800 pb-4 md:flex-row md:items-start md:justify-between">
+    <article className="enterprise-surface rounded-2xl p-5">
+      <div
+        className="flex flex-col gap-3 pb-4 md:flex-row md:items-start md:justify-between"
+        style={{ borderBottom: '1px solid rgba(148,163,184,0.14)' }}
+      >
         <div>
-          <h3 className="text-base font-semibold text-white">{template.title}</h3>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">{template.description}</p>
+          <h3 className="text-[15px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{template.title}</h3>
+          <p className="mt-2 max-w-3xl text-[13px] leading-6" style={{ color: 'var(--color-text-secondary)' }}>{template.description}</p>
         </div>
-        <button onClick={onReset} disabled={disabled} className="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">Varsayilan</button>
+        <button
+          onClick={onReset}
+          disabled={disabled}
+          className="inline-flex shrink-0 items-center justify-center rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+          style={{
+            background: 'linear-gradient(135deg, rgba(15,23,42,0.78), rgba(30,41,59,0.62))',
+            border: '1px solid rgba(148,163,184,0.24)',
+            color: 'var(--color-text-secondary)',
+          }}
+        >
+          Varsayilan
+        </button>
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <span className="rounded-full border border-slate-800 bg-slate-900 px-3 py-1 text-xs uppercase tracking-[0.2em] text-slate-400">{template.key}</span>
+        <span
+          className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
+          style={{ background: 'rgba(15,23,42,0.76)', border: '1px solid rgba(148,163,184,0.2)', color: 'var(--color-text-muted)' }}
+        >
+          {template.key}
+        </span>
         {template.variables.map((variable) => (
-          <span key={variable} className="rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1 text-xs text-sky-200">{'{{'}{variable}{'}}'}</span>
+          <span
+            key={variable}
+            className="rounded-full px-3 py-1 text-[11px]"
+            style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)', color: '#a5b4fc' }}
+          >
+            {'{{'}{variable}{'}}'}
+          </span>
         ))}
-        {template.variables.length === 0 && <span className="rounded-full border border-slate-800 bg-slate-900 px-3 py-1 text-xs text-slate-500">Degisken yok</span>}
+        {template.variables.length === 0 && (
+          <span
+            className="rounded-full px-3 py-1 text-[11px]"
+            style={{ background: 'rgba(15,23,42,0.76)', border: '1px solid rgba(148,163,184,0.14)', color: 'var(--color-text-muted)' }}
+          >
+            Degisken yok
+          </span>
+        )}
       </div>
 
-      <textarea value={value} onChange={(event) => onChange(event.target.value)} style={{ minHeight: `${Math.max(template.height, 180)}px` }} className="mt-4 w-full rounded-2xl border border-slate-700 bg-slate-950/90 px-4 py-3 font-mono text-sm leading-6 text-slate-100 outline-none transition focus:border-sky-400" />
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        style={{ minHeight: `${Math.max(template.height, 180)}px` }}
+        className="enterprise-field mt-4 h-auto rounded-xl px-4 py-3 font-mono text-xs leading-6 outline-none transition focus:border-[rgba(99,102,241,0.66)] focus:shadow-[0_0_0_3px_rgba(99,102,241,0.15)]"
+      />
     </article>
   );
 }

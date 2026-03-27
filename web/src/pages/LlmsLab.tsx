@@ -1,5 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { EnterpriseButton } from '../shared/ui/EnterprisePrimitives';
 import {
   generateLlmsTxt,
   getLlmsStatus,
@@ -28,13 +29,9 @@ function StatCard({
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col gap-1 rounded-2xl p-4 text-left shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl"
-      style={{
-        background: 'linear-gradient(145deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))',
-        border: '1px solid rgba(255,255,255,0.08)',
-      }}
+      className="enterprise-list-item flex flex-col gap-1 rounded-2xl p-4 text-left shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
     >
-      <span className="text-xs uppercase tracking-[0.08em]" style={{ color: 'rgba(226,232,240,0.7)' }}>
+      <span className="text-[11px] uppercase tracking-[0.08em]" style={{ color: 'var(--color-text-muted)' }}>
         {label}
       </span>
       <span className="text-3xl font-bold tracking-tight" style={{ color: accent }}>
@@ -55,16 +52,12 @@ function ProductPill({
 }) {
   return (
     <div
-      className="flex items-center justify-between rounded-xl px-4 py-3 text-sm"
-      style={{
-        background: 'rgba(15,23,42,0.4)',
-        border: '1px solid rgba(255,255,255,0.06)',
-        boxShadow: `0 10px 40px ${glow}`,
-      }}
+      className="enterprise-list-item flex items-center justify-between rounded-xl px-4 py-3 text-sm transition-all duration-200"
+      style={{ boxShadow: `0 10px 40px ${glow}` }}
     >
       <div>
-        <div className="font-semibold text-slate-50">{title}</div>
-        {subtitle && <div className="text-xs text-slate-400">{subtitle}</div>}
+        <div className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{title}</div>
+        {subtitle && <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{subtitle}</div>}
       </div>
       <div
         className="h-2 w-2 rounded-full"
@@ -153,62 +146,49 @@ export default function LlmsLab() {
     const isRunning = jobStatus === 'running' || jobStatus === 'queued';
     if (!status?.job) {
       return (
-        <button
-          onClick={() => startMut.mutate()}
-          className="rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:opacity-90"
-        >
+        <EnterpriseButton onClick={() => startMut.mutate()} tone="success" size="md">
           Ozet Isini Baslat
-        </button>
+        </EnterpriseButton>
       );
     }
     return (
       <div className="flex flex-wrap items-center gap-2">
         {!isRunning && (
-          <button
-            onClick={() => resumeMut.mutate()}
-            className="rounded-lg bg-gradient-to-r from-indigo-500 to-blue-500 px-3 py-2 text-sm font-semibold text-white shadow-lg transition hover:opacity-90"
-          >
+          <EnterpriseButton onClick={() => resumeMut.mutate()} tone="primary" size="md">
             Devam Et
-          </button>
+          </EnterpriseButton>
         )}
         {isRunning && (
-          <button
-            onClick={() => pauseMut.mutate()}
-            className="rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-2 text-sm font-semibold text-white shadow-lg transition hover:opacity-90"
-          >
+          <EnterpriseButton onClick={() => pauseMut.mutate()} tone="warning" size="md">
             Duraklat
-          </button>
+          </EnterpriseButton>
         )}
-        <button
-          onClick={() => stopMut.mutate()}
-          className="rounded-lg bg-gradient-to-r from-rose-500 to-red-500 px-3 py-2 text-sm font-semibold text-white shadow-lg transition hover:opacity-90"
-        >
+        <EnterpriseButton onClick={() => stopMut.mutate()} tone="danger" size="md">
           Durdur
-        </button>
-        <button
-          onClick={() => downloadMut.mutate()}
-          disabled={downloadMut.isPending}
-          className="rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold text-white/90 transition hover:bg-white/10 disabled:opacity-50"
-        >
+        </EnterpriseButton>
+        <EnterpriseButton onClick={() => downloadMut.mutate()} disabled={downloadMut.isPending} tone="neutral" size="md">
           {downloadMut.isPending ? 'Hazirlaniyor...' : 'llms.txt indir'}
-        </button>
+        </EnterpriseButton>
       </div>
     );
   }, [jobStatus, status?.job, startMut, resumeMut, pauseMut, stopMut, downloadMut]);
 
   return (
-    <div className="min-h-screen overflow-hidden" style={{ background: 'radial-gradient(circle at 20% 20%, rgba(79,70,229,0.16), transparent 32%), radial-gradient(circle at 80% 0%, rgba(14,165,233,0.18), transparent 28%), linear-gradient(180deg, #0b1222, #0b1222 40%, #0f172a)' }}>
+    <div className="page-bg overflow-hidden">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/8 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-200">
+            <div
+              className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]"
+              style={{ background: 'rgba(16,185,129,0.16)', border: '1px solid rgba(16,185,129,0.35)', color: '#a7f3d0' }}
+            >
               llms.txt Studio
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              <span className="h-2 w-2 rounded-full" style={{ background: 'var(--color-success)' }} />
             </div>
-            <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-white md:text-4xl">
+            <h1 className="mt-3 text-3xl font-extrabold tracking-tight md:text-4xl" style={{ color: 'var(--color-text-primary)' }}>
               AI icin bilgi yogun llms.txt uretimi
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-300">
+            <p className="mt-2 max-w-2xl text-[13px]" style={{ color: 'var(--color-text-secondary)' }}>
               Urun aciklamalarini modele ozetlettir, islenmis ve yeni eklenen urunleri gor, istedigin an duraklat veya devam ettir.
             </p>
           </div>
@@ -239,19 +219,16 @@ export default function LlmsLab() {
         </section>
 
         <section className="mt-8 grid gap-6 md:grid-cols-2">
-          <div
-            className="rounded-2xl border border-white/10 p-5 shadow-lg"
-            style={{ background: 'linear-gradient(160deg, rgba(255,255,255,0.05), rgba(15,23,42,0.9))' }}
-          >
+          <div className="enterprise-surface rounded-2xl p-5">
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <div className="text-xs uppercase tracking-[0.12em] text-slate-400">Anlık is parcalari</div>
-                <div className="text-lg font-semibold text-white">
+                <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-muted)' }}>Anlık is parcalari</div>
+                <div className="text-[17px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
                   {jobStatus === 'running' ? 'Ozet olusturuluyor' : 'Beklemede'}
                 </div>
               </div>
-              <div className="flex items-center gap-2 text-xs text-slate-300">
-                <span className="h-2 w-2 rounded-full" style={{ background: jobStatus === 'running' ? '#22c55e' : '#fbbf24' }} />
+              <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                <span className="h-2 w-2 rounded-full" style={{ background: jobStatus === 'running' ? 'var(--color-success)' : 'var(--color-warning)' }} />
                 {jobStatus}
               </div>
             </div>
@@ -262,23 +239,23 @@ export default function LlmsLab() {
                 glow="rgba(34,197,94,0.28)"
               />
             ) : (
-              <div className="rounded-xl border border-dashed border-white/12 px-4 py-6 text-sm text-slate-400">
+              <div
+                className="rounded-xl px-4 py-6 text-[13px]"
+                style={{ border: '1px dashed rgba(148,163,184,0.2)', color: 'var(--color-text-muted)' }}
+              >
                 Su an calisan bir parca yok. {jobStatus === 'running' ? 'Siradaki urun bekleniyor.' : 'Is baslat veya devam et.'}
               </div>
             )}
-            <div className="mt-4 text-xs text-slate-400">
+            <div className="mt-4 text-xs" style={{ color: 'var(--color-text-muted)' }}>
               Sıra otomatik saklanır; backend ayaktayken kaldığı yerden devam eder.
             </div>
           </div>
 
-          <div
-            className="rounded-2xl border border-white/10 p-5 shadow-lg"
-            style={{ background: 'linear-gradient(160deg, rgba(14,165,233,0.08), rgba(15,23,42,0.9))' }}
-          >
+          <div className="enterprise-surface rounded-2xl p-5">
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <div className="text-xs uppercase tracking-[0.12em] text-slate-400">Yeni / islenmemis</div>
-                <div className="text-lg font-semibold text-white">
+                <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-muted)' }}>Yeni / islenmemis</div>
+                <div className="text-[17px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
                   {status?.unprocessed?.length ? `${status.unprocessed.length} aday` : 'Hepsi islenmis'}
                 </div>
               </div>
@@ -293,7 +270,10 @@ export default function LlmsLab() {
                 />
               ))}
               {!status?.unprocessed?.length && (
-                <div className="rounded-xl border border-dashed border-white/12 px-4 py-6 text-sm text-slate-400">
+                <div
+                  className="rounded-xl px-4 py-6 text-[13px]"
+                  style={{ border: '1px dashed rgba(148,163,184,0.2)', color: 'var(--color-text-muted)' }}
+                >
                   Tum urunler icin ozet var. Yeni eklenen urunler burada belirecek.
                 </div>
               )}
@@ -303,39 +283,41 @@ export default function LlmsLab() {
 
         <section
           ref={listSectionRef}
-          className="mt-8 rounded-2xl border border-white/10 p-5 shadow-lg"
-          style={{ background: 'rgba(15,23,42,0.7)' }}
+          className="enterprise-surface mt-8 rounded-2xl p-5"
         >
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <div className="text-xs uppercase tracking-[0.12em] text-slate-400">Son ozetler</div>
-              <div className="text-lg font-semibold text-white">AI icin hazir bloklar</div>
+              <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-muted)' }}>Son ozetler</div>
+              <div className="text-[17px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>AI icin hazir bloklar</div>
             </div>
-            <div className="flex gap-2 text-xs text-slate-300">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setListMode('processed');
-                  processedQ.refetch();
-                }}
-                className={`rounded-lg border px-3 py-1.5 font-semibold transition ${listMode === 'processed' ? 'bg-white/20 border-white/40' : 'border-white/20 hover:bg-white/10'}`}
+                onClick={() => { setListMode('processed'); processedQ.refetch(); }}
+                className="rounded-xl px-3 py-1.5 text-[13px] font-medium transition-all duration-200"
+                style={listMode === 'processed'
+                  ? { background: 'linear-gradient(135deg, rgba(30,64,175,0.54), rgba(67,56,202,0.54))', border: '1px solid rgba(125,211,252,0.34)', color: '#e2e8f0' }
+                  : { background: 'rgba(15,23,42,0.52)', border: '1px solid rgba(148,163,184,0.22)', color: 'var(--color-text-secondary)' }}
               >
                 Tum ozetleri goster
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setListMode('pending');
-                  pendingQ.refetch();
-                }}
-                className={`rounded-lg border px-3 py-1.5 font-semibold text-amber-200 transition ${listMode === 'pending' ? 'bg-amber-300/20 border-amber-300/70' : 'border-amber-300/50 hover:bg-amber-300/10'}`}
+                onClick={() => { setListMode('pending'); pendingQ.refetch(); }}
+                className="rounded-xl px-3 py-1.5 text-[13px] font-medium transition-all duration-200"
+                style={listMode === 'pending'
+                  ? { background: 'rgba(245,158,11,0.22)', border: '1px solid rgba(245,158,11,0.5)', color: '#fde68a' }
+                  : { background: 'rgba(15,23,42,0.52)', border: '1px solid rgba(148,163,184,0.22)', color: 'var(--color-text-secondary)' }}
               >
                 Bekleyenleri goster
               </button>
               <button
                 type="button"
                 onClick={() => setListMode('recent')}
-                className={`rounded-lg border px-3 py-1.5 font-semibold text-slate-200 transition ${listMode === 'recent' ? 'bg-white/15 border-white/40' : 'border-white/15 hover:bg-white/8'}`}
+                className="rounded-xl px-3 py-1.5 text-[13px] font-medium transition-all duration-200"
+                style={listMode === 'recent'
+                  ? { background: 'linear-gradient(135deg, rgba(30,64,175,0.54), rgba(67,56,202,0.54))', border: '1px solid rgba(125,211,252,0.34)', color: '#e2e8f0' }
+                  : { background: 'rgba(15,23,42,0.52)', border: '1px solid rgba(148,163,184,0.22)', color: 'var(--color-text-secondary)' }}
               >
                 Son eklenenler
               </button>
@@ -350,31 +332,34 @@ export default function LlmsLab() {
             ).map((entry) => (
               <div
                 key={entry.product_id}
-                className="rounded-xl border border-white/10 p-4"
-                style={{ background: 'linear-gradient(120deg, rgba(99,102,241,0.06), rgba(15,23,42,0.9))' }}
+                className="enterprise-list-item rounded-xl p-4 transition-all duration-200"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <div className="text-sm font-semibold text-white">{entry.product_name}</div>
-                    <div className="text-xs text-slate-400">{entry.category ?? 'Kategori yok'}</div>
+                    <div className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{entry.product_name}</div>
+                    <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{entry.category ?? 'Kategori yok'}</div>
                   </div>
-                  <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-200">
+                  <span
+                    className="rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-wide"
+                    style={{ background: 'rgba(16,185,129,0.16)', border: '1px solid rgba(16,185,129,0.35)', color: '#a7f3d0' }}
+                  >
                     Hazir
                   </span>
                 </div>
                 <p
-                  className="mt-2 text-sm leading-relaxed text-slate-200"
-                  style={{ whiteSpace: 'pre-line' }}
+                  className="mt-2 text-[13px] leading-relaxed"
+                  style={{ whiteSpace: 'pre-line', color: 'var(--color-text-secondary)' }}
                 >
                   {entry.summary}
                 </p>
-                <div className="mt-3 flex items-center justify-between text-[11px] uppercase tracking-[0.08em] text-slate-400">
+                <div className="mt-3 flex items-center justify-between text-[11px] uppercase tracking-[0.08em]" style={{ color: 'var(--color-text-muted)' }}>
                   <span>{new Date(entry.updated_at).toLocaleString('tr-TR')}</span>
                   <button
                     type="button"
                     onClick={() => regenMut.mutate(entry.product_id)}
                     disabled={regenTarget === entry.product_id || regenMut.isPending}
-                    className="rounded-full border border-emerald-300/60 px-3 py-1 text-[11px] font-semibold text-emerald-200 transition hover:bg-emerald-300/15 disabled:opacity-50"
+                    className="rounded-full px-3 py-1 text-[11px] font-semibold transition hover:-translate-y-0.5 disabled:opacity-50"
+                    style={{ border: '1px solid rgba(16,185,129,0.4)', color: '#a7f3d0' }}
                   >
                     {regenTarget === entry.product_id ? 'Yeniden üretiliyor...' : 'Yeniden üret'}
                   </button>
@@ -382,23 +367,25 @@ export default function LlmsLab() {
               </div>
             ))}
             {listMode !== 'pending' && !( (listMode === 'processed' ? processedQ.data?.items?.length : status?.latest_processed?.length) ) && (
-              <div className="rounded-xl border border-dashed border-white/12 px-4 py-6 text-sm text-slate-400">
+              <div
+                className="rounded-xl px-4 py-6 text-[13px]"
+                style={{ border: '1px dashed rgba(148,163,184,0.2)', color: 'var(--color-text-muted)' }}
+              >
                 Henuz kaydedilmis ozet yok. Islem baslayinca sonuclar burada gorunecek.
               </div>
             )}
 
             {listMode === 'pending' && pendingQ.data?.items?.length ? (
               <div className="md:col-span-2">
-                <div className="mb-2 text-xs uppercase tracking-[0.12em] text-amber-200">Bekleyenler</div>
+                <div className="mb-2 text-[11px] uppercase tracking-[0.12em]" style={{ color: 'var(--color-warning)' }}>Bekleyenler</div>
                 <div className="grid gap-2 md:grid-cols-2">
                   {pendingQ.data.items.map((p) => (
                     <div
                       key={p.product_id}
-                      className="rounded-xl border border-amber-300/30 px-4 py-3"
-                      style={{ background: 'rgba(251,191,36,0.06)' }}
+                      className="enterprise-list-item rounded-xl px-4 py-3 transition-all duration-200"
                     >
-                      <div className="text-sm font-semibold text-white">{p.product_name}</div>
-                      <div className="text-xs text-slate-400">{p.category ?? 'Kategori yok'}</div>
+                      <div className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{p.product_name}</div>
+                      <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{p.category ?? 'Kategori yok'}</div>
                     </div>
                   ))}
                 </div>
@@ -406,13 +393,19 @@ export default function LlmsLab() {
             ) : null}
 
             {listMode === 'pending' && pendingQ.isFetching && (
-              <div className="md:col-span-2 rounded-xl border border-dashed border-amber-200/40 px-4 py-6 text-center text-sm text-amber-100">
+              <div
+                className="md:col-span-2 rounded-xl px-4 py-6 text-center text-[13px]"
+                style={{ border: '1px dashed rgba(245,158,11,0.3)', color: 'var(--color-warning)' }}
+              >
                 Bekleyenler yukleniyor...
               </div>
             )}
 
             {listMode === 'processed' && processedQ.isFetching && (
-              <div className="md:col-span-2 rounded-xl border border-dashed border-white/30 px-4 py-6 text-center text-sm text-slate-200">
+              <div
+                className="md:col-span-2 rounded-xl px-4 py-6 text-center text-[13px]"
+                style={{ border: '1px dashed rgba(148,163,184,0.25)', color: 'var(--color-text-secondary)' }}
+              >
                 Tum ozetler yukleniyor...
               </div>
             )}
