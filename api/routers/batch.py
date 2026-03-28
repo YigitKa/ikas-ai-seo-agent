@@ -110,7 +110,7 @@ async def stream_batch_job(job_id: str) -> StreamingResponse:
             if current["processed_count"] != last_processed:
                 last_processed = current["processed_count"]
                 yield f"data: {json.dumps({'type': 'progress', 'job': current})}\n\n"
-            if current["status"] in ("analyzed", "completed", "failed", "cancelled"):
+            if current["status"] in ("analyzed", "completed", "completed_with_errors", "failed", "cancelled"):
                 yield f"data: {json.dumps({'type': 'completed', 'job': current})}\n\n"
                 break
             await asyncio.sleep(1)

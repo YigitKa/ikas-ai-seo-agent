@@ -297,11 +297,35 @@ class ProductManager:
                 updates["meta_description"] = suggestion.suggested_meta_description
 
             try:
+                # Capture score before update for change log
+                old_score_obj = await db.get_latest_score(suggestion.product_id)
+                score_before = old_score_obj.total_score if old_score_obj else None
+
                 success = await self._ikas.update_product(suggestion.product_id, updates)
                 if success:
                     await db.update_suggestion_status(suggestion.product_id, "applied")
                     await db.log_operation("apply", suggestion.product_id, updates, True)
                     applied += 1
+                    # Post-apply verification: re-fetch and re-score
+                    score_after = None
+                    try:
+                        updated_product = await self._ikas.get_product_by_id(suggestion.product_id)
+                        if updated_product:
+                            await db.save_product(updated_product)
+                            new_score = analyze_product(updated_product, self._config.seo_target_keywords)
+                            await db.save_scores([new_score])
+                            score_after = new_score.total_score
+                            logger.info("Post-apply verify %s: new score %s", suggestion.product_id, new_score.total_score)
+                    except Exception as verify_exc:
+                        logger.warning("Post-apply verify failed for %s: %s", suggestion.product_id, verify_exc)
+                    # Log the score change event
+                    await db.insert_score_change_log(
+                        product_id=suggestion.product_id,
+                        product_name=suggestion.original_name or "",
+                        operation="apply",
+                        score_before=score_before,
+                        score_after=score_after,
+                    )
             except Exception as e:
                 logger.error(f"Failed to apply suggestion for {suggestion.product_id}: {e}")
                 await db.log_operation("apply", suggestion.product_id, {"error": str(e)}, False)
@@ -968,6 +992,7 @@ class ProductManager:
         product_map = {p.id: p for p in all_products}
 
         applied = 0
+        failed = 0
         for item in approved:
             current_job = await db.get_batch_job(job_id)
             if not current_job or current_job["status"] == "cancelled":
@@ -978,51 +1003,91 @@ class ProductManager:
             if not product:
                 continue
 
-            suggestion = self._build_suggestion_from_batch_item(product, item)
-            if not any(self._get_batch_field_value(suggestion, field).strip() for field in target_fields):
-                suggestion = await db.get_latest_suggestion_by_product(product_id)
-            if not suggestion:
-                await db.update_batch_item(item["id"], status="skipped", skip_reason="Öneri bulunamadı")
-                continue
+            try:
+                suggestion = self._build_suggestion_from_batch_item(product, item)
+                if not any(self._get_batch_field_value(suggestion, field).strip() for field in target_fields):
+                    suggestion = await db.get_latest_suggestion_by_product(product_id)
+                if not suggestion:
+                    await db.update_batch_item(item["id"], status="skipped", skip_reason="Öneri bulunamadı")
+                    continue
 
-            rollback_data = {
-                "name": product.name,
-                "description": product.description or "",
-                "description_translations": product.description_translations or {},
-                "meta_title": product.meta_title or "",
-                "meta_description": product.meta_description or "",
-            }
+                rollback_data = {
+                    "name": product.name,
+                    "description": product.description or "",
+                    "description_translations": product.description_translations or {},
+                    "meta_title": product.meta_title or "",
+                    "meta_description": product.meta_description or "",
+                }
 
-            if not self._config.dry_run:
-                updates: dict[str, Any] = {}
-                if (not target_fields or "name" in target_fields) and suggestion.suggested_name:
-                    updates["name"] = suggestion.suggested_name
-                if (not target_fields or "description" in target_fields) and suggestion.suggested_description:
-                    updates["description"] = suggestion.suggested_description
-                desc_translations = {}
-                if (not target_fields or "description" in target_fields) and suggestion.suggested_description:
-                    desc_translations["tr"] = suggestion.suggested_description
-                if (not target_fields or "description_en" in target_fields) and suggestion.suggested_description_en:
-                    desc_translations["en"] = suggestion.suggested_description_en
-                if desc_translations:
-                    updates["description_translations"] = desc_translations
-                if (not target_fields or "meta_title" in target_fields) and suggestion.suggested_meta_title:
-                    updates["meta_title"] = suggestion.suggested_meta_title
-                if (not target_fields or "meta_description" in target_fields) and suggestion.suggested_meta_description:
-                    updates["meta_description"] = suggestion.suggested_meta_description
-                if updates:
-                    await self._ikas.update_product(product_id, updates)
-                    await db.log_operation("batch_apply", product_id, updates, True)
+                if not self._config.dry_run:
+                    updates: dict[str, Any] = {}
+                    if (not target_fields or "name" in target_fields) and suggestion.suggested_name:
+                        updates["name"] = suggestion.suggested_name
+                    if (not target_fields or "description" in target_fields) and suggestion.suggested_description:
+                        updates["description"] = suggestion.suggested_description
+                    desc_translations = {}
+                    if (not target_fields or "description" in target_fields) and suggestion.suggested_description:
+                        desc_translations["tr"] = suggestion.suggested_description
+                    if (not target_fields or "description_en" in target_fields) and suggestion.suggested_description_en:
+                        desc_translations["en"] = suggestion.suggested_description_en
+                    if desc_translations:
+                        updates["description_translations"] = desc_translations
+                    if (not target_fields or "meta_title" in target_fields) and suggestion.suggested_meta_title:
+                        updates["meta_title"] = suggestion.suggested_meta_title
+                    if (not target_fields or "meta_description" in target_fields) and suggestion.suggested_meta_description:
+                        updates["meta_description"] = suggestion.suggested_meta_description
+                    if updates:
+                        await self._ikas.update_product(product_id, updates)
+                        await db.log_operation("batch_apply", product_id, updates, True)
 
-            await db.update_batch_item(
-                item["id"],
-                status="applied" if not self._config.dry_run else "approved",
-                rollback_data=rollback_data,
-            )
-            applied += 1
+                # Post-apply verification: re-fetch from ikas, re-score, update cache
+                score_after_val = item.get("score_after")
+                if not self._config.dry_run:
+                    try:
+                        updated_product = await self._ikas.get_product_by_id(product_id)
+                        if updated_product:
+                            await db.save_product(updated_product)
+                            new_score = analyze_product(updated_product, self._config.seo_target_keywords)
+                            await db.save_scores([new_score])
+                            score_after_val = new_score.total_score
+                            logger.info(
+                                "Post-apply verify %s: score %s → %s",
+                                product_id, item.get("score_before"), score_after_val,
+                            )
+                    except Exception as verify_exc:
+                        logger.warning("Post-apply verify failed for %s: %s", product_id, verify_exc)
 
-        await db.update_batch_job(job_id, status="completed")
-        logger.info("Batch apply %s done: %d applied", job_id, applied)
+                await db.update_batch_item(
+                    item["id"],
+                    status="applied" if not self._config.dry_run else "approved",
+                    rollback_data=rollback_data,
+                    score_after=score_after_val,
+                )
+                # Log the score change event
+                if not self._config.dry_run:
+                    await db.insert_score_change_log(
+                        product_id=product_id,
+                        product_name=item.get("product_name", product.name),
+                        operation="batch_apply",
+                        score_before=item.get("score_before"),
+                        score_after=score_after_val,
+                        job_id=job_id,
+                    )
+                applied += 1
+            except Exception as exc:
+                failed += 1
+                logger.error("Batch apply failed for product %s: %s", product_id, exc)
+                await db.update_batch_item(
+                    item["id"],
+                    status="failed",
+                    skip_reason=str(exc)[:500],
+                    score_after=None,
+                )
+
+        status = "completed" if failed == 0 else "completed_with_errors"
+        await db.update_batch_job(job_id, status=status)
+        await self._refresh_batch_job_metrics(job_id)
+        logger.info("Batch apply %s done: %d applied, %d failed", job_id, applied, failed)
 
     async def rollback_product(self, product_id: str, rollback_data: dict) -> bool:
         """Restore original product fields to ikas."""

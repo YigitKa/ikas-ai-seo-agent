@@ -386,3 +386,67 @@ export async function getTopImprovers(limit = 10): Promise<TopImprover[]> {
 export async function takeSnapshot(): Promise<{ message: string }> {
   return request('/api/reports/take-snapshot', { method: 'POST' });
 }
+
+export async function getScoreChangeLog(params: {
+  start_date?: string;
+  end_date?: string;
+  product_id?: string;
+  operation?: string;
+  job_id?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<import('../types').ScoreChangeLogEntry[]> {
+  const qs = new URLSearchParams();
+  if (params.start_date) qs.set('start_date', params.start_date);
+  if (params.end_date) qs.set('end_date', params.end_date);
+  if (params.product_id) qs.set('product_id', params.product_id);
+  if (params.operation) qs.set('operation', params.operation);
+  if (params.job_id) qs.set('job_id', params.job_id);
+  if (params.limit) qs.set('limit', String(params.limit));
+  if (params.offset) qs.set('offset', String(params.offset));
+  return request(`/api/reports/score-change-log?${qs.toString()}`);
+}
+
+export async function getScoreChangeSummary(params: {
+  start_date?: string;
+  end_date?: string;
+} = {}): Promise<import('../types').ScoreChangeSummary> {
+  const qs = new URLSearchParams();
+  if (params.start_date) qs.set('start_date', params.start_date);
+  if (params.end_date) qs.set('end_date', params.end_date);
+  return request(`/api/reports/score-change-summary?${qs.toString()}`);
+}
+
+export async function getHourlyActivity(params: {
+  start_date?: string;
+  end_date?: string;
+} = {}): Promise<import('../types').HourlyActivity[]> {
+  const qs = new URLSearchParams();
+  if (params.start_date) qs.set('start_date', params.start_date);
+  if (params.end_date) qs.set('end_date', params.end_date);
+  return request(`/api/reports/hourly-activity?${qs.toString()}`);
+}
+
+export async function getDailyActivity(params: {
+  start_date?: string;
+  end_date?: string;
+} = {}): Promise<import('../types').DailyActivity[]> {
+  const qs = new URLSearchParams();
+  if (params.start_date) qs.set('start_date', params.start_date);
+  if (params.end_date) qs.set('end_date', params.end_date);
+  return request(`/api/reports/daily-activity?${qs.toString()}`);
+}
+
+export async function getScoreDistribution(): Promise<import('../types').ScoreDistributionBucket[]> {
+  return request('/api/reports/score-distribution');
+}
+
+export async function getOperationMetrics(params: {
+  start_date?: string;
+  end_date?: string;
+} = {}): Promise<import('../types').OperationMetric[]> {
+  const qs = new URLSearchParams();
+  if (params.start_date) qs.set('start_date', params.start_date);
+  if (params.end_date) qs.set('end_date', params.end_date);
+  return request(`/api/reports/operation-metrics?${qs.toString()}`);
+}

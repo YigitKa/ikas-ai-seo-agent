@@ -7,6 +7,7 @@ const STATUS_LABELS: Record<string, string> = {
   running: 'Çalışıyor',
   paused: 'Duraklatıldı',
   completed: 'Tamamlandı',
+  completed_with_errors: 'Kısmi Tamamlandı',
   failed: 'Hata',
   cancelled: 'İptal',
 };
@@ -16,6 +17,7 @@ const STATUS_BG: Record<string, string> = {
   analyzed: 'rgba(99,102,241,0.15)',
   running: 'rgba(34,197,94,0.15)',
   completed: 'rgba(99,102,241,0.15)',
+  completed_with_errors: 'rgba(245,158,11,0.15)',
   failed: 'rgba(239,68,68,0.15)',
   cancelled: 'rgba(100,116,139,0.15)',
   idle: 'rgba(100,116,139,0.15)',
@@ -27,6 +29,7 @@ const STATUS_TEXT: Record<string, string> = {
   analyzed: '#818cf8',
   running: '#22c55e',
   completed: '#818cf8',
+  completed_with_errors: '#f59e0b',
   failed: '#ef4444',
   cancelled: '#94a3b8',
   idle: '#94a3b8',

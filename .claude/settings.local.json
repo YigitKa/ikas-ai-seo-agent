@@ -27,7 +27,9 @@
       "Bash(tasklist //FI 'PID eq 38960')",
       "Bash(tasklist)",
       "Bash(taskkill //F //PID 38960)",
-      "Bash(curl -s http://localhost:8001/api/health)"
+      "Bash(curl -s http://localhost:8001/api/health)",
+      "Bash(python -m pytest tests/test_ikas_client.py tests/test_product_manager.py -v --tb=short)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_ikas_client.py tests/test_product_manager.py -v --tb=short)"
     ]
   }
 }

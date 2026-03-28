@@ -160,6 +160,27 @@ ON daily_score_snapshots(snapshot_date, product_id);
 
 CREATE INDEX IF NOT EXISTS idx_daily_snapshots_date
 ON daily_score_snapshots(snapshot_date);
+
+CREATE TABLE IF NOT EXISTS score_change_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id TEXT NOT NULL,
+    product_name TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    score_before INTEGER,
+    score_after INTEGER,
+    delta INTEGER,
+    job_id TEXT,
+    created_at TIMESTAMP NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_score_change_log_created_at
+ON score_change_log(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_score_change_log_product
+ON score_change_log(product_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_score_change_log_job
+ON score_change_log(job_id);
 """
 
 
@@ -1436,6 +1457,232 @@ async def get_snapshot_products(snapshot_date: str) -> list[dict]:
             ORDER BY total_score DESC
             """,
             (snapshot_date,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+# ── Score change log ─────────────────────────────────────────────────────────
+
+
+async def insert_score_change_log(
+    product_id: str,
+    product_name: str,
+    operation: str,
+    score_before: Optional[int],
+    score_after: Optional[int],
+    job_id: Optional[str] = None,
+) -> None:
+    """Insert a score change event (called after every product update + re-score)."""
+    delta = None
+    if score_before is not None and score_after is not None:
+        delta = score_after - score_before
+    async with connection() as conn:
+        await conn.execute(
+            """INSERT INTO score_change_log
+               (product_id, product_name, operation, score_before, score_after, delta, job_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (product_id, product_name, operation, score_before, score_after, delta, job_id, _now_iso()),
+        )
+        await conn.commit()
+
+
+async def get_score_change_log(
+    *,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    product_id: Optional[str] = None,
+    operation: Optional[str] = None,
+    job_id: Optional[str] = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> list[dict]:
+    """Query score change events with optional filters and date range."""
+    conditions: list[str] = []
+    params: list[Any] = []
+    if start_date:
+        conditions.append("created_at >= ?")
+        params.append(start_date)
+    if end_date:
+        conditions.append("created_at <= ?")
+        params.append(end_date + "T23:59:59")
+    if product_id:
+        conditions.append("product_id = ?")
+        params.append(product_id)
+    if operation:
+        conditions.append("operation = ?")
+        params.append(operation)
+    if job_id:
+        conditions.append("job_id = ?")
+        params.append(job_id)
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    params.extend([limit, offset])
+    async with connection() as conn:
+        async with conn.execute(
+            f"SELECT * FROM score_change_log {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            params,
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+async def get_score_change_summary(
+    *,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> dict:
+    """Aggregate stats for score change events in a date range."""
+    conditions: list[str] = []
+    params: list[Any] = []
+    if start_date:
+        conditions.append("created_at >= ?")
+        params.append(start_date)
+    if end_date:
+        conditions.append("created_at <= ?")
+        params.append(end_date + "T23:59:59")
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    async with connection() as conn:
+        async with conn.execute(
+            f"""SELECT
+                COUNT(*) AS total_events,
+                COUNT(DISTINCT product_id) AS unique_products,
+                ROUND(AVG(delta), 1) AS avg_delta,
+                SUM(CASE WHEN delta > 0 THEN 1 ELSE 0 END) AS improved_count,
+                SUM(CASE WHEN delta < 0 THEN 1 ELSE 0 END) AS degraded_count,
+                SUM(CASE WHEN delta = 0 OR delta IS NULL THEN 1 ELSE 0 END) AS unchanged_count,
+                MAX(delta) AS best_delta,
+                MIN(delta) AS worst_delta,
+                COALESCE(SUM(CASE WHEN delta > 0 THEN delta ELSE 0 END), 0) AS total_gain,
+                COALESCE(SUM(delta), 0) AS net_change,
+                ROUND(AVG(score_after), 1) AS avg_score_after
+            FROM score_change_log {where}""",
+            params,
+        ) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else {}
+
+
+async def get_hourly_activity(
+    *,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> list[dict]:
+    """Score change events grouped by hour-of-day (0-23)."""
+    conditions: list[str] = []
+    params: list[Any] = []
+    if start_date:
+        conditions.append("created_at >= ?")
+        params.append(start_date)
+    if end_date:
+        conditions.append("created_at <= ?")
+        params.append(end_date + "T23:59:59")
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    async with connection() as conn:
+        async with conn.execute(
+            f"""SELECT
+                strftime('%H', created_at) AS hour,
+                COUNT(*) AS event_count,
+                ROUND(AVG(delta), 1) AS avg_delta,
+                SUM(CASE WHEN delta > 0 THEN 1 ELSE 0 END) AS improved,
+                SUM(CASE WHEN delta < 0 THEN 1 ELSE 0 END) AS degraded
+            FROM score_change_log {where}
+            GROUP BY hour
+            ORDER BY hour""",
+            params,
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+async def get_daily_activity(
+    *,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> list[dict]:
+    """Score change events grouped by calendar date."""
+    conditions: list[str] = []
+    params: list[Any] = []
+    if start_date:
+        conditions.append("created_at >= ?")
+        params.append(start_date)
+    if end_date:
+        conditions.append("created_at <= ?")
+        params.append(end_date + "T23:59:59")
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    async with connection() as conn:
+        async with conn.execute(
+            f"""SELECT
+                DATE(created_at) AS day,
+                COUNT(*) AS event_count,
+                ROUND(AVG(delta), 1) AS avg_delta,
+                SUM(CASE WHEN delta > 0 THEN 1 ELSE 0 END) AS improved,
+                SUM(CASE WHEN delta < 0 THEN 1 ELSE 0 END) AS degraded,
+                COUNT(DISTINCT product_id) AS unique_products
+            FROM score_change_log {where}
+            GROUP BY day
+            ORDER BY day""",
+            params,
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+async def get_score_distribution() -> list[dict]:
+    """Current product score distribution in buckets."""
+    async with connection() as conn:
+        async with conn.execute(
+            """WITH latest AS (
+                SELECT product_id,
+                       json_extract(score_data, '$.total_score') AS total_score,
+                       ROW_NUMBER() OVER (PARTITION BY product_id ORDER BY created_at DESC) AS rn
+                FROM seo_scores
+            )
+            SELECT
+                CASE
+                    WHEN total_score >= 90 THEN '90-100'
+                    WHEN total_score >= 80 THEN '80-89'
+                    WHEN total_score >= 70 THEN '70-79'
+                    WHEN total_score >= 60 THEN '60-69'
+                    WHEN total_score >= 50 THEN '50-59'
+                    ELSE '0-49'
+                END AS bucket,
+                COUNT(*) AS count
+            FROM latest WHERE rn = 1
+            GROUP BY bucket
+            ORDER BY bucket DESC"""
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+async def get_operation_metrics(
+    *,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> list[dict]:
+    """Per-operation-type success rate and avg delta."""
+    conditions: list[str] = []
+    params: list[Any] = []
+    if start_date:
+        conditions.append("created_at >= ?")
+        params.append(start_date)
+    if end_date:
+        conditions.append("created_at <= ?")
+        params.append(end_date + "T23:59:59")
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    async with connection() as conn:
+        async with conn.execute(
+            f"""SELECT
+                operation,
+                COUNT(*) AS total,
+                ROUND(AVG(delta), 1) AS avg_delta,
+                ROUND(100.0 * SUM(CASE WHEN delta > 0 THEN 1 ELSE 0 END) / COUNT(*), 1) AS success_rate,
+                MAX(delta) AS best_delta,
+                MIN(delta) AS worst_delta,
+                ROUND(AVG(score_after), 1) AS avg_score_after
+            FROM score_change_log {where}
+            GROUP BY operation""",
+            params,
         ) as cursor:
             rows = await cursor.fetchall()
     return [dict(row) for row in rows]

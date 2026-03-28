@@ -76,6 +76,7 @@ class IkasClient:
                 metaData { slug pageTitle description }
                 variants {
                     id sku weight
+                    variantValueIds { variantTypeId variantValueId }
                     prices { sellPrice discountPrice currency }
                     images { imageId order fileName isMain }
                 }
@@ -228,6 +229,50 @@ class IkasClient:
             return output
 
         return {}
+
+    @staticmethod
+    def _clean_variant_for_input(variant: Dict[str, Any]) -> Dict[str, Any]:
+        """Whitelist variant fields for saveProduct mutation input.
+
+        ikas GraphQL returns extra fields (_id, merchantId, deleted, isActive)
+        that are NOT accepted by the mutation and cause validation errors.
+        """
+        cleaned: Dict[str, Any] = {}
+        # Scalar fields accepted by VariantInput
+        # ikas may return "_id" instead of "id" — map it
+        variant_id = variant.get("id") or variant.get("_id")
+        if variant_id is not None:
+            cleaned["id"] = variant_id
+        for key in ("sku", "weight"):
+            if variant.get(key) is not None:
+                cleaned[key] = variant[key]
+
+        # variantValueIds — array of {variantTypeId, variantValueId}
+        raw_vvi = variant.get("variantValueIds")
+        if raw_vvi and isinstance(raw_vvi, list):
+            cleaned["variantValueIds"] = [
+                {"variantTypeId": v["variantTypeId"], "variantValueId": v["variantValueId"]}
+                for v in raw_vvi
+                if isinstance(v, dict) and v.get("variantTypeId") and v.get("variantValueId")
+            ]
+
+        # prices — strip merchantId and other server-side fields
+        raw_prices = variant.get("prices")
+        if raw_prices and isinstance(raw_prices, list):
+            cleaned["prices"] = [
+                {k: v for k, v in p.items() if k in ("sellPrice", "discountPrice", "currency") and v is not None}
+                for p in raw_prices if isinstance(p, dict)
+            ]
+
+        # images — strip merchantId and other server-side fields
+        raw_images = variant.get("images")
+        if raw_images and isinstance(raw_images, list):
+            cleaned["images"] = [
+                {k: v for k, v in img.items() if k in ("imageId", "order", "fileName", "isMain") and v is not None}
+                for img in raw_images if isinstance(img, dict)
+            ]
+
+        return cleaned
 
     def _build_image_url(self, image_data: Dict[str, Any]) -> Optional[str]:
         """Build a usable image URL from ikas ProductImage fields.
@@ -403,21 +448,29 @@ class IkasClient:
             (current.get("metaData") or {}).get("slug"),
         )
 
+        cleaned_variants = [
+            self._clean_variant_for_input(variant)
+            for variant in (current.get("variants") or [])
+        ]
+        logger.info(
+            "Cleaned %d variants for %s: keys=%s",
+            len(cleaned_variants),
+            product_id,
+            [list(v.keys()) for v in cleaned_variants[:2]],
+        )
+
         input_data: Dict[str, Any] = {
             "id": product_id,
             "name": updates.get("name", current["name"]),
             "type": current["type"],
-            "salesChannelIds": current.get("salesChannelIds") or [],
             "description": current.get("description") or "",
-            "variants": [
-                {
-                    k: v
-                    for k, v in variant.items()
-                    if v is not None
-                }
-                for variant in (current.get("variants") or [])
-            ],
+            "variants": cleaned_variants,
         }
+
+        # salesChannelIds — only include if non-empty (empty triggers "new product" error)
+        sales_channel_ids = current.get("salesChannelIds")
+        if sales_channel_ids:
+            input_data["salesChannelIds"] = sales_channel_ids
 
         # Preserve optional top-level fields
         if current.get("brandId"):

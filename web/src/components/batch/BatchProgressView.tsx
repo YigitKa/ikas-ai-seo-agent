@@ -150,7 +150,7 @@ export default function BatchProgressView({ job, onStop, onJobComplete }: Props)
       </div>
 
       {/* Completion state */}
-      {liveJob.status === 'completed' && (
+      {(liveJob.status === 'completed' || liveJob.status === 'completed_with_errors') && (
         <div
           className="rounded-xl p-5 text-center"
           style={{

@@ -283,6 +283,7 @@ export type BatchJobStatus =
   | 'running'
   | 'paused'
   | 'completed'
+  | 'completed_with_errors'
   | 'failed'
   | 'cancelled';
 
@@ -396,4 +397,62 @@ export interface TopImprover {
   first_score: number;
   latest_score: number;
   delta: number;
+}
+
+export interface ScoreChangeLogEntry {
+  id: number;
+  product_id: string;
+  product_name: string;
+  operation: string;
+  score_before: number | null;
+  score_after: number | null;
+  delta: number | null;
+  job_id: string | null;
+  created_at: string;
+}
+
+export interface ScoreChangeSummary {
+  total_events: number;
+  unique_products: number;
+  avg_delta: number | null;
+  improved_count: number;
+  degraded_count: number;
+  unchanged_count: number;
+  best_delta: number | null;
+  worst_delta: number | null;
+  total_gain: number;
+  net_change: number;
+  avg_score_after: number | null;
+}
+
+export interface HourlyActivity {
+  hour: string;
+  event_count: number;
+  avg_delta: number | null;
+  improved: number;
+  degraded: number;
+}
+
+export interface DailyActivity {
+  day: string;
+  event_count: number;
+  avg_delta: number | null;
+  improved: number;
+  degraded: number;
+  unique_products: number;
+}
+
+export interface ScoreDistributionBucket {
+  bucket: string;
+  count: number;
+}
+
+export interface OperationMetric {
+  operation: string;
+  total: number;
+  avg_delta: number | null;
+  success_rate: number | null;
+  best_delta: number | null;
+  worst_delta: number | null;
+  avg_score_after: number | null;
 }
