@@ -991,6 +991,14 @@ class ProductManager:
         all_products = await db.get_all_products()
         product_map = {p.id: p for p in all_products}
 
+        # Reset progress counters so the UI tracks apply-phase progress
+        await db.update_batch_job(
+            job_id,
+            processed_count=0,
+            skipped_count=0,
+            total_count=len(approved),
+        )
+
         applied = 0
         failed = 0
         for item in approved:
@@ -1083,6 +1091,8 @@ class ProductManager:
                     skip_reason=str(exc)[:500],
                     score_after=None,
                 )
+
+            await db.update_batch_job(job_id, processed_count=applied + failed)
 
         status = "completed" if failed == 0 else "completed_with_errors"
         await db.update_batch_job(job_id, status=status)

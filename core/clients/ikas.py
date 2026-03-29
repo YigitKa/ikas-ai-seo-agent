@@ -180,13 +180,28 @@ class IkasClient:
             token = await self.authenticate()
             client = await self._get_client()
 
-            for attempt in range(3):
+            for attempt in range(5):
                 try:
                     response = await client.post(
                         self._config.ikas_api_url,
                         json={"query": query, "variables": variables or {}},
                         headers={"Authorization": f"Bearer {token}"},
                     )
+                    if response.status_code == 429:
+                        try:
+                            body = response.json()
+                            retry_after = float(body.get("retryAfter", 5))
+                        except Exception:
+                            retry_after = 5.0
+                        wait = retry_after + 0.5
+                        logger.warning(
+                            "GraphQL request failed: status=%s body=%s",
+                            response.status_code,
+                            response.text,
+                        )
+                        logger.warning("ikas rate limit hit, waiting %.1fs before retry (attempt %d/5)", wait, attempt + 1)
+                        await asyncio.sleep(wait)
+                        continue
                     if response.status_code >= 400:
                         logger.error(
                             "GraphQL request failed: status=%s body=%s",
@@ -202,12 +217,12 @@ class IkasClient:
                     return result["data"]
                 except httpx.HTTPError as e:
                     logger.warning(f"GraphQL attempt {attempt + 1} failed: {e}")
-                    if attempt < 2:
+                    if attempt < 4:
                         await asyncio.sleep(2 ** attempt)
                     else:
                         raise
 
-            raise RuntimeError("GraphQL request failed after 3 attempts")
+            raise RuntimeError("GraphQL request failed after 5 attempts")
 
     def _extract_translations(self, data: Dict[str, Any]) -> Dict[str, str]:
         # ikas API returns translations as list of {locale, name, description}
