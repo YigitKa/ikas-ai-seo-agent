@@ -416,6 +416,7 @@ Skor geçmişini izleyen ve iyileşmeleri görselleştiren **analitik dashboard*
 - **En çok gelişenler** — skor artışına göre sıralı ürün listesi
 - **Ürün bazlı drilldown** — her ürünün kendi trend grafiği
 - **Sorun trendi** — zaman içinde ortalama sorun sayısı takibi
+- **Skor değişikliği günlüğü** — her uygulama, batch ve chat operasyonunun ürün × alan × delta bazında olay kaydı
 - **Anlık görüntü** — karşılaştırma için mevcut durumu elle kaydedin
 
 ### Varsayılan Olarak Güvenli
@@ -497,6 +498,10 @@ mindmap
     ("⚠️ Sahte-Eylem Güvenliği")
       ("Tool çağırmadan uyguladım derse")
       ("Sistem tespit edip uyarı ekler")
+    ("🔁 IkasClient Retry + Rate-Limit")
+      ("429 / 5xx otomatik yeniden deneme")
+      ("Yapılandırılabilir bekleme + geri sayım")
+      ("ProductManager ilerleme sayaçlarını sıfırlar")
 ```
 
 ---
@@ -849,15 +854,17 @@ ikas-ai-seo-agent/
 │   │
 │   ├── services/provider.py    # Sağlayıcı sağlık + model keşfi
 │   ├── services/settings.py    # Ayar yönetimi
-│   └── services/suggestion.py  # Öneri alan operasyonları
+│   ├── services/suggestion.py  # Öneri alan operasyonları
+│   └── services/daily_tracker.py # Günlük skor anlık görüntüsü + değişiklik logu (idempotent)
 │
 ├── api/                        # FastAPI REST + WebSocket
 │   ├── main.py                 # Uygulama kurulumu, CORS, SPA sunumu
 │   ├── dependencies.py         # Request-scoped DI
-│   └── routers/                # products, seo, suggestions, settings, chat
+│   └── routers/                # products, seo, suggestions, settings, chat, batch, llms, reports
 │
 ├── web/src/                    # React/TypeScript SPA
-│   ├── pages/                  # Dashboard, Settings, LlmsLab, BatchOperations, Reports
+│   ├── pages/                  # Dashboard, LlmsLab, BatchOperations, Reports
+│   │   └── settings/           # SettingsPage (modüler): ControlSidebar, ProviderSection, StoreSettingsSection, LiveStatusCard, LmStudioStatusCard
 │   ├── components/             # ChatPanel, ProductTable, ScoreCard (Quick Wins)
 │   │   ├── chat/messages/      # MessageBubble, ToolResultCard (SEO agent + MCP), ThinkingBlock, CostCard
 │   │   └── dashboard/          # DashboardHeader (sync butonu), DashboardSidebar (boş arama durumu)
@@ -945,6 +952,7 @@ ikas-ai-seo-agent/
 | `GET` | `/api/reports/snapshot-dates` | Tüm anlık görüntü tarihleri |
 | `GET` | `/api/reports/snapshot/{date}` | Belirli bir tarihin tüm skor verileri |
 | `POST` | `/api/reports/take-snapshot` | Anlık görüntü al (idempotent) |
+| `GET` | `/api/reports/score-change-log` | Tüm skor değişikliği olaylarını listele (operasyon, ürün, delta, zaman) |
 
 ### Gerçek Zamanlı
 | Protokol | Endpoint | Açıklama |
