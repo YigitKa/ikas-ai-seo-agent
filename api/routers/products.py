@@ -14,6 +14,7 @@ from api.schemas import (
 )
 from core.models import Product, SeoScore
 from core.product_manager import ProductManager
+from core.seo.analyzer import analyze_product
 from core.utils.html import html_to_plain_text
 from core.utils.presentation import get_en_description_value
 from data import db
@@ -118,7 +119,24 @@ async def list_products(
 ) -> ProductListResponse:
     """Return cached products with their latest scores."""
     products = await manager.get_cached_products()
-    scored = await manager.score_products(products) if products else []
+    if not products:
+        scored: list[tuple[Product, SeoScore]] = []
+    else:
+        product_ids = [p.id for p in products]
+        cached_scores = await db.get_latest_scores_for_products(product_ids)
+
+        scored = []
+        unscored: list[Product] = []
+        for p in products:
+            existing = cached_scores.get(p.id)
+            if existing:
+                scored.append((p, existing))
+            else:
+                unscored.append(p)
+
+        if unscored:
+            newly_scored = await manager.score_products(unscored)
+            scored.extend(newly_scored)
 
     if filter == "low_score":
         scored = manager.filter_products_by_score(scored)

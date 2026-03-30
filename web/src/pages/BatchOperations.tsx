@@ -57,20 +57,20 @@ export default function BatchOperations() {
   const { data: stats } = useQuery({
     queryKey: ['batchStats'],
     queryFn: getBatchStats,
-    refetchInterval: view === 'running' || view === 'analyzing' ? 3000 : 10000,
+    refetchInterval: view === 'running' || view === 'analyzing' ? 5000 : 30000,
   });
 
   const { data: jobs = [] } = useQuery({
     queryKey: ['batchJobs'],
     queryFn: listBatchJobs,
-    refetchInterval: 15000,
+    refetchInterval: 30000,
   });
 
   const { data: activeDetail } = useQuery({
     queryKey: ['batchJob', activeJobId],
     queryFn: () => getBatchJob(activeJobId!),
     enabled: !!activeJobId,
-    refetchInterval: view === 'analyzing' || view === 'running' ? 4000 : false,
+    refetchInterval: view === 'analyzing' || view === 'running' ? 8000 : false,
   });
 
   const activeJob = activeDetail?.job ?? null;

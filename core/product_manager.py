@@ -17,7 +17,7 @@ from core.chat import ChatService
 from core.clients.ikas import IkasClient
 from core.models import AgentEvent, AppConfig, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.utils.presentation import format_prompt_display, get_en_description_value, get_tr_description_value
-from core.prompt_store import get_rewrite_agent_system_prompt, get_batch_agent_system_prompt, ensure_prompt_files
+from core.prompt_store import get_rewrite_agent_system_prompt, get_batch_agent_system_prompt
 from core.services.provider import (
     discover_provider_models,
     get_lm_studio_live_status,
@@ -62,7 +62,6 @@ TScore = TypeVar("TScore")
 
 class ProductManager:
     def __init__(self) -> None:
-        ensure_prompt_files()
         self._ikas = IkasClient()
         self._config = get_config()
         self._ai: BaseAIClient = create_ai_client(self._config)

@@ -13,8 +13,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from api.dependencies import close_manager
+from api.dependencies import init_manager, shutdown_manager
 from api.routers import products, seo, suggestions, settings, chat, llms, batch, reports
+from core.prompt_store import ensure_prompt_files
 from data import db
 from core.llms.service import llms_service
 from core.services.daily_tracker import run_daily_snapshot
@@ -47,11 +48,13 @@ async def _run_daily_snapshot_safe() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting ikas AI SEO Agent API")
+    ensure_prompt_files()
     await db.init_db()
     await llms_service.bootstrap()
+    init_manager()
     asyncio.create_task(_run_daily_snapshot_safe())
     yield
-    await close_manager()
+    await shutdown_manager()
     logger.info("Shut down ikas AI SEO Agent API")
 
 

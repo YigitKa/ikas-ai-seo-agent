@@ -758,8 +758,15 @@ Notlar:
 
 _PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 
+_prompts_initialized: bool = False
+_prompt_cache: dict[str, str] = {}
+
 
 def ensure_prompt_files() -> Path:
+    global _prompts_initialized
+    if _prompts_initialized:
+        return PROMPTS_DIR
+
     PROMPTS_DIR.mkdir(parents=True, exist_ok=True)
 
     for key, filename in PROMPT_FILES.items():
@@ -771,6 +778,7 @@ def ensure_prompt_files() -> Path:
     if not readme_path.exists():
         readme_path.write_text(README_TEXT, encoding="utf-8")
 
+    _prompts_initialized = True
     return PROMPTS_DIR
 
 
@@ -792,16 +800,21 @@ def load_prompt_template(key: str) -> str:
     if key not in PROMPT_FILES:
         raise KeyError(f"Bilinmeyen prompt anahtari: {key}")
 
-    ensure_prompt_files()
+    cached = _prompt_cache.get(key)
+    if cached is not None:
+        return cached
+
     path = PROMPTS_DIR / PROMPT_FILES[key]
 
     try:
         content = path.read_text(encoding="utf-8").strip()
     except OSError as exc:
         logger.warning("Prompt dosyasi okunamadi, varsayilan kullaniliyor: %s (%s)", path, exc)
-        return PROMPT_DEFAULTS[key]
+        content = PROMPT_DEFAULTS[key]
 
-    return content or PROMPT_DEFAULTS[key]
+    result = content or PROMPT_DEFAULTS[key]
+    _prompt_cache[key] = result
+    return result
 
 
 def validate_prompt_template(key: str, template: str) -> None:
@@ -821,10 +834,10 @@ def save_prompt_template(key: str, content: str) -> Path:
         raise KeyError(f"Bilinmeyen prompt anahtari: {key}")
 
     validate_prompt_template(key, content)
-    ensure_prompt_files()
     normalized = content.replace("\r\n", "\n").strip()
     path = PROMPTS_DIR / PROMPT_FILES[key]
     path.write_text(normalized, encoding="utf-8")
+    _prompt_cache[key] = normalized
     return path
 
 
@@ -832,9 +845,10 @@ def reset_prompt_template(key: str) -> Path:
     if key not in PROMPT_FILES:
         raise KeyError(f"Bilinmeyen prompt anahtari: {key}")
 
-    ensure_prompt_files()
     path = PROMPTS_DIR / PROMPT_FILES[key]
-    path.write_text(PROMPT_DEFAULTS[key], encoding="utf-8")
+    default = PROMPT_DEFAULTS[key]
+    path.write_text(default, encoding="utf-8")
+    _prompt_cache[key] = default
     return path
 
 

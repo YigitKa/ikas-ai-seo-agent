@@ -1,3 +1,4 @@
+import asyncio
 import json
 import aiosqlite
 from contextlib import asynccontextmanager
@@ -9,6 +10,11 @@ from uuid import uuid4
 from core.models import LlmsEntry, LlmsJob, Product, SeoScore, SeoSuggestion
 
 DB_PATH = Path(__file__).parent.parent / "seo_optimizer.db"
+
+# ── Connection pool ─────────────────────────────────────────────────────────
+_POOL_SIZE = 5
+_pool: asyncio.Queue[aiosqlite.Connection] | None = None
+_pool_initialized = False
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS products (
@@ -193,11 +199,49 @@ async def _configure_connection(conn: aiosqlite.Connection) -> aiosqlite.Connect
     return conn
 
 
+async def _create_connection() -> aiosqlite.Connection:
+    conn = await aiosqlite.connect(str(DB_PATH), timeout=30)
+    await _configure_connection(conn)
+    return conn
+
+
+async def _init_pool() -> None:
+    global _pool, _pool_initialized
+    if _pool_initialized:
+        return
+    _pool = asyncio.Queue(maxsize=_POOL_SIZE)
+    for _ in range(_POOL_SIZE):
+        conn = await _create_connection()
+        await _pool.put(conn)
+    _pool_initialized = True
+
+
+async def close_pool() -> None:
+    """Close all pooled connections (call at shutdown)."""
+    global _pool, _pool_initialized
+    if _pool is None:
+        return
+    while not _pool.empty():
+        conn = _pool.get_nowait()
+        await conn.close()
+    _pool_initialized = False
+    _pool = None
+
+
 @asynccontextmanager
 async def connection() -> AsyncIterator[aiosqlite.Connection]:
-    async with aiosqlite.connect(str(DB_PATH), timeout=30) as conn:
-        await _configure_connection(conn)
+    if not _pool_initialized or _pool is None:
+        # Fallback for tests or before pool init
+        async with aiosqlite.connect(str(DB_PATH), timeout=30) as conn:
+            await _configure_connection(conn)
+            yield conn
+        return
+
+    conn = await _pool.get()
+    try:
         yield conn
+    finally:
+        await _pool.put(conn)
 
 
 @asynccontextmanager
@@ -356,6 +400,30 @@ async def get_latest_score(product_id: str) -> Optional[SeoScore]:
     if row:
         return SeoScore.model_validate_json(row["score_data"])
     return None
+
+
+async def get_latest_scores_for_products(product_ids: Sequence[str]) -> dict[str, SeoScore]:
+    """Return the latest SeoScore for each product_id in a single query."""
+    if not product_ids:
+        return {}
+
+    placeholders = ",".join("?" for _ in product_ids)
+    query = f"""
+        SELECT s.product_id, s.score_data
+        FROM seo_scores s
+        INNER JOIN (
+            SELECT product_id, MAX(created_at) AS max_created
+            FROM seo_scores
+            WHERE product_id IN ({placeholders})
+            GROUP BY product_id
+        ) latest ON s.product_id = latest.product_id AND s.created_at = latest.max_created
+    """
+    result: dict[str, SeoScore] = {}
+    async with connection() as conn:
+        async with conn.execute(query, list(product_ids)) as cursor:
+            async for row in cursor:
+                result[row["product_id"]] = SeoScore.model_validate_json(row["score_data"])
+    return result
 
 
 async def save_suggestion(suggestion: SeoSuggestion) -> None:

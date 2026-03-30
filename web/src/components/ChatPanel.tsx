@@ -68,8 +68,8 @@ export default function ChatPanel({
     queryKey: ["lm-studio-live-status"],
     queryFn: () => getLmStudioLiveStatus(),
     enabled: configuredProvider === "lm-studio",
-    staleTime: 2_000,
-    refetchInterval: configuredProvider === "lm-studio" ? 5_000 : false,
+    staleTime: 10_000,
+    refetchInterval: configuredProvider === "lm-studio" ? 15_000 : false,
   });
 
   const configuredAssistantLabel = configuredModel || configuredProvider || "AI modeli";
