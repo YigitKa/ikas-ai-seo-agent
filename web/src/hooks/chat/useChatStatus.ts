@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import type { MCPToolInfo, SeoSuggestion } from '../../types';
+import type { ActiveSkillSummary, MCPToolInfo, SeoSuggestion } from '../../types';
 
 export interface MCPState {
   hasToken: boolean;
@@ -22,6 +22,7 @@ export function useChatStatus() {
     message: '',
   });
   const [pendingSuggestion, setPendingSuggestion] = useState<SeoSuggestion | null>(null);
+  const [activeSkill, setActiveSkill] = useState<ActiveSkillSummary | null>(null);
 
   const pendingSinceRef = useRef<number | null>(null);
 
@@ -61,11 +62,13 @@ export function useChatStatus() {
     liveTokenEstimate,
     mcpState,
     pendingSuggestion,
+    activeSkill,
     pendingSinceRef,
 
     // Setters
     setMcpState,
     setPendingSuggestion,
+    setActiveSkill,
 
     // Actions
     startPendingRequest,

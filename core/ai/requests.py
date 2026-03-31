@@ -120,12 +120,23 @@ def _prepare_full_translation_description(value: str) -> str:
 _THINK_TAG_PROVIDERS = frozenset({"ollama", "lm-studio", "openrouter", "custom"})
 
 
+def _merge_system_prompt(system_prompt: str, extra_system_prompt: str = "") -> str:
+    base = system_prompt.strip()
+    extra = (extra_system_prompt or "").strip()
+    if not extra:
+        return base
+    if not base:
+        return extra
+    return f"{base}\n\n{extra}"
+
+
 def build_product_rewrite_request(
     config: AppConfig,
     provider: str,
     product: Product,
     score: SeoScore,
     target_keywords: Optional[List[str]] = None,
+    extra_system_prompt: str = "",
 ) -> dict:
     keywords = target_keywords or config.seo_target_keywords
     is_local = provider in ("ollama", "lm-studio")
@@ -138,6 +149,7 @@ def build_product_rewrite_request(
             "\n\nONEMLI: Dusunme surecini YAZMA. Dogrudan JSON ciktisi ver, "
             "baska hicbir sey yazma. /no_think"
         )
+    system_content = _merge_system_prompt(system_content, extra_system_prompt)
 
     user_prompt = USER_PROMPT_TEMPLATE.format(
         name=product.name,
@@ -235,6 +247,7 @@ def build_field_rewrite_request(
     field: str,
     product: Product,
     target_keywords: Optional[List[str]] = None,
+    extra_system_prompt: str = "",
 ) -> dict:
     keywords = target_keywords or config.seo_target_keywords
     is_local = provider in ("ollama", "lm-studio")
@@ -248,6 +261,7 @@ def build_field_rewrite_request(
             "\n\nONEMLI: Dusunme surecini YAZMA. Dogrudan JSON ciktisi ver, "
             "baska hicbir sey yazma. /no_think"
         )
+    system_content = _merge_system_prompt(system_content, extra_system_prompt)
 
     return {
         "system_prompt": system_content,
@@ -260,6 +274,7 @@ def build_en_translation_request(
     config: AppConfig,
     provider: str,
     product: Product,
+    extra_system_prompt: str = "",
 ) -> dict:
     is_local = provider in ("ollama", "lm-studio")
     raw_desc = _prepare_full_translation_description(product.description)
@@ -270,6 +285,7 @@ def build_en_translation_request(
             "\n\nONEMLI: Dusunme surecini YAZMA. Dogrudan JSON ciktisi ver, "
             "baska hicbir sey yazma. /no_think"
         )
+    system_content = _merge_system_prompt(system_content, extra_system_prompt)
 
     return {
         "system_prompt": system_content,

@@ -142,9 +142,10 @@ class AnthropicAIClient(BaseAIClient):
         product: Product,
         score: SeoScore,
         target_keywords: Optional[List[str]] = None,
+        extra_system_prompt: str = "",
     ) -> SeoSuggestion:
         request = build_product_rewrite_request(
-            self._config, "anthropic", product, score, target_keywords,
+            self._config, "anthropic", product, score, target_keywords, extra_system_prompt,
         )
         kwargs = self._build_create_kwargs(
             request["system_prompt"], request["user_prompt"], request["max_tokens"],
@@ -162,9 +163,10 @@ class AnthropicAIClient(BaseAIClient):
         product: Product,
         score: SeoScore,
         target_keywords: Optional[List[str]] = None,
+        extra_system_prompt: str = "",
     ) -> str | tuple[str, str]:
         request = build_field_rewrite_request(
-            self._config, "anthropic", field, product, target_keywords,
+            self._config, "anthropic", field, product, target_keywords, extra_system_prompt,
         )
         kwargs = self._build_create_kwargs(
             request["system_prompt"], request["user_prompt"], request["max_tokens"],
@@ -214,9 +216,13 @@ class AnthropicAIClient(BaseAIClient):
             return summary, thinking_text
         return summary
 
-    def translate_description_to_en(self, product: Product) -> str | tuple[str, str]:
+    def translate_description_to_en(
+        self,
+        product: Product,
+        extra_system_prompt: str = "",
+    ) -> str | tuple[str, str]:
         request = build_en_translation_request(
-            self._config, "anthropic", product,
+            self._config, "anthropic", product, extra_system_prompt,
         )
         kwargs = self._build_create_kwargs(
             request["system_prompt"], request["user_prompt"], request["max_tokens"],

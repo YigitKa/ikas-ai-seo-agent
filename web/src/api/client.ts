@@ -155,17 +155,22 @@ export async function getScore(id: string): Promise<{ product_id: string; score:
 
 // ── Suggestions ─────────────────────────────────────────────────────────────
 
-export async function generateSuggestion(productId: string): Promise<RewriteResponse> {
-  return request(`/api/suggestions/generate/${productId}`, { method: 'POST' });
+export async function generateSuggestion(
+  productId: string,
+  skillSlug = '',
+): Promise<RewriteResponse> {
+  const suffix = skillSlug ? `?skill_slug=${encodeURIComponent(skillSlug)}` : '';
+  return request(`/api/suggestions/generate/${productId}${suffix}`, { method: 'POST' });
 }
 
 export async function generateFieldRewrite(
   productId: string,
   field: string,
+  skillSlug = '',
 ): Promise<RewriteResponse> {
   return request(`/api/suggestions/generate-field/${productId}`, {
     method: 'POST',
-    body: JSON.stringify({ product_id: productId, field }),
+    body: JSON.stringify({ product_id: productId, field, skill_slug: skillSlug }),
   });
 }
 

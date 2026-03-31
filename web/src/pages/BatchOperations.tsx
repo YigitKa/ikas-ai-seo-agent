@@ -42,6 +42,7 @@ const DEFAULT_CONFIG: BatchConfig = {
   prevent_cannibalization: true,
   max_title_change_pct: 40,
   target_fields: ['name', 'description', 'meta_title', 'meta_description'],
+  skill_slug: '',
 };
 
 export default function BatchOperations() {

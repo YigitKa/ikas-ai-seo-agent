@@ -68,6 +68,11 @@ async def create_batch_job(
     if not body.product_ids:
         raise HTTPException(status_code=400, detail="En az bir ürün seçmelisiniz.")
 
+    try:
+        manager.validate_skill_for_flow(body.config.skill_slug, "batch")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     job_id = str(uuid4())
     config_json = body.config.model_dump_json()
     await db.create_batch_job(

@@ -153,7 +153,6 @@ class ChatServiceStateMixin:
             self._history.clear()
             self._session_pending_suggestions.clear()
             self._permission_runtime_rules.clear()
-            self._active_skill_slug = None
 
         def get_active_skill(self) -> SkillDefinition | None:
             if not self._active_skill_slug:

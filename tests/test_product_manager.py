@@ -1,5 +1,8 @@
 from typing import Optional
 
+import pytest
+
+import core.skills.store as skill_store
 from core.models import Product
 from core.product_manager import ProductManager
 
@@ -47,3 +50,33 @@ def test_stream_chat_message_returns_chat_stream_directly():
 
     assert result is manager._chat.stream
     assert manager._chat.calls == ["merhaba"]
+
+
+def _use_temp_skills(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(skill_store, "SKILLS_DIR", tmp_path / "skills")
+    skill_store._skill_cache.clear()
+    skill_store.ensure_skill_files()
+
+
+def test_validate_skill_for_flow_rejects_skill_without_batch_support(monkeypatch, tmp_path):
+    _use_temp_skills(monkeypatch, tmp_path)
+    manager = ProductManager.__new__(ProductManager)
+
+    with pytest.raises(ValueError, match="batch akisi"):
+        manager.validate_skill_for_flow("category-audit", "batch")
+
+
+def test_build_batch_runtime_prompt_includes_selected_skill(monkeypatch, tmp_path):
+    _use_temp_skills(monkeypatch, tmp_path)
+    manager = ProductManager.__new__(ProductManager)
+
+    prompt = manager._build_batch_runtime_prompt({
+        "preserve_specs": True,
+        "prevent_cannibalization": True,
+        "max_title_change_pct": 25,
+        "target_fields": ["name", "meta_title"],
+        "skill_slug": "brand-voice-rewrite",
+    })
+
+    assert "BATCH KISITLARI" in prompt
+    assert "Aktif skill: Brand Voice Rewrite" in prompt

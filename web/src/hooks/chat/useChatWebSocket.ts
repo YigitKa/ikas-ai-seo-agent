@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChatWsMessage, SeoSuggestion } from '../../types';
+import type { ActiveSkillSummary, ChatWsMessage, SeoSuggestion } from '../../types';
 import type { ChatMessage } from '../useChat';
 import type { MCPState } from './useChatStatus';
 
@@ -16,6 +16,7 @@ interface UseChatWebSocketDeps {
   incrementChunkCount: () => void;
   setMcpState: React.Dispatch<React.SetStateAction<MCPState>>;
   setPendingSuggestion: React.Dispatch<React.SetStateAction<SeoSuggestion | null>>;
+  setActiveSkill: React.Dispatch<React.SetStateAction<ActiveSkillSummary | null>>;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
 
   // Stream callbacks
@@ -44,6 +45,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
     incrementChunkCount,
     setMcpState,
     setPendingSuggestion,
+    setActiveSkill,
     setMessages,
     appendAssistantChunk,
     appendThinkingChunk,
@@ -63,6 +65,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intentionalDisconnectRef = useRef(false);
   const lastSentPayloadRef = useRef<{ message: string; productId: string; hidden: boolean } | null>(null);
+  const preferredSkillSlugRef = useRef<string | null>(null);
 
   // Forward-ref so scheduleReconnect can call connect without a circular dep
   const connectRef = useRef<() => void>(() => {});
@@ -115,6 +118,9 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
       const productId = productContextRef.current?.id;
       if (productId) {
         ws.send(JSON.stringify({ action: 'set_context', product_id: productId }));
+      }
+      if (preferredSkillSlugRef.current) {
+        ws.send(JSON.stringify({ action: 'set_skill', skill_slug: preferredSkillSlugRef.current }));
       }
     };
 
@@ -174,6 +180,13 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
           });
           break;
 
+        case 'skill_status':
+          setActiveSkill(data.active_skill ?? null);
+          if (data.active_skill?.slug) {
+            preferredSkillSlugRef.current = data.active_skill.slug;
+          }
+          break;
+
         case 'context_set':
           setPendingSuggestion(data.pending_suggestion ?? null);
           if (data.product_id) {
@@ -219,6 +232,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
     setMessages,
     setMcpState,
     setPendingSuggestion,
+    setActiveSkill,
   ]);
 
   // Keep the forward-ref up to date after every render so scheduleReconnect
@@ -295,6 +309,47 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
     wsRef.current.send(JSON.stringify({ action: 'cancel' }));
   }, [pendingSinceRef]);
 
+  const syncPreferredSkillSlug = useCallback((skillSlug: string | null) => {
+    preferredSkillSlugRef.current = skillSlug?.trim() ? skillSlug.trim() : null;
+  }, []);
+
+  const setSelectedSkill = useCallback(
+    (skillSlug: string) => {
+      const normalized = skillSlug.trim();
+      preferredSkillSlugRef.current = normalized || null;
+
+      if (!normalized) {
+        setActiveSkill(null);
+      }
+
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        connect();
+        window.setTimeout(() => {
+          if (normalized) {
+            setSelectedSkill(normalized);
+          }
+        }, 500);
+        return;
+      }
+
+      wsRef.current.send(JSON.stringify({ action: 'set_skill', skill_slug: normalized }));
+    },
+    [connect, setActiveSkill],
+  );
+
+  const clearSelectedSkill = useCallback(() => {
+    preferredSkillSlugRef.current = null;
+    setActiveSkill(null);
+
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      connect();
+      window.setTimeout(() => clearSelectedSkill(), 500);
+      return;
+    }
+
+    wsRef.current.send(JSON.stringify({ action: 'clear_skill' }));
+  }, [connect, setActiveSkill]);
+
   const disconnect = useCallback(() => {
     intentionalDisconnectRef.current = true;
     if (reconnectTimerRef.current !== null) {
@@ -317,5 +372,8 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
     retryLastMessage,
     cancelMessage,
     clearHistory,
+    setSelectedSkill,
+    clearSelectedSkill,
+    syncPreferredSkillSlug,
   };
 }

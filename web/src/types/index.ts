@@ -367,6 +367,7 @@ export interface BatchConfig {
   prevent_cannibalization: boolean;
   max_title_change_pct: number;
   target_fields: string[];
+  skill_slug: string;
 }
 
 export type BatchJobStatus =

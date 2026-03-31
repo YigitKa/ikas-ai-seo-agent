@@ -11,6 +11,7 @@ const DEFAULT_CONFIG: BatchConfig = {
   prevent_cannibalization: true,
   max_title_change_pct: 20,
   target_fields: ['meta_title', 'meta_description', 'name', 'description', 'description_en'],
+  skill_slug: '',
 };
 
 const STATUS_LABELS: Record<string, string> = {

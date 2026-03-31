@@ -167,6 +167,18 @@ def test_build_product_rewrite_request_strips_html_before_sending_prompt():
     assert "Aciklama alanlarinda" in request["system_prompt"]
 
 
+def test_build_product_rewrite_request_appends_extra_system_prompt():
+    request = build_product_rewrite_request(
+        _build_config(ai_provider="openai"),
+        "openai",
+        _build_product(),
+        _build_score(),
+        extra_system_prompt="Aktif skill: Brand Voice Rewrite",
+    )
+
+    assert request["system_prompt"].endswith("Aktif skill: Brand Voice Rewrite")
+
+
 def test_build_field_rewrite_request_strips_html_before_sending_prompt():
     product = Product(
         id="p-html-field",
@@ -223,6 +235,18 @@ def test_build_field_rewrite_request_uses_description_summary_for_short_fields()
         assert "Urun Aciklama Ozeti:" in request["user_prompt"]
         assert "Bitki gelisimi, hizli buyume ve kalsiyum eksikliginin giderilmesi icin kullanilir." in request["user_prompt"]
         assert "Insan veya hayvan tuketimi icin degildir." in request["user_prompt"]
+
+
+def test_build_field_rewrite_request_appends_extra_system_prompt():
+    request = build_field_rewrite_request(
+        _build_config(ai_provider="openai"),
+        "openai",
+        "name",
+        _build_product(),
+        extra_system_prompt="BATCH KISITLARI:\n- Teknik veri koru.",
+    )
+
+    assert request["system_prompt"].endswith("BATCH KISITLARI:\n- Teknik veri koru.")
 
 
 def test_build_suggestion_preserves_html_in_description_fields():

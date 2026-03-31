@@ -78,11 +78,13 @@ class GeoAuditResponse(BaseModel):
 
 class GenerateSuggestionRequest(BaseModel):
     product_id: str
+    skill_slug: str = ""
 
 
 class FieldRewriteRequest(BaseModel):
     product_id: str
     field: str
+    skill_slug: str = ""
 
 
 class SuggestionActionRequest(BaseModel):
@@ -377,6 +379,7 @@ class BatchConfig(BaseModel):
     prevent_cannibalization: bool = True
     max_title_change_pct: int = Field(default=20, ge=0, le=100)
     target_fields: list[str] = Field(default_factory=lambda: list(ALL_TARGET_FIELDS))
+    skill_slug: str = ""
 
 
 class BatchJobResponse(BaseModel):

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import type { BatchConfig } from '../../types';
-import { getCategories } from '../../api/client';
+import type { BatchConfig, SkillDefinition } from '../../types';
+import { getCategories, getSkills } from '../../api/client';
 
 const FIELD_OPTIONS: { key: string; label: string }[] = [
   { key: 'meta_title', label: 'Meta Baslik' },
@@ -73,6 +73,15 @@ export default function BatchConfigPanel({
     queryFn: getCategories,
     staleTime: 60_000,
   });
+  const skillsQ = useQuery({
+    queryKey: ['skills'],
+    queryFn: getSkills,
+    staleTime: 60_000,
+  });
+  const batchSkills = (skillsQ.data?.items ?? []).filter(
+    (skill): skill is SkillDefinition => skill.status === 'active' && skill.applies_to.includes('batch'),
+  );
+  const selectedSkill = batchSkills.find((skill) => skill.slug === (config.skill_slug || '')) ?? null;
 
   const toggleField = (field: string) => {
     const current = config.target_fields ?? FIELD_OPTIONS.map((option) => option.key);
@@ -261,6 +270,74 @@ export default function BatchConfigPanel({
                 <span>Tam Ozgurluk (%100)</span>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section>
+          <p
+            className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: 'var(--color-primary-light)' }}
+          >
+            Calisma Skill&apos;i
+          </p>
+          <p className="mb-3 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+            Secili skill tum batch boyunca uretilen field rewrite isteklerine enjekte edilir.
+          </p>
+          <div className="space-y-3">
+            <select
+              value={config.skill_slug}
+              onChange={(event) => set('skill_slug', event.target.value)}
+              disabled={disabled || skillsQ.isLoading}
+              className="w-full rounded-lg px-3 py-2 text-[13px] outline-none disabled:opacity-40"
+              style={{
+                background: '#1e1e2e',
+                border: '1px solid var(--color-border)',
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              <option value="" style={{ background: '#1e1e2e', color: 'var(--color-text-primary)' }}>
+                Varsayilan batch promptu
+              </option>
+              {batchSkills.map((skill) => (
+                <option
+                  key={skill.slug}
+                  value={skill.slug}
+                  style={{ background: '#1e1e2e', color: 'var(--color-text-primary)' }}
+                >
+                  {skill.name}
+                </option>
+              ))}
+            </select>
+
+            {selectedSkill ? (
+              <div
+                className="rounded-lg px-3 py-3"
+                style={{
+                  background: 'rgba(99,102,241,0.08)',
+                  border: '1px solid rgba(99,102,241,0.22)',
+                }}
+              >
+                <p className="text-[12px] font-semibold" style={{ color: '#c7d2fe' }}>
+                  {selectedSkill.name}
+                </p>
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
+                  {selectedSkill.description || 'Bu skill ek batch talimati saglar.'}
+                </p>
+                <p className="mt-1 text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                  {selectedSkill.allowed_tools.length
+                    ? `Tool siniri: ${selectedSkill.allowed_tools.join(', ')}`
+                    : 'Tool siniri tanimli degil.'}
+                </p>
+              </div>
+            ) : (
+              <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                {skillsQ.isLoading
+                  ? 'Skill listesi yukleniyor...'
+                  : batchSkills.length > 0
+                    ? 'Skill secilmezse standart rewrite promptlari kullanilir.'
+                    : 'Batch akisi icin aktif skill bulunmuyor.'}
+              </p>
+            )}
           </div>
         </section>
 

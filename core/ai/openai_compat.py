@@ -340,9 +340,10 @@ class OpenAICompatibleClient(BaseAIClient):
         product: Product,
         score: SeoScore,
         target_keywords: Optional[List[str]] = None,
+        extra_system_prompt: str = "",
     ) -> SeoSuggestion:
         request = build_product_rewrite_request(
-            self._config, self._provider, product, score, target_keywords,
+            self._config, self._provider, product, score, target_keywords, extra_system_prompt,
         )
         raw_text, native_thinking = self._call_completion(
             request["system_prompt"], request["user_prompt"], request["max_tokens"], "rewrite",
@@ -383,9 +384,10 @@ class OpenAICompatibleClient(BaseAIClient):
         product: Product,
         score: SeoScore,
         target_keywords: Optional[List[str]] = None,
+        extra_system_prompt: str = "",
     ) -> str | tuple[str, str]:
         request = build_field_rewrite_request(
-            self._config, self._provider, field, product, target_keywords,
+            self._config, self._provider, field, product, target_keywords, extra_system_prompt,
         )
         raw_text, native_thinking = self._call_completion(
             request["system_prompt"], request["user_prompt"], request["max_tokens"], f"field:{field}",
@@ -398,9 +400,13 @@ class OpenAICompatibleClient(BaseAIClient):
             return value, thinking_text
         return value
 
-    def translate_description_to_en(self, product: Product) -> str | tuple[str, str]:
+    def translate_description_to_en(
+        self,
+        product: Product,
+        extra_system_prompt: str = "",
+    ) -> str | tuple[str, str]:
         request = build_en_translation_request(
-            self._config, self._provider, product,
+            self._config, self._provider, product, extra_system_prompt,
         )
         raw_text, native_thinking = self._call_completion(
             request["system_prompt"], request["user_prompt"], request["max_tokens"], "EN translation",

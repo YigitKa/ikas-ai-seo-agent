@@ -60,12 +60,16 @@ export function useChat(productContext?: ChatProductContext, onProductUpdated?: 
     status.setPendingSuggestion(null);
   }, [status.setPendingSuggestion]);
 
+  const preferredSkillSyncRef = useRef<(skillSlug: string | null) => void>(() => {});
+
   // --- Stream sub-hook ---
   const stream = useChatStream({
     setMessages,
     finishPendingRequest: status.finishPendingRequest,
     addTokenEstimate: status.addTokenEstimate,
     setPendingSuggestion: status.setPendingSuggestion,
+    setActiveSkill: status.setActiveSkill,
+    syncPreferredSkillSlug: (skillSlug) => preferredSkillSyncRef.current(skillSlug),
   });
 
   // --- Auto-intro sub-hook (needs wsRef from websocket, but websocket needs auto-intro) ---
@@ -87,6 +91,7 @@ export function useChat(productContext?: ChatProductContext, onProductUpdated?: 
     incrementChunkCount: status.incrementChunkCount,
     setMcpState: status.setMcpState,
     setPendingSuggestion: status.setPendingSuggestion,
+    setActiveSkill: status.setActiveSkill,
     setMessages,
     appendAssistantChunk: stream.appendAssistantChunk,
     appendThinkingChunk: stream.appendThinkingChunk,
@@ -102,6 +107,10 @@ export function useChat(productContext?: ChatProductContext, onProductUpdated?: 
   useEffect(() => {
     sharedWsRef.current = ws.wsRef.current;
   });
+
+  useEffect(() => {
+    preferredSkillSyncRef.current = ws.syncPreferredSkillSlug;
+  }, [ws.syncPreferredSkillSlug]);
 
   // --- Save history when a response finishes loading ---
   const prevIsLoadingRef = useRef(false);
@@ -215,12 +224,15 @@ export function useChat(productContext?: ChatProductContext, onProductUpdated?: 
     liveChunkCount: status.liveChunkCount,
     liveTokenEstimate: status.liveTokenEstimate,
     pendingSuggestion: status.pendingSuggestion,
+    activeSkill: status.activeSkill,
     mcpState: status.mcpState,
     sendMessage: ws.sendMessage,
     retryLastMessage: ws.retryLastMessage,
     addLocalMessage,
     cancelMessage: ws.cancelMessage,
     clearHistory,
+    setActiveSkill: ws.setSelectedSkill,
+    clearActiveSkill: ws.clearSelectedSkill,
     connect: ws.connect,
     disconnect: ws.disconnect,
   };

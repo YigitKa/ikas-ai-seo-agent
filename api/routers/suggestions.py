@@ -28,6 +28,7 @@ router = APIRouter()
 @router.post("/generate/{product_id}", response_model=RewriteResponse)
 async def generate_suggestion(
     product_id: str,
+    skill_slug: str = "",
     manager: ProductManager = Depends(get_manager),
 ) -> RewriteResponse:
     """Generate a full AI rewrite for a product."""
@@ -39,7 +40,10 @@ async def generate_suggestion(
     if not score:
         score = await manager.analyze_product(product)
 
-    suggestion = await manager.rewrite_product(product, score)
+    try:
+        suggestion = await manager.rewrite_product(product, score, skill_slug=skill_slug)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     usage = manager.get_token_usage()
     return RewriteResponse(
         suggestion=suggestion,
@@ -55,11 +59,17 @@ async def generate_suggestion(
 @router.post("/generate/{product_id}/stream")
 async def generate_suggestion_stream(
     product_id: str,
+    skill_slug: str = "",
     manager: ProductManager = Depends(get_manager),
 ) -> StreamingResponse:
     """Stream the agentic rewrite pipeline via SSE."""
+    try:
+        manager.validate_skill_for_flow(skill_slug, "rewrite")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     async def event_generator():
-        async for event in manager.stream_rewrite_product(product_id):
+        async for event in manager.stream_rewrite_product(product_id, skill_slug=skill_slug):
             yield f"data: {event.model_dump_json()}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -80,10 +90,13 @@ async def generate_field_rewrite(
     if not score:
         score = await manager.analyze_product(product)
 
-    if body.field == "desc_en":
-        value, thinking = manager.translate_description_to_en(product)
-    else:
-        value, thinking = manager.rewrite_field(body.field, product, score)
+    try:
+        if body.field == "desc_en":
+            value, thinking = manager.translate_description_to_en(product, skill_slug=body.skill_slug)
+        else:
+            value, thinking = manager.rewrite_field(body.field, product, score, skill_slug=body.skill_slug)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     usage = manager.get_token_usage()
     return RewriteResponse(

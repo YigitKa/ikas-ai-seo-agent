@@ -16,6 +16,7 @@ class BaseAIClient:
         product: Product,
         score: SeoScore,
         target_keywords: Optional[List[str]] = None,
+        extra_system_prompt: str = "",
     ) -> SeoSuggestion:
         raise NotImplementedError
 
@@ -25,6 +26,7 @@ class BaseAIClient:
         product: Product,
         score: SeoScore,
         target_keywords: Optional[List[str]] = None,
+        extra_system_prompt: str = "",
     ) -> str | tuple[str, str]:
         """Rewrite a single field and return the new value as plain text,
         or (value, thinking_text) tuple when thinking mode is on."""
@@ -33,6 +35,7 @@ class BaseAIClient:
     def translate_description_to_en(
         self,
         product: Product,
+        extra_system_prompt: str = "",
     ) -> str | tuple[str, str]:
         raise NotImplementedError
 
@@ -77,17 +80,17 @@ class BaseAIClient:
 class NoneAIClient(BaseAIClient):
     """Placeholder when provider is 'none'. Only analysis is available."""
 
-    def rewrite_product(self, product, score, target_keywords=None):
+    def rewrite_product(self, product, score, target_keywords=None, extra_system_prompt=""):
         raise RuntimeError(
             "AI provider 'none' secildi. Yeniden yazma icin Ayarlar'dan bir provider secin."
         )
 
-    def rewrite_field(self, field, product, score, target_keywords=None):
+    def rewrite_field(self, field, product, score, target_keywords=None, extra_system_prompt=""):
         raise RuntimeError(
             "AI provider 'none' secildi. Yeniden yazma icin Ayarlar'dan bir provider secin."
         )
 
-    def translate_description_to_en(self, product):
+    def translate_description_to_en(self, product, extra_system_prompt=""):
         raise RuntimeError(
             "AI provider 'none' secildi. Ceviri icin Ayarlar'dan bir provider secin."
         )

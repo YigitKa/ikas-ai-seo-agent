@@ -116,6 +116,19 @@ def test_clear_history():
     assert service.history == []
 
 
+def test_clear_history_keeps_active_skill(monkeypatch, tmp_path):
+    _use_temp_skills(monkeypatch, tmp_path)
+    service = ChatService(_make_config())
+    service.set_active_skill("category-audit")
+    service._history.append(ChatMessage(role="user", content="test"))
+
+    service.clear_history()
+
+    assert service.history == []
+    assert service.get_active_skill() is not None
+    assert service.get_active_skill().slug == "category-audit"
+
+
 @pytest.mark.anyio
 async def test_summarize_and_compress_history_replaces_old_messages_with_summary(monkeypatch):
     service = ChatService(_make_config())

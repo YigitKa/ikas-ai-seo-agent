@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import type { ChatResponseMeta, ChatWsMessage, SeoSuggestion } from '../../types';
+import type { ActiveSkillSummary, ChatResponseMeta, ChatWsMessage, SeoSuggestion } from '../../types';
 import type { ChatMessage } from '../useChat';
 
 type BufferedChunk = { type: 'content' | 'thinking'; text: string };
@@ -19,10 +19,19 @@ interface UseChatStreamDeps {
   finishPendingRequest: () => number | undefined;
   addTokenEstimate: (tokens: number) => void;
   setPendingSuggestion: React.Dispatch<React.SetStateAction<SeoSuggestion | null>>;
+  setActiveSkill: React.Dispatch<React.SetStateAction<ActiveSkillSummary | null>>;
+  syncPreferredSkillSlug: (skillSlug: string | null) => void;
 }
 
 export function useChatStream(deps: UseChatStreamDeps) {
-  const { setMessages, finishPendingRequest, addTokenEstimate, setPendingSuggestion } = deps;
+  const {
+    setMessages,
+    finishPendingRequest,
+    addTokenEstimate,
+    setPendingSuggestion,
+    setActiveSkill,
+    syncPreferredSkillSlug,
+  } = deps;
 
   const chunkBufferRef = useRef<BufferedChunk[]>([]);
   const rafIdRef = useRef<number | null>(null);
@@ -106,6 +115,11 @@ export function useChatStream(deps: UseChatStreamDeps) {
       ...(typeof elapsedSeconds === 'number' ? { elapsed_seconds: elapsedSeconds } : {}),
     };
     setPendingSuggestion(data.pending_suggestion ?? null);
+    if (data.meta && Object.prototype.hasOwnProperty.call(data.meta, 'active_skill')) {
+      const nextSkill = (data.meta.active_skill ?? null) as ActiveSkillSummary | null;
+      setActiveSkill(nextSkill);
+      syncPreferredSkillSlug(nextSkill?.slug ?? null);
+    }
 
     setMessages((prev) => {
       const next = [...prev];
@@ -134,7 +148,7 @@ export function useChatStream(deps: UseChatStreamDeps) {
       next.push(finalizedMessage);
       return next;
     });
-  }, [finishPendingRequest, setMessages, setPendingSuggestion]);
+  }, [finishPendingRequest, setMessages, setPendingSuggestion, setActiveSkill, syncPreferredSkillSlug]);
 
   const cleanup = useCallback(() => {
     if (rafIdRef.current !== null) {

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getLmStudioLiveStatus, getSettings } from "../api/client";
+import { getLmStudioLiveStatus, getSettings, getSkills } from "../api/client";
 import { useChat } from "../hooks/useChat";
-import type { Product, SeoScore, SeoSuggestion } from "../types";
+import type { Product, SeoScore, SeoSuggestion, SkillDefinition } from "../types";
 import {
   exportChatAsText,
   formatCompactNumber,
@@ -71,6 +71,11 @@ export default function ChatPanel({
     staleTime: 10_000,
     refetchInterval: configuredProvider === "lm-studio" ? 15_000 : false,
   });
+  const skillsQ = useQuery({
+    queryKey: ['skills'],
+    queryFn: getSkills,
+    staleTime: 60_000,
+  });
 
   const configuredAssistantLabel = configuredModel || configuredProvider || "AI modeli";
   const displayProductName = productName || product?.name;
@@ -79,8 +84,9 @@ export default function ChatPanel({
 
   const {
     messages, isLoading, isReconnecting, isAutoIntroActive, pendingSince,
-    liveChunkCount, liveTokenEstimate, pendingSuggestion, mcpState,
-    sendMessage, retryLastMessage, addLocalMessage, cancelMessage, clearHistory, connect, disconnect,
+    liveChunkCount, liveTokenEstimate, pendingSuggestion, activeSkill, mcpState,
+    sendMessage, retryLastMessage, addLocalMessage, cancelMessage, clearHistory,
+    setActiveSkill, clearActiveSkill, connect, disconnect,
   } = useChat({
     id: productId,
     name: displayProductName,
@@ -142,11 +148,17 @@ export default function ChatPanel({
 
   const isInspectingProduct = isAutoIntroActive && messages.length === 0;
   const showStarterState = !isAutoIntroActive && (messages.length === 0 || messages.every((msg) => msg.role === "system"));
+  const chatSkills = (skillsQ.data?.items ?? []).filter(
+    (skill): skill is SkillDefinition => skill.status === 'active' && skill.applies_to.includes('chat'),
+  );
 
   const sessionStatusItems: ChatStatusItem[] = [
     { label: "Model", value: assistantLabel, tone: "neutral" },
     { label: "MCP", value: mcpStatusLabel, tone: mcpStatusTone },
   ];
+  if (activeSkill) {
+    sessionStatusItems.push({ label: "Skill", value: activeSkill.name, tone: "success" });
+  }
   if (mcpState.initialized) sessionStatusItems.push({ label: "Arac", value: String(mcpState.toolCount), tone: "success" });
   if (sessionTotalTokens > 0) sessionStatusItems.push({ label: "Token", value: `${formatCompactNumber(sessionTotalTokens)} tok`, tone: "neutral" });
   if (typeof liveContextLength === "number" && liveContextLength > 0) sessionStatusItems.push({ label: "Context", value: formatCompactNumber(liveContextLength), tone: "neutral" });
@@ -236,6 +248,11 @@ export default function ChatPanel({
         displayProductCategory={displayProductCategory}
         displaySeoScore={displaySeoScore}
         productDetailUrl={productDetailUrl}
+        availableSkills={chatSkills}
+        activeSkill={activeSkill}
+        skillLoading={skillsQ.isLoading}
+        onSkillSelect={setActiveSkill}
+        onSkillClear={clearActiveSkill}
         hasMessages={messages.length > 0}
         onClear={clearHistory}
         onExport={handleExport}

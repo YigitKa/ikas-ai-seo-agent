@@ -12,13 +12,14 @@ from core.ai.client import (
     create_ai_client,
 )
 from core.agent.orchestrator import AgentOrchestrator, supports_tool_calling
-from core.agent.tools import create_seo_rewrite_toolkit
+from core.agent.tools import AgentToolkit, create_seo_rewrite_toolkit
 from core.utils.html import html_to_plain_text, sanitize_html_for_prompt
 from core.chat import ChatService
 from core.clients.ikas import IkasClient
 from core.models import AgentEvent, AppConfig, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.utils.presentation import format_prompt_display, get_en_description_value, get_tr_description_value
 from core.prompt_store import get_rewrite_agent_system_prompt, get_batch_agent_system_prompt
+from core.skills import SkillDefinition, build_skill_prompt, get_skill_definition
 from core.permissions import (
     PermissionDecisionError,
     PermissionOperation,
@@ -202,21 +203,104 @@ class ProductManager:
     def get_active_model_name(self) -> str:
         return self._config.ai_model_name or self._config.ai_provider
 
-    async def rewrite_product(self, product: Product, score: SeoScore) -> SeoSuggestion:
+    @staticmethod
+    def _merge_instruction_prompts(*prompts: str) -> str:
+        return "\n\n".join(prompt.strip() for prompt in prompts if prompt and prompt.strip()).strip()
+
+    def _resolve_runtime_skill(
+        self,
+        skill_slug: str | None,
+        applies_to: str,
+    ) -> tuple[SkillDefinition | None, str, set[str] | None]:
+        slug = (skill_slug or "").strip().lower()
+        if not slug:
+            return None, "", None
+
+        skill = get_skill_definition(slug)
+        if skill.status != "active":
+            raise ValueError(f"Skill aktif degil: {skill.slug}")
+        if applies_to not in skill.applies_to:
+            raise ValueError(f"Skill {applies_to} akisi icin uygun degil: {skill.slug}")
+
+        prompt = build_skill_prompt(skill, applies_to=applies_to)
+        allowed_tools = set(skill.allowed_tools) if skill.allowed_tools else None
+        return skill, prompt, allowed_tools
+
+    def validate_skill_for_flow(
+        self,
+        skill_slug: str | None,
+        applies_to: str,
+    ) -> dict[str, Any] | None:
+        skill, _, _ = self._resolve_runtime_skill(skill_slug, applies_to)
+        if skill is None:
+            return None
+        return {
+            "slug": skill.slug,
+            "name": skill.name,
+            "applies_to": list(skill.applies_to),
+            "allowed_tools": list(skill.allowed_tools),
+        }
+
+    @staticmethod
+    def _filter_toolkit_to_allowed_names(
+        toolkit: AgentToolkit,
+        allowed_tool_names: set[str] | None,
+        *,
+        agent_type: str,
+    ) -> AgentToolkit:
+        if allowed_tool_names is None:
+            return toolkit
+
+        filtered_tools = []
+        for name in toolkit.tool_names:
+            if name not in allowed_tool_names:
+                continue
+            tool = toolkit.get(name)
+            if tool is not None:
+                filtered_tools.append(tool)
+        return AgentToolkit(filtered_tools, agent_type=agent_type)
+
+    async def rewrite_product(
+        self,
+        product: Product,
+        score: SeoScore,
+        *,
+        skill_slug: str | None = None,
+    ) -> SeoSuggestion:
+        _, extra_system_prompt, allowed_tool_names = self._resolve_runtime_skill(skill_slug, "rewrite")
         if supports_tool_calling(self._config) and self._config.ai_provider != "none":
-            return await self._agentic_rewrite_product(product, score)
+            return await self._agentic_rewrite_product(
+                product,
+                score,
+                extra_system_prompt=extra_system_prompt,
+                allowed_tool_names=allowed_tool_names,
+            )
         # Fallback: single-shot rewrite
-        suggestion = self._ai.rewrite_product(product, score)
+        suggestion = self._ai.rewrite_product(product, score, extra_system_prompt=extra_system_prompt)
         await db.save_suggestion(suggestion)
         return suggestion
 
-    async def _agentic_rewrite_product(self, product: Product, score: SeoScore) -> SeoSuggestion:
+    async def _agentic_rewrite_product(
+        self,
+        product: Product,
+        score: SeoScore,
+        *,
+        extra_system_prompt: str = "",
+        allowed_tool_names: set[str] | None = None,
+    ) -> SeoSuggestion:
         """Run the agentic rewrite pipeline with tool calling."""
-        toolkit = create_seo_rewrite_toolkit()
+        toolkit = self._filter_toolkit_to_allowed_names(
+            create_seo_rewrite_toolkit(),
+            allowed_tool_names,
+            agent_type="seo_rewrite",
+        )
+        system_prompt = get_rewrite_agent_system_prompt()
+        if extra_system_prompt:
+            system_prompt = self._merge_instruction_prompts(system_prompt, extra_system_prompt)
         orchestrator = AgentOrchestrator(
             config=self._config,
             toolkit=toolkit,
-            system_prompt=get_rewrite_agent_system_prompt(),
+            system_prompt=system_prompt,
             max_iterations=8,
         )
         result = await orchestrator.run(
@@ -228,23 +312,36 @@ class ProductManager:
         if suggestion is None:
             # Agent didn't save; fall back to single-shot
             logger.warning("Agentic rewrite did not save a suggestion; falling back to single-shot")
-            suggestion = self._ai.rewrite_product(product, score)
+            suggestion = self._ai.rewrite_product(product, score, extra_system_prompt=extra_system_prompt)
             await db.save_suggestion(suggestion)
         return suggestion
 
-    async def stream_rewrite_product(self, product_id: str) -> AsyncIterator[AgentEvent]:
+    async def stream_rewrite_product(
+        self,
+        product_id: str,
+        *,
+        skill_slug: str | None = None,
+    ) -> AsyncIterator[AgentEvent]:
         """Stream the agentic rewrite pipeline for a product."""
         product = await db.get_product(product_id)
         if product is None:
             yield AgentEvent(type="error", content=f"Product '{product_id}' not found.")
             return
         score = analyze_product(product, self._config.seo_target_keywords)
+        _, extra_system_prompt, allowed_tool_names = self._resolve_runtime_skill(skill_slug, "rewrite")
 
-        toolkit = create_seo_rewrite_toolkit()
+        toolkit = self._filter_toolkit_to_allowed_names(
+            create_seo_rewrite_toolkit(),
+            allowed_tool_names,
+            agent_type="seo_rewrite",
+        )
+        system_prompt = get_rewrite_agent_system_prompt()
+        if extra_system_prompt:
+            system_prompt = self._merge_instruction_prompts(system_prompt, extra_system_prompt)
         orchestrator = AgentOrchestrator(
             config=self._config,
             toolkit=toolkit,
-            system_prompt=get_rewrite_agent_system_prompt(),
+            system_prompt=system_prompt,
             max_iterations=8,
         )
         async for event in orchestrator.stream(
@@ -253,14 +350,32 @@ class ProductManager:
         ):
             yield event
 
-    def rewrite_field(self, field: str, product: Product, score: SeoScore) -> tuple[str, str]:
-        result = self._ai.rewrite_field(field, product, score)
+    def rewrite_field(
+        self,
+        field: str,
+        product: Product,
+        score: SeoScore,
+        *,
+        skill_slug: str | None = None,
+        extra_system_prompt: str = "",
+    ) -> tuple[str, str]:
+        _, skill_prompt, _ = self._resolve_runtime_skill(skill_slug, "rewrite")
+        merged_prompt = self._merge_instruction_prompts(skill_prompt, extra_system_prompt)
+        result = self._ai.rewrite_field(field, product, score, extra_system_prompt=merged_prompt)
         if isinstance(result, tuple):
             return result
         return result, ""
 
-    def translate_description_to_en(self, product: Product) -> tuple[str, str]:
-        result = self._ai.translate_description_to_en(product)
+    def translate_description_to_en(
+        self,
+        product: Product,
+        *,
+        skill_slug: str | None = None,
+        extra_system_prompt: str = "",
+    ) -> tuple[str, str]:
+        _, skill_prompt, _ = self._resolve_runtime_skill(skill_slug, "rewrite")
+        merged_prompt = self._merge_instruction_prompts(skill_prompt, extra_system_prompt)
+        result = self._ai.translate_description_to_en(product, extra_system_prompt=merged_prompt)
         if isinstance(result, tuple):
             return result
         return result, ""
@@ -514,8 +629,52 @@ class ProductManager:
             return config.get(key, default)
         return getattr(config, key, default)
 
+    def _build_batch_runtime_prompt(self, config: Any) -> str:
+        rules: list[str] = []
+        if self._get_batch_config_value(config, "preserve_specs", True):
+            rules.append(
+                "Teknik ozellikleri (materyal, boyut, agirlik) DEGISTIRME, "
+                "sadece bicimlendir ve SEO acisindan zenginlestir."
+            )
+        if self._get_batch_config_value(config, "prevent_cannibalization", True):
+            rules.append(
+                "Benzer urun gruplarinda LSI varyasyonlari kullan; "
+                "anahtar kelime cakismasini onle."
+            )
+        pct = self._get_batch_config_value(config, "max_title_change_pct", 20)
+        if pct < 100:
+            rules.append(
+                f"Baslik alaninda maksimum %{pct} degisiklik yap; "
+                "mevcut ana anahtar kelimeyi koru."
+            )
+        target_fields = self._get_batch_config_value(config, "target_fields", None)
+        if target_fields:
+            field_labels = [TARGET_FIELD_LABELS.get(f, f) for f in target_fields]
+            rules.append(
+                "Sadece su alanlara odaklan: " + ", ".join(field_labels) + ". "
+                "Diger alanlara yeni oneriler ekleme."
+            )
+
+        blocks: list[str] = []
+        if rules:
+            blocks.append(
+                "BATCH KISITLARI (Bu kurallara kesinlikle uy):\n"
+                + "\n".join(f"- {rule}" for rule in rules)
+            )
+
+        skill_slug = self._get_batch_config_value(config, "skill_slug", "")
+        _, skill_prompt, _ = self._resolve_runtime_skill(skill_slug, "batch")
+        if skill_prompt:
+            blocks.append(skill_prompt)
+
+        return "\n\n".join(blocks).strip()
+
     def _build_batch_system_prompt(self, config: Any) -> str:
         """Build BATCH_AGENT_SYSTEM_PROMPT augmented with user-defined constraints."""
+        runtime_prompt = self._build_batch_runtime_prompt(config)
+        if not runtime_prompt:
+            return get_batch_agent_system_prompt()
+        return self._merge_instruction_prompts(get_batch_agent_system_prompt(), runtime_prompt)
         rules: list[str] = []
         if self._get_batch_config_value(config, "preserve_specs", True):
             rules.append(
@@ -668,6 +827,8 @@ class ProductManager:
         product: Product,
         score: SeoScore,
         suggestion: SeoSuggestion | None = None,
+        *,
+        extra_system_prompt: str = "",
     ) -> tuple[str, str]:
         working_product = product
 
@@ -687,9 +848,17 @@ class ProductManager:
             get_en_description_value(working_product.description_translations),
             preserve_breaks=False,
         ):
-            result = self.translate_description_to_en(working_product)
+            result = self.translate_description_to_en(
+                working_product,
+                extra_system_prompt=extra_system_prompt,
+            )
         else:
-            result = self.rewrite_field(BATCH_FIELD_TO_AI_FIELD[field], working_product, score)
+            result = self.rewrite_field(
+                BATCH_FIELD_TO_AI_FIELD[field],
+                working_product,
+                score,
+                extra_system_prompt=extra_system_prompt,
+            )
 
         if isinstance(result, tuple):
             return result
@@ -742,11 +911,10 @@ class ProductManager:
         product: Product,
         score: SeoScore,
         config: Any,
-        system_prompt: str,
+        extra_system_prompt: str,
         field_keys: list[str] | None = None,
         base_suggestion: SeoSuggestion | None = None,
     ) -> tuple[SeoSuggestion, dict[str, str]]:
-        del system_prompt
         target_fields = self._get_batch_target_fields(config, field_keys)
         suggestion = base_suggestion.model_copy(deep=True) if base_suggestion else create_pending_suggestion(product)
         field_errors: dict[str, str] = {}
@@ -754,7 +922,13 @@ class ProductManager:
 
         for field in target_fields:
             try:
-                value, thinking = self._generate_batch_field_value(field, product, score, suggestion)
+                value, thinking = self._generate_batch_field_value(
+                    field,
+                    product,
+                    score,
+                    suggestion,
+                    extra_system_prompt=extra_system_prompt,
+                )
                 if not value.strip():
                     field_errors[field] = "Öneri oluşturulamadı."
                     continue
@@ -794,7 +968,11 @@ class ProductManager:
     ) -> SeoSuggestion | None:
         """Direct AI rewrite as fallback when the agent loop fails to save."""
         try:
-            suggestion = self._ai.rewrite_product(product, score)
+            suggestion = self._ai.rewrite_product(
+                product,
+                score,
+                extra_system_prompt=self._build_batch_runtime_prompt(config),
+            )
         except Exception as exc:
             logger.warning("Fallback rewrite failed for %s: %s", product.id, exc)
             return None
@@ -820,7 +998,7 @@ class ProductManager:
 
         config = job["config"]
         score = analyze_product(product, self._config.seo_target_keywords)
-        system_prompt = self._build_batch_system_prompt(config)
+        system_prompt = self._build_batch_runtime_prompt(config)
         base_suggestion = self._build_suggestion_from_batch_item(product, item)
         suggestion, field_errors = await self._generate_batch_suggestion(
             product,
@@ -873,7 +1051,7 @@ class ProductManager:
             raise ValueError("Product not found")
 
         score = analyze_product(product, self._config.seo_target_keywords)
-        system_prompt = self._build_batch_system_prompt(config)
+        system_prompt = self._build_batch_runtime_prompt(config)
         base_suggestion = self._build_suggestion_from_batch_item(product, item)
         existing_field_errors = self._get_batch_item_field_errors(item)
         suggestion, field_errors = await self._generate_batch_suggestion(
@@ -974,7 +1152,7 @@ class ProductManager:
         all_products = await db.get_all_products()
         product_map = {p.id: p for p in all_products}
 
-        system_prompt = self._build_batch_system_prompt(config)
+        system_prompt = self._build_batch_runtime_prompt(config)
         processed = 0
         skipped = 0
         score_befores: list[float] = []
