@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import AppHeader from '../../shared/ui/AppHeader';
 import { useToast } from '../../shared/ui/Toast';
 import {
   getMcpStatus,
@@ -207,42 +207,33 @@ export default function SettingsPage() {
         onConfirm={() => { setConfirmResetOpen(false); resetDbMut.mutate(); }}
         onCancel={() => setConfirmResetOpen(false)}
       />
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="enterprise-surface mb-6 flex flex-col gap-4 rounded-2xl p-6 md:flex-row md:items-end md:justify-between">
-          <div className="space-y-3">
-            <Link
-              to="/"
-              className="inline-flex text-[13px] transition"
-              style={{ color: 'var(--color-accent-light)' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-accent)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-accent-light)'; }}
-            >
-              &larr; Dashboard
-            </Link>
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight" style={{ color: 'var(--color-text-primary)' }}>
-                Ayar Merkezi
-              </h1>
-              <p className="mt-2 max-w-2xl text-[13px] leading-6" style={{ color: 'var(--color-text-secondary)' }}>
-                AI provider, ikas baglantisi ve SEO ayarlarini tek ekrandan yonetin.
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <div className="rounded-xl p-3" style={{ background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.16)' }}>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-muted)' }}>Provider</div>
-              <div className="mt-1 text-[13px] font-medium" style={{ color: toneFromHealth(healthQ.data?.status) === 'success' ? 'var(--color-success)' : toneFromHealth(healthQ.data?.status) === 'error' ? 'var(--color-danger)' : 'var(--color-text-secondary)' }}>
-                {healthQ.data?.message || currentProvider}
-              </div>
-            </div>
-            <div className="rounded-xl p-3" style={{ background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.16)' }}>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-muted)' }}>MCP</div>
-              <div className="mt-1 text-[13px] font-medium" style={{ color: mcpQ.data?.initialized ? 'var(--color-success)' : 'var(--color-text-secondary)' }}>
-                {mcpQ.data?.message || 'Durum okunuyor'}
-              </div>
-            </div>
-          </div>
-        </div>
+      <AppHeader
+        title="Ayar Merkezi"
+        description="AI provider, ikas baglantisi ve SEO ayarlarini tek ekrandan yonetin."
+        eyebrow={{ label: 'Ayarlar', tone: 'primary' }}
+        breadcrumbs={[
+          { label: 'Dashboard', to: '/' },
+          { label: 'Ayarlar' },
+        ]}
+        meta={[
+          {
+            label: 'Provider',
+            value: healthQ.data?.message || currentProvider,
+            tone: toneFromHealth(healthQ.data?.status) === 'success'
+              ? 'success'
+              : toneFromHealth(healthQ.data?.status) === 'error'
+                ? 'danger'
+                : 'neutral',
+          },
+          {
+            label: 'MCP',
+            value: mcpQ.data?.message || 'Durum okunuyor',
+            tone: mcpQ.data?.initialized ? 'success' : 'neutral',
+          },
+        ]}
+      />
+
+      <div className="px-5 pb-6">
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-6">

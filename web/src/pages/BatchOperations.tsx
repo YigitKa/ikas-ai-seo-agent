@@ -18,6 +18,7 @@ import {
   bulkUpdateBatchItems,
   deleteBatchJob,
 } from '../api/client';
+import AppHeader from '../shared/ui/AppHeader';
 import { useToast } from '../shared/ui/Toast';
 import ProductSelector from '../components/batch/ProductSelector';
 import AnalysisReview from '../components/batch/AnalysisReview';
@@ -234,7 +235,6 @@ export default function BatchOperations() {
     prevStatusRef.current = null;
   }, []);
 
-  const isReviewViewport = view === 'analyzing' || view === 'review';
   const isSelectView = view === 'select';
   const currentViewLabel = {
     select: 'Ürün Seçimi',
@@ -248,7 +248,33 @@ export default function BatchOperations() {
 
   return (
     <div className="flex h-screen flex-col" style={{ background: 'var(--color-bg-base)' }}>
-      {/* Page header */}
+      <AppHeader
+        title="Toplu SEO islemleri"
+        description="Secili urunler icin analiz, inceleme ve uygulama akisini tek bir boru hatti uzerinden yonetin."
+        eyebrow={{ label: 'Toplu Islem', tone: 'primary' }}
+        breadcrumbs={
+          isSelectView
+            ? [
+                { label: 'Dashboard', to: '/' },
+                { label: 'Toplu Islem' },
+              ]
+            : [
+                { label: 'Dashboard', to: '/' },
+                { label: 'Toplu Islem', onClick: handleBackToSelect },
+                { label: currentViewLabel },
+              ]
+        }
+        meta={[
+          { label: 'Gorunum', value: currentViewLabel, tone: 'primary' },
+          {
+            label: 'Toplam is',
+            value: defaultStats.total_jobs,
+            tone: defaultStats.total_jobs > 0 ? 'success' : 'neutral',
+          },
+        ]}
+        wrapperClassName="px-5"
+      />
+      {false && (
       <header
         className="flex flex-shrink-0 items-center justify-between px-6 py-3"
         style={{
@@ -344,10 +370,11 @@ export default function BatchOperations() {
         </div>
         <div className="flex items-center gap-3" />
       </header>
+      )}
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto px-4 py-4 lg:px-6">
-        <div className={`mx-auto ${isReviewViewport ? 'max-w-[1560px]' : 'max-w-6xl'}`}>
+      <main className="flex-1 overflow-auto px-5 py-4">
+        <div className="w-full">
 
           {/* PRODUCT SELECTION */}
           {view === 'select' && (

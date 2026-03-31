@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, BarChart, Bar, Cell, Area, AreaChart,
   PieChart, Pie,
 } from 'recharts';
-import { EnterpriseButton, EnterpriseNavButton, EnterpriseSurface } from '../shared/ui/EnterprisePrimitives';
+import AppHeader from '../shared/ui/AppHeader';
+import { EnterpriseButton, EnterpriseSurface } from '../shared/ui/EnterprisePrimitives';
 import { useToast } from '../shared/ui/Toast';
 import {
   getStoreTrends, getReportSummary, getTopImprovers, takeSnapshot, getProductTrends,
@@ -763,30 +763,73 @@ export default function Reports() {
   return (
     <div className="flex h-screen flex-col" style={{ background: 'var(--color-bg-base, #020617)' }}>
       {/* ── Header ───────────────────────────────────────────────────────── */}
-      <header
-        className="flex items-center justify-between px-5 py-3 flex-shrink-0"
-        style={{
-          background: 'linear-gradient(180deg, rgba(2,6,23,0.97), rgba(15,23,42,0.92))',
-          borderBottom: `1px solid ${C.border}`,
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <Link to="/">
-            <EnterpriseNavButton>
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+      <AppHeader
+        title="SEO Analitik"
+        description="Skor trendlerini, operasyon gecmisini ve magaza capindaki iyilesme sinyallerini tek ekranda izleyin."
+        eyebrow={{ label: 'Raporlar', tone: 'primary' }}
+        breadcrumbs={[
+          { label: 'Dashboard', to: '/' },
+          { label: 'SEO Analitik' },
+        ]}
+        meta={[
+          {
+            label: 'Basari orani',
+            value: `${overallSuccessRate}%`,
+            tone: overallSuccessRate >= 70 ? 'success' : overallSuccessRate >= 40 ? 'warning' : 'danger',
+          },
+          {
+            label: 'Toplam urun',
+            value: summary?.total_products ?? 'Veri bekleniyor',
+            tone: 'primary',
+          },
+        ]}
+        wrapperClassName="px-5"
+        actions={(
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="rounded-md px-2 py-2 text-[11px]"
+                style={{ background: 'rgba(15,23,42,0.8)', border: `1px solid ${C.border}`, color: C.text }}
+              />
+              <span className="text-[10px]" style={{ color: C.dimmed }}>-</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                className="rounded-md px-2 py-2 text-[11px]"
+                style={{ background: 'rgba(15,23,42,0.8)', border: `1px solid ${C.border}`, color: C.text }}
+              />
+              <select
+                value={opFilter}
+                onChange={e => setOpFilter(e.target.value)}
+                className="rounded-md px-2 py-2 text-[11px]"
+                style={{ background: 'rgba(15,23,42,0.8)', border: `1px solid ${C.border}`, color: C.text }}
+              >
+                <option value="">Tum Islemler</option>
+                <option value="apply">Tekil</option>
+                <option value="batch_apply">Toplu</option>
+                <option value="rollback">Geri Al</option>
+              </select>
+            </div>
+            <EnterpriseButton
+              tone="primary"
+              onClick={() => snapshotMut.mutate()}
+              disabled={snapshotMut.isPending}
+              className="flex items-center gap-1.5"
+            >
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
               </svg>
-              Dashboard
-            </EnterpriseNavButton>
-          </Link>
-          <div className="h-5 w-px" style={{ background: C.border }} />
-          <h1 className="text-sm font-bold tracking-tight" style={{ color: C.text }}>
-            SEO Analitik
-          </h1>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Date range */}
+              {snapshotMut.isPending ? 'Kayit...' : 'Snapshot'}
+            </EnterpriseButton>
+          </>
+        )}
+      />
+      {false && (
+        <div className="hidden">
           <div className="flex items-center gap-1.5 mr-2">
             <input
               type="date"
@@ -828,7 +871,7 @@ export default function Reports() {
             {snapshotMut.isPending ? 'Kayit...' : 'Snapshot'}
           </EnterpriseButton>
         </div>
-      </header>
+      )}
 
       {/* ── Content ──────────────────────────────────────────────────────── */}
       <main className="flex-1 overflow-auto p-5 space-y-5">

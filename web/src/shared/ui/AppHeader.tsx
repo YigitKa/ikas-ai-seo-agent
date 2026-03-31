@@ -1,0 +1,375 @@
+import { useEffect, useState, type ReactNode } from 'react';
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useNavigationType,
+} from 'react-router-dom';
+import { EnterpriseNavButton, EnterprisePill } from './EnterprisePrimitives';
+
+function classNames(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(' ');
+}
+
+const NAV_ITEMS = [
+  { to: '/', label: 'Dashboard', icon: 'M3 10.5L12 3l9 7.5M5.25 9.75v9.75h13.5V9.75' },
+  { to: '/reports', label: 'Raporlar', icon: 'M5 12h3m4-6h3m4 12h3M7 6v12m7-6v6m7-12v12' },
+  { to: '/batch', label: 'Toplu Islem', icon: 'M4 6h16M4 12h16M4 18h16' },
+  { to: '/llms', label: 'llms Studio', icon: 'M4 7h16M4 12h10M4 17h7' },
+  { to: '/prompts', label: 'Prompt Studio', icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
+  { to: '/settings', label: 'Ayarlar', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z' },
+];
+
+const HISTORY_MAX_INDEX_KEY = 'ikas-ai-seo-agent:history-max-idx';
+
+function isRouteActive(pathname: string, to: string) {
+  if (to === '/') return pathname === '/';
+  return pathname === to || pathname.startsWith(`${to}/`);
+}
+
+function BrandMark() {
+  return (
+    <Link
+      to="/"
+      className="flex min-w-0 items-center gap-3 rounded-2xl px-1 py-1 transition-opacity duration-200 hover:opacity-90"
+    >
+      <div
+        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl text-sm font-bold text-white"
+        style={{
+          background: 'linear-gradient(135deg, #0f172a, #1d4ed8)',
+          border: '1px solid rgba(96,165,250,0.34)',
+          boxShadow: '0 18px 36px rgba(29,78,216,0.22)',
+        }}
+      >
+        AI
+      </div>
+      <div className="min-w-0">
+        <div
+          className="truncate text-[13px] font-semibold tracking-tight"
+          style={{ color: 'var(--color-text-primary)' }}
+        >
+          ikas SEO
+        </div>
+        <div
+          className="truncate text-[11px]"
+          style={{ color: 'var(--color-text-secondary)' }}
+        >
+          Autonomous Engine
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function HistoryButton({
+  direction,
+  disabled,
+  onClick,
+}: {
+  direction: 'back' | 'forward';
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const isBack = direction === 'back';
+
+  return (
+    <button
+      type="button"
+      aria-label={isBack ? 'Geri' : 'Ileri'}
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-200 hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40"
+      style={{
+        background: 'rgba(15, 23, 42, 0.72)',
+        border: '1px solid rgba(148,163,184,0.22)',
+        color: 'var(--color-text-secondary)',
+      }}
+    >
+      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d={isBack ? 'M15 19l-7-7 7-7' : 'M9 5l7 7-7 7'}
+        />
+      </svg>
+    </button>
+  );
+}
+
+export interface AppHeaderBreadcrumb {
+  label: string;
+  to?: string;
+  onClick?: () => void;
+}
+
+export interface AppHeaderMeta {
+  label: string;
+  value: ReactNode;
+  tone?: 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
+}
+
+export interface AppHeaderEyebrow {
+  label: string;
+  tone?: 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
+  withDot?: boolean;
+}
+
+interface AppHeaderProps {
+  title: string;
+  description?: string;
+  eyebrow?: AppHeaderEyebrow;
+  breadcrumbs?: AppHeaderBreadcrumb[];
+  actions?: ReactNode;
+  meta?: AppHeaderMeta[];
+  wrapperClassName?: string;
+  panelClassName?: string;
+}
+
+function MetaCard({ item }: { item: AppHeaderMeta }) {
+  const tone = item.tone ?? 'neutral';
+  const accentMap: Record<NonNullable<AppHeaderMeta['tone']>, string> = {
+    neutral: 'var(--color-text-secondary)',
+    primary: 'var(--color-primary-light)',
+    success: 'var(--color-success)',
+    warning: 'var(--color-warning)',
+    danger: 'var(--color-danger)',
+  };
+
+  return (
+    <div
+      className="rounded-2xl px-3 py-2.5"
+      style={{
+        background: 'rgba(15,23,42,0.52)',
+        border: '1px solid rgba(148,163,184,0.18)',
+      }}
+    >
+      <div
+        className="text-[9px] font-semibold uppercase tracking-[0.18em]"
+        style={{ color: 'var(--color-text-muted)' }}
+      >
+        {item.label}
+      </div>
+      <div
+        className="mt-1 text-[12px] font-medium sm:text-[13px]"
+        style={{ color: accentMap[tone] }}
+      >
+        {item.value}
+      </div>
+    </div>
+  );
+}
+
+export default function AppHeader({
+  title,
+  description,
+  eyebrow,
+  breadcrumbs = [],
+  actions,
+  meta = [],
+  wrapperClassName = 'px-5',
+  panelClassName,
+}: AppHeaderProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const navigationType = useNavigationType();
+  const [historyIndex, setHistoryIndex] = useState(0);
+  const [historyMaxIndex, setHistoryMaxIndex] = useState(0);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const currentIndex =
+      typeof window.history.state?.idx === 'number' ? window.history.state.idx : 0;
+    const storedMaxIndex = Number(window.sessionStorage.getItem(HISTORY_MAX_INDEX_KEY) ?? '0');
+    const nextMaxIndex =
+      navigationType === 'PUSH'
+        ? currentIndex
+        : Math.max(storedMaxIndex, currentIndex);
+
+    window.sessionStorage.setItem(HISTORY_MAX_INDEX_KEY, String(nextMaxIndex));
+    setHistoryIndex(currentIndex);
+    setHistoryMaxIndex(nextMaxIndex);
+  }, [location.key, navigationType]);
+
+  const canGoBack = historyIndex > 0;
+  const canGoForward = historyIndex < historyMaxIndex;
+
+  return (
+    <header
+      className="flex-shrink-0 border-b"
+      style={{
+        background:
+          'linear-gradient(180deg, rgba(2,6,23,0.96), rgba(2,6,23,0.82))',
+        borderColor: 'rgba(148,163,184,0.14)',
+      }}
+    >
+      <div className={wrapperClassName}>
+        <div className="flex flex-col gap-3 py-3">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <BrandMark />
+
+              <div
+                className="hidden h-6 w-px md:block"
+                style={{ background: 'rgba(148,163,184,0.18)' }}
+              />
+
+              <div className="flex items-center gap-2">
+                <HistoryButton
+                  direction="back"
+                  disabled={!canGoBack}
+                  onClick={() => navigate(-1)}
+                />
+                <HistoryButton
+                  direction="forward"
+                  disabled={!canGoForward}
+                  onClick={() => navigate(1)}
+                />
+              </div>
+
+              {breadcrumbs.length > 0 && (
+                <nav className="flex min-w-0 flex-wrap items-center gap-1.5 text-[12px]">
+                  {breadcrumbs.map((item, index) => {
+                    const isCurrent = index === breadcrumbs.length - 1;
+
+                    return (
+                      <div
+                        key={`${item.label}-${index}`}
+                        className="flex min-w-0 items-center gap-1.5"
+                      >
+                        {item.to ? (
+                          <Link
+                            to={item.to}
+                            className="rounded-lg px-2 py-1 transition-colors duration-200 hover:bg-white/[0.04]"
+                            style={{
+                              color: isCurrent
+                                ? 'var(--color-text-primary)'
+                                : 'var(--color-text-secondary)',
+                            }}
+                          >
+                            {item.label}
+                          </Link>
+                        ) : item.onClick && !isCurrent ? (
+                          <button
+                            type="button"
+                            onClick={item.onClick}
+                            className="rounded-lg px-2 py-1 transition-colors duration-200 hover:bg-white/[0.04]"
+                            style={{ color: 'var(--color-text-secondary)' }}
+                          >
+                            {item.label}
+                          </button>
+                        ) : (
+                          <span
+                            className={classNames(
+                              'rounded-lg px-2 py-1',
+                              isCurrent && 'font-medium',
+                            )}
+                            style={{
+                              color: isCurrent
+                                ? 'var(--color-text-primary)'
+                                : 'var(--color-text-secondary)',
+                            }}
+                          >
+                            {item.label}
+                          </span>
+                        )}
+
+                        {!isCurrent && (
+                          <span style={{ color: 'var(--color-text-muted)' }}>/</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </nav>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {NAV_ITEMS.map((item) => (
+                <Link key={item.to} to={item.to}>
+                  <EnterpriseNavButton active={isRouteActive(location.pathname, item.to)}>
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                    </svg>
+                    {item.label}
+                  </EnterpriseNavButton>
+                </Link>
+              ))}
+
+              <span
+                className="rounded-full px-2.5 py-1 text-[10px] tabular-nums"
+                style={{
+                  background: 'rgba(15,23,42,0.72)',
+                  border: '1px solid rgba(148,163,184,0.18)',
+                  color: 'var(--color-text-muted)',
+                }}
+              >
+                build{' '}
+                {new Date(__BUILD_TIME__).toLocaleString('tr-TR', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </span>
+            </div>
+          </div>
+
+          <div
+            className={classNames(
+              'enterprise-surface rounded-[28px] px-4 py-4 sm:px-5',
+              panelClassName,
+            )}
+          >
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0 flex-1">
+                {eyebrow && (
+                  <EnterprisePill tone={eyebrow.tone ?? 'primary'} className="gap-1.5 px-2.5 py-1 text-[9px]">
+                    <span>{eyebrow.label}</span>
+                    {eyebrow.withDot && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-90" />
+                    )}
+                  </EnterprisePill>
+                )}
+
+                <h1
+                  className="mt-2 text-[2rem] font-semibold leading-tight tracking-tight sm:text-[2.2rem]"
+                  style={{ color: 'var(--color-text-primary)' }}
+                >
+                  {title}
+                </h1>
+
+                {description && (
+                  <p
+                    className="mt-1.5 max-w-3xl text-[12px] leading-5 sm:text-[13px]"
+                    style={{ color: 'var(--color-text-secondary)' }}
+                  >
+                    {description}
+                  </p>
+                )}
+              </div>
+
+              {(meta.length > 0 || actions) && (
+                <div className="flex w-full flex-col gap-2 lg:max-w-[43%] lg:items-end">
+                  {meta.length > 0 && (
+                    <div className="grid w-full gap-2 sm:grid-cols-2">
+                      {meta.map((item) => (
+                        <MetaCard key={item.label} item={item} />
+                      ))}
+                    </div>
+                  )}
+
+                  {actions && (
+                    <div className="flex w-full flex-wrap items-center gap-2 lg:justify-end">
+                      {actions}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}

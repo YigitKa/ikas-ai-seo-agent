@@ -8,10 +8,10 @@ import {
 } from '../api/client';
 import ChatPanel from '../components/ChatPanel';
 import DashboardEmptyState from '../components/dashboard/DashboardEmptyState';
-import DashboardHeader from '../components/dashboard/DashboardHeader';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar';
 import type { FilterTab } from '../components/dashboard/constants';
 import { buildIkasProductUrl } from '../components/dashboard/productUrl';
+import AppHeader from '../shared/ui/AppHeader';
 import { useToast } from '../shared/ui/Toast';
 import { EnterpriseButton, EnterpriseSurface } from '../shared/ui/EnterprisePrimitives';
 
@@ -119,10 +119,59 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-screen flex-col" style={{ background: 'var(--color-bg-base)' }}>
-      <DashboardHeader
-        totalCount={productsQ.data?.total_count}
-        syncPending={syncProductsMut.isPending}
-        onSync={() => syncProductsMut.mutate()}
+      <AppHeader
+        title="Otonom SEO yonetimi"
+        description="Urun kataloğunu tarayin, secili urunlerde AI destekli SEO akisini denetimli sekilde ilerletin."
+        eyebrow={{ label: 'Dashboard', tone: 'primary' }}
+        breadcrumbs={[{ label: 'Dashboard' }]}
+        meta={[
+          {
+            label: 'Katalog',
+            value:
+              typeof productsQ.data?.total_count === 'number'
+                ? `${productsQ.data.total_count} urun`
+                : 'Veri bekleniyor',
+          },
+          {
+            label: 'Secili urun',
+            value: selectedProduct?.name ?? 'Urun secilmedi',
+            tone: selectedProduct ? 'success' : 'neutral',
+          },
+        ]}
+        actions={(
+          <EnterpriseButton
+            onClick={() => syncProductsMut.mutate()}
+            disabled={syncProductsMut.isPending}
+            tone="primary"
+            className="flex items-center gap-1.5"
+          >
+            {syncProductsMut.isPending ? (
+              <svg
+                className="h-3.5 w-3.5 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+            ) : (
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+            )}
+            {syncProductsMut.isPending ? 'Senkronlaniyor...' : 'Tum urunleri senkronla'}
+          </EnterpriseButton>
+        )}
+        wrapperClassName="px-5"
       />
 
       <div className="flex flex-1 overflow-hidden">

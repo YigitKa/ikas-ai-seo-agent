@@ -1,5 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import AppHeader from '../shared/ui/AppHeader';
 import { EnterpriseButton } from '../shared/ui/EnterprisePrimitives';
 import {
   generateLlmsTxt,
@@ -174,26 +175,31 @@ export default function LlmsLab() {
   }, [jobStatus, status?.job, startMut, resumeMut, pauseMut, stopMut, downloadMut]);
 
   return (
-    <div className="page-bg overflow-hidden">
-      <div className="mx-auto max-w-6xl px-6 py-10">
-        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div
-              className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]"
-              style={{ background: 'rgba(16,185,129,0.16)', border: '1px solid rgba(16,185,129,0.35)', color: '#a7f3d0' }}
-            >
-              llms.txt Studio
-              <span className="h-2 w-2 rounded-full" style={{ background: 'var(--color-success)' }} />
-            </div>
-            <h1 className="mt-3 text-3xl font-extrabold tracking-tight md:text-4xl" style={{ color: 'var(--color-text-primary)' }}>
-              AI icin bilgi yogun llms.txt uretimi
-            </h1>
-            <p className="mt-2 max-w-2xl text-[13px]" style={{ color: 'var(--color-text-secondary)' }}>
-              Urun aciklamalarini modele ozetlettir, islenmis ve yeni eklenen urunleri gor, istedigin an duraklat veya devam ettir.
-            </p>
-          </div>
-          {actionButtons}
-        </header>
+    <div className="page-bg min-h-screen overflow-hidden">
+      <AppHeader
+        title="AI icin bilgi yogun llms.txt uretimi"
+        description="Urun aciklamalarini modele ozetlettir, islenmis ve yeni eklenen urunleri gor, istedigin an duraklat veya devam ettir."
+        eyebrow={{ label: 'llms.txt Studio', tone: 'success', withDot: true }}
+        breadcrumbs={[
+          { label: 'Dashboard', to: '/' },
+          { label: 'llms Studio' },
+        ]}
+        meta={[
+          {
+            label: 'Durum',
+            value: jobStatus,
+            tone: jobStatus === 'running' ? 'success' : jobStatus === 'failed' ? 'danger' : 'warning',
+          },
+          {
+            label: 'Toplam urun',
+            value: counts?.total_products ?? 'Veri bekleniyor',
+          },
+        ]}
+        actions={actionButtons}
+        wrapperClassName="px-5"
+      />
+
+      <div className="px-5 pb-10">
 
         <section className="mt-8 grid gap-4 md:grid-cols-4">
           <StatCard label="Toplam urun" value={counts?.total_products ?? '—'} accent="#e2e8f0" />

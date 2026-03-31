@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../shared/ui/Toast';
 import { getPromptTemplates, savePromptTemplates, resetPromptTemplates, getPromptLayeringOrder } from '../../api/client';
 import type { PromptGroup, PromptTemplate, PromptLayeringOrder } from '../../types';
+import AppHeader from '../../shared/ui/AppHeader';
 import ConfirmDialog from '../../shared/ui/ConfirmDialog';
 
 /* ─── helpers ────────────────────────────────────────────────────────────── */
@@ -210,7 +210,7 @@ export default function PromptEditorPage() {
   /* ─── Render ─────────────────────────────────────────────────────────── */
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--color-bg-base)' }}>
+    <div className="page-bg flex h-screen flex-col overflow-hidden">
       {/* Reset confirm dialog */}
       <ConfirmDialog
         open={confirmReset !== null}
@@ -231,6 +231,28 @@ export default function PromptEditorPage() {
         onCancel={() => setConfirmReset(null)}
       />
 
+      <AppHeader
+        title="Prompt Studio"
+        description="Sistem promptlarini, katmanlama sirasini ve akisa ozel metin katmanlarini tek yerden yonetin."
+        eyebrow={{ label: 'Prompt Studio', tone: 'primary' }}
+        breadcrumbs={[
+          { label: 'Dashboard', to: '/' },
+          { label: 'Ayarlar', to: '/settings' },
+          { label: 'Prompt Studio' },
+        ]}
+        meta={[
+          { label: 'Prompt', value: allPrompts.length, tone: 'primary' },
+          {
+            label: 'Durum',
+            value: hasDirty ? `${dirtyKeys.size} degisiklik` : 'Kaydedildi',
+            tone: hasDirty ? 'warning' : 'success',
+          },
+        ]}
+        wrapperClassName="px-5"
+      />
+
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+
       {/* ── LEFT SIDEBAR ─────────────────────────────────────────────────── */}
       <aside
         className="flex h-full w-[280px] flex-shrink-0 flex-col"
@@ -239,23 +261,6 @@ export default function PromptEditorPage() {
           borderRight: '1px solid var(--color-border)',
         }}
       >
-        {/* Header */}
-        <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-          <Link
-            to="/settings"
-            className="flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200 hover:scale-105"
-            style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)' }}
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: 'var(--color-primary-light)' }}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-          </Link>
-          <div>
-            <h1 className="text-[15px] font-semibold tracking-tight" style={{ color: 'var(--color-text-primary)' }}>Prompt Studio</h1>
-            <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{allPrompts.length} prompt dosyasi</p>
-          </div>
-        </div>
-
         {/* Layering order toggle */}
         <div className="px-3 pb-2">
           <button
@@ -777,6 +782,7 @@ export default function PromptEditorPage() {
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 }

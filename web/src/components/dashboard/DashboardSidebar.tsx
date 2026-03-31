@@ -41,7 +41,7 @@ export default function DashboardSidebar({
 
   return (
     <aside
-      className="enterprise-panel-divider flex w-[340px] flex-col"
+      className="enterprise-panel-divider flex w-[384px] flex-col"
       style={{
         background: 'linear-gradient(180deg, rgba(2,6,23,0.92), rgba(15,23,42,0.88))',
       }}
@@ -80,14 +80,14 @@ export default function DashboardSidebar({
         </div>
 
         {/* Filter tabs */}
-        <div className="mt-1.5 flex gap-1">
+        <div className="mt-1.5 grid grid-cols-5 gap-1">
           {FILTER_TABS.map((tabKey) => {
             const active = tabKey === filter;
             return (
               <button
                 key={tabKey}
                 onClick={() => onFilterChange(tabKey)}
-                className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${active ? '' : 'hover:text-[var(--color-text-secondary)]'}`}
+                className={`min-w-0 rounded-lg px-2 py-1.5 text-[11px] font-medium leading-tight transition-all duration-200 ${active ? '' : 'hover:text-[var(--color-text-secondary)]'}`}
                 style={{
                   background: active ? 'linear-gradient(135deg, rgba(30,64,175,0.42), rgba(67,56,202,0.3))' : 'rgba(15,23,42,0.35)',
                   border: active ? '1px solid rgba(96,165,250,0.36)' : '1px solid rgba(148,163,184,0.12)',
