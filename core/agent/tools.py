@@ -11,6 +11,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from core.models import Product, SeoSuggestion
+from core.permissions import PermissionEngine, PermissionRequest, PermissionRule
 
 logger = logging.getLogger(__name__)
 
@@ -300,8 +301,16 @@ def unwrap_tool_response_data(result_text: str) -> Any:
 class ToolRegistry:
     """Shared registry for Tool Runtime v2 definitions."""
 
-    def __init__(self, tools: Iterable[ToolDefinition] | None = None) -> None:
+    def __init__(
+        self,
+        tools: Iterable[ToolDefinition] | None = None,
+        *,
+        permission_engine: PermissionEngine | None = None,
+        runtime_rule_provider: Callable[[ToolDefinition, dict[str, Any], str | None], Iterable[PermissionRule]] | None = None,
+    ) -> None:
         self._tools: dict[str, ToolDefinition] = {}
+        self._permission_engine = permission_engine
+        self._runtime_rule_provider = runtime_rule_provider
         for tool in tools or []:
             self.register(tool)
 
@@ -383,6 +392,40 @@ class ToolRegistry:
                 message=f"Tool '{tool.name}' does not have a handler.",
             )
             return ToolExecutionResult(definition=tool, response=response)
+
+        permission_operation = str(tool.ui_meta.get("permission_operation") or "").strip()
+        if self._permission_engine and permission_operation:
+            runtime_rule_values = (
+                self._runtime_rule_provider(tool, args, agent_type)
+                if self._runtime_rule_provider is not None
+                else []
+            )
+            runtime_rules = list(runtime_rule_values or [])
+            decision = await self._permission_engine.evaluate(
+                PermissionRequest(
+                    operation=permission_operation,  # type: ignore[arg-type]
+                    target=str(args.get("product_id") or args.get("job_id") or ""),
+                    tool_name=tool.name,
+                    source="tool_registry.invoke",
+                    agent_type=agent_type,
+                    metadata={
+                        "arguments": dict(args),
+                        "risk_level": tool.risk_level,
+                        "read_only": tool.read_only,
+                        "destructive": tool.destructive,
+                    },
+                ),
+                runtime_rules=runtime_rules,
+            )
+            if not decision.allowed:
+                response = ToolResponseEnvelope.failure(
+                    tool.name,
+                    code=decision.error_code,
+                    message=decision.reason,
+                    details={"permission": decision.to_dict()},
+                    meta={"permission": decision.to_dict()},
+                )
+                return ToolExecutionResult(definition=tool, response=response)
 
         start = time.monotonic()
         internal_meta: dict[str, Any] = {}
@@ -900,7 +943,11 @@ def build_apply_seo_to_ikas_tool(handler: ToolHandler | None = None) -> ToolDefi
         read_only=False,
         destructive=False,
         concurrency_safe=False,
-        ui_meta={"label": "ikas Uygulama", "variant": "apply"},
+        ui_meta={
+            "label": "ikas Uygulama",
+            "variant": "apply",
+            "permission_operation": "apply",
+        },
         handler=handler,
         allowlist=frozenset({"chat"}),
     )
@@ -909,11 +956,18 @@ def build_apply_seo_to_ikas_tool(handler: ToolHandler | None = None) -> ToolDefi
 def create_local_chat_tool_registry(
     save_suggestion_handler: ToolHandler,
     apply_handler: ToolHandler,
+    *,
+    permission_engine: PermissionEngine | None = None,
+    runtime_rule_provider: Callable[[ToolDefinition, dict[str, Any], str | None], Iterable[PermissionRule]] | None = None,
 ) -> ToolRegistry:
-    return ToolRegistry([
-        build_save_seo_suggestion_tool(save_suggestion_handler),
-        build_apply_seo_to_ikas_tool(apply_handler),
-    ])
+    return ToolRegistry(
+        [
+            build_save_seo_suggestion_tool(save_suggestion_handler),
+            build_apply_seo_to_ikas_tool(apply_handler),
+        ],
+        permission_engine=permission_engine,
+        runtime_rule_provider=runtime_rule_provider,
+    )
 
 
 def create_seo_rewrite_toolkit() -> AgentToolkit:

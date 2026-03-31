@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from api.dependencies import get_manager
+from api.permissions import raise_http_for_permission
 from api.schemas import (
     ApplyResponse,
     FieldRewriteRequest,
@@ -16,6 +17,7 @@ from api.schemas import (
     TokenUsage,
 )
 from core.models import SeoSuggestion
+from core.permissions import PermissionDecisionError, build_runtime_allow_rules
 from core.product_manager import ProductManager
 from core.services.suggestion import apply_suggestion_field
 from data import db
@@ -148,5 +150,15 @@ async def apply_approved(
     if not approved:
         return ApplyResponse(applied=0, total=0)
 
-    applied = await manager.apply_suggestions(approved)
+    try:
+        applied = await manager.apply_suggestions(
+            approved,
+            permission_rules=build_runtime_allow_rules(
+                "apply",
+                "bulk_apply",
+                description="The approved-suggestions apply endpoint was invoked explicitly by the user.",
+            ),
+        )
+    except PermissionDecisionError as exc:
+        raise_http_for_permission(exc)
     return ApplyResponse(applied=applied, total=len(approved))

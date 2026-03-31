@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import get_manager
+from api.permissions import raise_http_for_permission
 from api.schemas import (
     FetchProductsRequest,
     LocalDataResetResponse,
@@ -13,6 +14,7 @@ from api.schemas import (
     ProductWithScore,
 )
 from core.models import Product, SeoScore
+from core.permissions import PermissionDecisionError, build_runtime_allow_rule
 from core.product_manager import ProductManager
 from core.seo.analyzer import analyze_product
 from core.utils.html import html_to_plain_text
@@ -232,7 +234,17 @@ async def reset_local_product_data(
     manager: ProductManager = Depends(get_manager),
 ) -> LocalDataResetResponse:
     """Clear local product cache, SEO scores, suggestions and logs."""
-    counts = await manager.clear_local_data()
+    try:
+        counts = await manager.clear_local_data(
+            permission_rules=[
+                build_runtime_allow_rule(
+                    "db_reset",
+                    description="The reset endpoint was invoked explicitly by the user.",
+                )
+            ]
+        )
+    except PermissionDecisionError as exc:
+        raise_http_for_permission(exc)
     return LocalDataResetResponse(
         message="Local product data cleared",
         products_deleted=counts["products"],

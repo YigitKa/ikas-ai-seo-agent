@@ -21,6 +21,7 @@ from core.chat.support import (
     _resolve_typed_option_selection,
 )
 from core.models import ChatMessage, ChatResponse
+from core.permissions import build_runtime_allow_rule
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +141,15 @@ class ChatServiceStreamingFlowMixin:
             meta: dict[str, Any] = {}
             suggestion_saved: dict[str, Any] | None = None
             pending_suggestion = self._get_session_pending_suggestion()
+            previous_permission_rules = list(self._permission_runtime_rules)
+            if has_apply_intent:
+                self._permission_runtime_rules = [
+                    *previous_permission_rules,
+                    build_runtime_allow_rule(
+                        "apply",
+                        description="The user explicitly requested an apply action in this chat turn.",
+                    ),
+                ]
 
             try:
                 logger.debug("[CHAT_FLOW] entering completion, chunk_handler=%s tools=%d is_gen=%s",
@@ -199,6 +209,8 @@ class ChatServiceStreamingFlowMixin:
                     await chunk_handler(response.content)
                 self._schedule_history_summarization()
                 return response
+            finally:
+                self._permission_runtime_rules = previous_permission_rules
 
             # Safety net: if the LLM output suggestion fields as JSON text instead
             # of calling save_seo_suggestion, parse and save programmatically.

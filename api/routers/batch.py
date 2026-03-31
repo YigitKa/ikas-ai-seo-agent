@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from api.dependencies import get_manager
+from api.permissions import raise_http_for_permission
 from api.schemas import (
     BatchConfig,
     BatchItemDecisionRequest,
@@ -20,6 +21,7 @@ from api.schemas import (
     BatchStatsResponse,
     StartBatchRequest,
 )
+from core.permissions import PermissionDecisionError, PermissionRule, build_runtime_allow_rule
 from core.product_manager import ProductManager
 from data import db
 
@@ -134,7 +136,19 @@ async def apply_batch_job(
 
     config = BatchConfig(**job["config"])
     await db.update_batch_job(job_id, status="running")
-    asyncio.create_task(_run_apply_task(job_id, config, manager))
+    asyncio.create_task(
+        _run_apply_task(
+            job_id,
+            config,
+            manager,
+            permission_rules=[
+                build_runtime_allow_rule(
+                    "bulk_apply",
+                    description="The batch apply endpoint was invoked explicitly by the user.",
+                )
+            ],
+        )
+    )
 
     updated = await db.get_batch_job(job_id)
     return _job_to_response(updated)
@@ -179,7 +193,19 @@ async def rollback_batch_job(
         data = await db.get_batch_item_rollback_data(item["id"])
         if data:
             product_id = data.pop("product_id")
-            success = await manager.rollback_product(product_id, data)
+            try:
+                success = await manager.rollback_product(
+                    product_id,
+                    data,
+                    permission_rules=[
+                        build_runtime_allow_rule(
+                            "rollback",
+                            description="The batch rollback endpoint was invoked explicitly by the user.",
+                        )
+                    ],
+                )
+            except PermissionDecisionError as exc:
+                raise_http_for_permission(exc)
             if success:
                 await db.update_batch_item(item["id"], status="rolled_back")
                 rolled_back += 1
@@ -196,7 +222,19 @@ async def rollback_batch_item(
     if not data:
         raise HTTPException(status_code=404, detail="Item not found or no rollback data")
     product_id = data.pop("product_id")
-    success = await manager.rollback_product(product_id, data)
+    try:
+        success = await manager.rollback_product(
+            product_id,
+            data,
+            permission_rules=[
+                build_runtime_allow_rule(
+                    "rollback",
+                    description="The batch item rollback endpoint was invoked explicitly by the user.",
+                )
+            ],
+        )
+    except PermissionDecisionError as exc:
+        raise_http_for_permission(exc)
     if success:
         await db.update_batch_item(item_id, status="rolled_back")
     return {"ok": success, "product_id": product_id}
@@ -289,10 +327,11 @@ async def _run_apply_task(
     job_id: str,
     config: BatchConfig,
     manager: ProductManager,
+    permission_rules: list[PermissionRule] | None = None,
 ) -> None:
     """Background: apply approved suggestions to ikas."""
     try:
-        await manager.apply_batch_job(job_id, config)
+        await manager.apply_batch_job(job_id, config, permission_rules=permission_rules)
     except Exception as exc:
         logger.exception("Batch apply %s failed", job_id)
         await db.update_batch_job(job_id, status="failed", error=str(exc))

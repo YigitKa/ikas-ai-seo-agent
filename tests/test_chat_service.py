@@ -1,9 +1,11 @@
 """Tests for core/chat_service.py — multi-turn chat with MCP."""
 
 import asyncio
+import json
 import httpx
 import pytest
 
+from core.agent.tools import APPLY_SEO_TO_IKAS_TOOL_NAME
 from core.chat import (
     ChatService,
     SAVE_SEO_SUGGESTION_TOOL_NAME,
@@ -17,6 +19,7 @@ from core.chat import (
     _parse_agent_type,
 )
 from core.models import AppConfig, ChatMessage, Product, SeoScore
+from core.permissions import build_runtime_allow_rule
 
 
 def _make_config(**overrides) -> AppConfig:
@@ -741,6 +744,77 @@ async def test_default_routing_is_local_without_mentions():
     assert cleaned == "bunu kaydet"
     assert instruction is not None
     assert allow_tools is False
+
+
+@pytest.mark.anyio
+async def test_execute_chat_tool_blocks_apply_without_permission(monkeypatch):
+    service = ChatService(_make_config())
+    service.set_product_context(_make_product(), _make_score())
+    called = False
+
+    async def fake_audit_logger(record):
+        return None
+
+    service._permission_engine._audit_logger = fake_audit_logger
+
+    async def fake_update_product(self, product_id, updates):
+        nonlocal called
+        called = True
+        return True
+
+    async def fake_close(self):
+        return None
+
+    monkeypatch.setattr("core.chat.suggestions.IkasClient.update_product", fake_update_product)
+    monkeypatch.setattr("core.chat.suggestions.IkasClient.close", fake_close)
+
+    result_text, suggestion_saved = await service._execute_chat_tool(
+        APPLY_SEO_TO_IKAS_TOOL_NAME,
+        {"product_id": "prod-1", "name": "Yeni Urun"},
+    )
+
+    parsed = json.loads(result_text)
+    assert suggestion_saved is None
+    assert parsed["ok"] is False
+    assert parsed["error"]["code"] == "permission_approval_required"
+    assert called is False
+
+
+@pytest.mark.anyio
+async def test_execute_chat_tool_allows_apply_with_runtime_permission(monkeypatch):
+    service = ChatService(_make_config())
+    service.set_product_context(_make_product(), _make_score())
+    called = False
+
+    async def fake_audit_logger(record):
+        return None
+
+    service._permission_engine._audit_logger = fake_audit_logger
+
+    async def fake_update_product(self, product_id, updates):
+        nonlocal called
+        called = True
+        return True
+
+    async def fake_close(self):
+        return None
+
+    monkeypatch.setattr("core.chat.suggestions.IkasClient.update_product", fake_update_product)
+    monkeypatch.setattr("core.chat.suggestions.IkasClient.close", fake_close)
+
+    with service._temporary_permission_runtime_rules([
+        build_runtime_allow_rule("apply", description="Test runtime approval"),
+    ]):
+        result_text, suggestion_saved = await service._execute_chat_tool(
+            APPLY_SEO_TO_IKAS_TOOL_NAME,
+            {"product_id": "prod-1", "name": "Yeni Urun"},
+        )
+
+    parsed = json.loads(result_text)
+    assert suggestion_saved is None
+    assert parsed["ok"] is True
+    assert parsed["data"]["product_id"] == "prod-1"
+    assert called is True
 
 
 @pytest.mark.anyio

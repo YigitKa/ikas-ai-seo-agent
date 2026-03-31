@@ -49,6 +49,21 @@ CREATE TABLE IF NOT EXISTS operation_log (
     created_at TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS permission_audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    operation TEXT,
+    target TEXT,
+    tool_name TEXT,
+    source TEXT,
+    agent_type TEXT,
+    decision TEXT,
+    reason TEXT,
+    rule_scope TEXT,
+    rule_behavior TEXT,
+    audit_data JSON,
+    created_at TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS llms_jobs (
     id TEXT PRIMARY KEY,
     status TEXT,
@@ -87,6 +102,12 @@ ON suggestions(product_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_operation_log_created_at
 ON operation_log(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_permission_audit_log_created_at
+ON permission_audit_log(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_permission_audit_log_operation
+ON permission_audit_log(operation, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_llms_entries_status
 ON llms_entries(status);
@@ -368,7 +389,6 @@ async def clear_all_data() -> dict[str, int]:
         async with conn.execute("SELECT COUNT(*) AS count FROM operation_log") as cur:
             row = await cur.fetchone()
             logs_count = int(row["count"]) if row else 0
-
         await conn.execute("DELETE FROM products")
         await conn.execute("DELETE FROM seo_scores")
         await conn.execute("DELETE FROM suggestions")
@@ -601,6 +621,41 @@ async def log_operation(operation: str, product_id: str, details: dict, success:
         await conn.execute(
             "INSERT INTO operation_log (operation, product_id, details, success, created_at) VALUES (?, ?, ?, ?, ?)",
             (operation, product_id, json.dumps(details, ensure_ascii=False), success, _now_iso()),
+        )
+        await conn.commit()
+
+
+async def log_permission_audit(record: dict[str, Any]) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            """
+            INSERT INTO permission_audit_log (
+                operation,
+                target,
+                tool_name,
+                source,
+                agent_type,
+                decision,
+                reason,
+                rule_scope,
+                rule_behavior,
+                audit_data,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                record.get("operation", ""),
+                record.get("target", ""),
+                record.get("tool_name"),
+                record.get("source", ""),
+                record.get("agent_type"),
+                record.get("decision", ""),
+                record.get("reason", ""),
+                record.get("rule_scope"),
+                record.get("rule_behavior"),
+                json.dumps(record.get("audit_data") or {}, ensure_ascii=False),
+                _now_iso(),
+            ),
         )
         await conn.commit()
 

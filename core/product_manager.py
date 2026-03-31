@@ -19,6 +19,13 @@ from core.clients.ikas import IkasClient
 from core.models import AgentEvent, AppConfig, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.utils.presentation import format_prompt_display, get_en_description_value, get_tr_description_value
 from core.prompt_store import get_rewrite_agent_system_prompt, get_batch_agent_system_prompt
+from core.permissions import (
+    PermissionDecisionError,
+    PermissionOperation,
+    PermissionRequest,
+    PermissionRule,
+    create_permission_engine,
+)
 from core.services.provider import (
     discover_provider_models,
     get_lm_studio_live_status,
@@ -67,6 +74,7 @@ class ProductManager:
         self._config = get_config()
         self._ai: BaseAIClient = create_ai_client(self._config)
         self._chat: ChatService = ChatService(self._config)
+        self._permission_engine = create_permission_engine(self._config)
 
     def reload_ai_client(self) -> None:
         """Recreate AI client after config change."""
@@ -74,6 +82,7 @@ class ProductManager:
         self._config = _get()
         self._ai = create_ai_client(self._config)
         self._chat = ChatService(self._config)
+        self._permission_engine = create_permission_engine(self._config)
 
     def get_config(self) -> AppConfig:
         return self._config
@@ -107,7 +116,18 @@ class ProductManager:
     async def get_cached_products(self) -> List[Product]:
         return await db.get_all_products()
 
-    async def clear_local_data(self) -> dict[str, int]:
+    async def clear_local_data(
+        self,
+        *,
+        permission_rules: list[PermissionRule] | None = None,
+    ) -> dict[str, int]:
+        await self._require_permission(
+            "db_reset",
+            target="local_store",
+            source="product_manager.clear_local_data",
+            metadata={"dry_run": self._config.dry_run},
+            runtime_rules=permission_rules,
+        )
         counts = await db.clear_all_data()
         logger.info("Cleared local cache: %s", counts)
         return counts
@@ -271,11 +291,47 @@ class ProductManager:
     def get_lm_studio_live_status(self, *, job_id: str = "") -> dict:
         return get_lm_studio_live_status(self._config, job_id=job_id)
 
-    async def apply_suggestions(self, suggestions: List[SeoSuggestion]) -> int:
+    async def _require_permission(
+        self,
+        operation: PermissionOperation,
+        *,
+        target: str,
+        source: str,
+        metadata: dict[str, Any] | None = None,
+        runtime_rules: list[PermissionRule] | None = None,
+    ) -> None:
+        await self._permission_engine.ensure_allowed(
+            PermissionRequest(
+                operation=operation,
+                target=target,
+                source=source,
+                metadata=dict(metadata or {}),
+            ),
+            runtime_rules=runtime_rules,
+        )
+
+    async def apply_suggestions(
+        self,
+        suggestions: List[SeoSuggestion],
+        *,
+        permission_rules: list[PermissionRule] | None = None,
+    ) -> int:
         sem = asyncio.Semaphore(3)
         approved = [s for s in suggestions if s.status == "approved"]
         if not approved:
             return 0
+
+        permission_operation: PermissionOperation = "bulk_apply" if len(approved) > 1 else "apply"
+        await self._require_permission(
+            permission_operation,
+            target="approved_suggestions",
+            source="product_manager.apply_suggestions",
+            metadata={
+                "approved_count": len(approved),
+                "product_ids": [suggestion.product_id for suggestion in approved],
+            },
+            runtime_rules=permission_rules,
+        )
 
         async def _apply_one(suggestion: SeoSuggestion) -> bool:
             updates: dict[str, Any] = {}
@@ -339,11 +395,15 @@ class ProductManager:
         logger.info(f"Applied {applied}/{len(suggestions)} suggestions")
         return applied
 
-    async def apply_approved_suggestions(self) -> tuple[int, bool]:
+    async def apply_approved_suggestions(
+        self,
+        *,
+        permission_rules: list[PermissionRule] | None = None,
+    ) -> tuple[int, bool]:
         approved = await self.get_approved_suggestions()
         if not approved:
             return 0, False
-        return await self.apply_suggestions(approved), True
+        return await self.apply_suggestions(approved, permission_rules=permission_rules), True
 
     async def get_pending_suggestions(self) -> List[SeoSuggestion]:
         return await db.get_pending_suggestions()
@@ -988,8 +1048,21 @@ class ProductManager:
         await self._refresh_batch_job_metrics(job_id)
         logger.info("Analysis job %s done: %d analyzed, %d skipped", job_id, processed, skipped)
 
-    async def apply_batch_job(self, job_id: str, config: Any) -> None:
+    async def apply_batch_job(
+        self,
+        job_id: str,
+        config: Any,
+        *,
+        permission_rules: list[PermissionRule] | None = None,
+    ) -> None:
         """Apply approved suggestions to ikas for items with status='approved'."""
+        await self._require_permission(
+            "bulk_apply",
+            target=job_id,
+            source="product_manager.apply_batch_job",
+            metadata={"job_id": job_id, "dry_run": self._config.dry_run},
+            runtime_rules=permission_rules,
+        )
         items = await db.get_batch_items(job_id)
         approved = [i for i in items if i["status"] == "approved"]
         target_fields = set(self._get_batch_target_fields(config))
@@ -1105,10 +1178,25 @@ class ProductManager:
         await self._refresh_batch_job_metrics(job_id)
         logger.info("Batch apply %s done: %d applied, %d failed", job_id, applied, failed)
 
-    async def rollback_product(self, product_id: str, rollback_data: dict) -> bool:
+    async def rollback_product(
+        self,
+        product_id: str,
+        rollback_data: dict,
+        *,
+        permission_rules: list[PermissionRule] | None = None,
+    ) -> bool:
         """Restore original product fields to ikas."""
         try:
+            await self._require_permission(
+                "rollback",
+                target=product_id,
+                source="product_manager.rollback_product",
+                metadata={"fields": sorted(rollback_data.keys())},
+                runtime_rules=permission_rules,
+            )
             return await self._ikas.update_product(product_id, rollback_data)
+        except PermissionDecisionError:
+            raise
         except Exception as exc:
             logger.error("Rollback failed for %s: %s", product_id, exc)
             return False

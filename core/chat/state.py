@@ -71,6 +71,7 @@ from core.chat.support import (
 from core.clients.ikas import IkasClient
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.clients.mcp import IkasMCPClient, MCPError
+from core.permissions import PermissionRule, create_permission_engine
 
 logger = logging.getLogger(__name__)
 
@@ -88,11 +89,15 @@ class ChatServiceStateMixin:
             self._total_tokens: dict[str, int | float] = {"input": 0, "output": 0, "estimated_cost": 0.0}
             self._active_request_lock = threading.Lock()
             self._active_http_client: httpx.AsyncClient | None = None
+            self._permission_engine = create_permission_engine(config)
+            self._permission_runtime_rules: list[PermissionRule] = []
 
             # Local tool registry — add new local tools here without touching _execute_chat_tool
             self._tool_registry = create_local_chat_tool_registry(
                 self._save_suggestion_from_tool_args,
                 self._apply_seo_to_ikas_handler,
+                permission_engine=self._permission_engine,
+                runtime_rule_provider=self._get_tool_permission_runtime_rules,
             )
 
             # Agent toolkit — provides additional local tools (SEO scoring, validation, etc.)
@@ -145,6 +150,27 @@ class ChatServiceStateMixin:
             """Clear conversation history."""
             self._history.clear()
             self._session_pending_suggestions.clear()
+            self._permission_runtime_rules.clear()
+
+        def _get_tool_permission_runtime_rules(
+            self,
+            tool: Any,
+            args: dict[str, Any],
+            agent_type: str | None,
+        ) -> list[PermissionRule]:
+            return list(self._permission_runtime_rules)
+
+        @contextlib.contextmanager
+        def _temporary_permission_runtime_rules(
+            self,
+            rules: list[PermissionRule] | tuple[PermissionRule, ...],
+        ):
+            previous_rules = list(self._permission_runtime_rules)
+            self._permission_runtime_rules = [*previous_rules, *list(rules)]
+            try:
+                yield
+            finally:
+                self._permission_runtime_rules = previous_rules
 
         def _get_session_pending_suggestion(
             self,

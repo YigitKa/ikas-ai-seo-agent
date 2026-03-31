@@ -68,7 +68,7 @@ class _StubManager:
     async def sync_all_products(self, batch_size: int = 50) -> tuple[int, int]:
         return 512, 512
 
-    async def clear_local_data(self) -> dict[str, int]:
+    async def clear_local_data(self, *, permission_rules=None) -> dict[str, int]:
         return {
             "products": 512,
             "seo_scores": 512,

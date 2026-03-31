@@ -67,17 +67,17 @@ sequenceDiagram
         AO->>LLM: Mesaj + Tool tanımları
         LLM-->>AO: tool_call: seo_score_product
         AO->>T: execute("seo_score_product")
-        T-->>AO: {score: 42, issues: [...]}
+        T-->>AO: {ok: true, tool_name: "seo_score_product", data: {total_score: 42, issues: [...]}, meta: {...}}
         AO->>LLM: Tool sonucu inject et
 
         LLM-->>AO: tool_call: validate_rewrite
         AO->>T: execute("validate_rewrite")
-        T-->>AO: {old: 42, new: 68, improved: true}
+        T-->>AO: {ok: true, tool_name: "validate_rewrite", data: {original_score: 42, new_score: 68, improved: true}, meta: {...}}
         AO->>LLM: Tool sonucu inject et
 
         LLM-->>AO: tool_call: save_suggestion
         AO->>T: execute("save_suggestion")
-        T-->>AO: {ok: true}
+        T-->>AO: {ok: true, tool_name: "save_suggestion", data: {success: true}, meta: {...}}
     end
 
     AO-->>PM: AgentResult
@@ -343,6 +343,18 @@ graph LR
 - **Toplu onay/ret** — tüm önerileri tek seferde ya da alan bazında onaylayın
 - **Alan bazlı yeniden üretim** — beğenmediğiniz tek bir alanı yeniden oluşturun
 - **Tam geri alma desteği** — tekil ürün veya tüm batch geri alınabilir
+
+### Permission ve Approval Engine
+
+Yazma etkisi olan tüm kritik akışlar artık **merkezi bir permission engine** üzerinden geçer. Sistem `allow`, `ask`, `deny` karar modeliyle çalışır; kural çözümleme sırası **global → project → session → runtime override** olarak uygulanır.
+
+- **Risk sınıfları** — `apply`, `rollback`, `bulk_apply`, `db_reset`, `external_write`
+- **Zorunlu preflight kontrolü** — tool handler veya servis işlemi çalışmadan önce izin kararı verilir
+- **Tek tip audit kaydı** — onay gerektiren tüm kararlar audit log'a yazılır
+- **Açık kullanıcı onayı** — chat'te uygulama onayı, toplu apply, rollback ve reset endpoint çağrıları runtime override ile explicit onay üretir
+- **Tutarlı hata modeli** — izin yoksa tool runtime `permission_approval_required` veya `permission_denied` döner; REST tarafı bunu `409` / `403` olarak taşır
+
+Bu sayede `apply_seo_to_ikas`, chat içi tekil uygulama, `/api/suggestions/apply`, batch apply, rollback ve local reset akışları aynı guard katmanıyla korunur.
 
 ### llms.txt Studio
 
@@ -837,7 +849,8 @@ ikas-ai-seo-agent/
 │
 ├── core/                       # İş mantığı — UI bağımlılığı yok
 │   ├── models.py               # Pydantic modeller (Product, SeoScore, AgentEvent, vb.)
-│   ├── product_manager.py      # Merkezi orkestratör
+│   ├── product_manager.py      # Merkezi orkestratör + permission guard'ları
+│   ├── permissions/            # Permission / approval engine + rule modeli
 │   ├── prompt_store.py         # Template yükleme + multi-agent prompt'lar
 │   │
 │   ├── ai/client.py            # Multi-provider AI soyutlaması (fabrika + adaptörler)
@@ -845,9 +858,9 @@ ikas-ai-seo-agent/
 │   ├── agent/tools.py          # Tool tanımları + toolkit fabrikaları
 │   │
 │   ├── chat/                   # Çok turlu chat (mixin composition)
-│   │   ├── state.py            # Konuşma geçmişi + ürün bağlamı
+│   │   ├── state.py            # Konuşma geçmişi + ürün bağlamı + runtime permission override'ları
 │   │   ├── streaming.py        # SSE streaming + multi-agent routing
-│   │   ├── suggestions.py      # Taslak → inceleme → uygulama akışları
+│   │   ├── suggestions.py      # Taslak → inceleme → uygulama akışları + apply izin kontrolü
 │   │   ├── support.py          # ToolRegistry + yardımcılar
 │   │   └── guidance.py         # Operasyon önerileri + sahte-eylem güvenliği
 │   │
@@ -865,6 +878,7 @@ ikas-ai-seo-agent/
 ├── api/                        # FastAPI REST + WebSocket
 │   ├── main.py                 # Uygulama kurulumu, CORS, SPA sunumu
 │   ├── dependencies.py         # Singleton ProductManager (REST) + per-connection (Chat)
+│   ├── permissions.py          # PermissionDecisionError -> HTTPException çevirici
 │   └── routers/                # products, seo, suggestions, settings, chat, batch, llms, reports
 │
 ├── web/src/                    # React/TypeScript SPA
@@ -882,7 +896,7 @@ ikas-ai-seo-agent/
 │       └── chat/chatHistory.ts # localStorage chat geçmişi (ürün başına, son 50 mesaj)
 │
 ├── data/
-│   └── db.py                   # Async SQLite + bağlantı havuzu + batch sorgular
+│   └── db.py                   # Async SQLite + bağlantı havuzu + batch sorgular + permission audit log
 │
 ├── prompts/                    # Düzenlenebilir AI prompt şablonları
 └── tests/                      # 20+ test dosyası, canlı API çağrısı yok
@@ -898,6 +912,7 @@ ikas-ai-seo-agent/
 | `GET` | `/api/products` | Cache'deki ürünleri listele (filtrelenebilir) |
 | `POST` | `/api/products/fetch` | ikas'tan çek |
 | `POST` | `/api/products/sync` | Tam katalog senkronizasyonu |
+| `POST` | `/api/products/reset` | Lokal ürün/cache verisini temizle (permission guard) |
 | `GET` | `/api/products/{id}` | Tekil ürün detayı |
 
 ### SEO
@@ -926,7 +941,7 @@ ikas-ai-seo-agent/
 | `POST` | `/api/suggestions/generate/{id}` | AI önerisi oluştur (agentic) |
 | `POST` | `/api/suggestions/generate/{id}/stream` | SSE streaming ile oluştur |
 | `PATCH` | `/api/suggestions/{id}/approve` | Öneriyi onayla |
-| `POST` | `/api/suggestions/apply` | Onaylananları ikas'a uygula |
+| `POST` | `/api/suggestions/apply` | Onaylananları ikas'a uygula (permission guard) |
 
 ### Toplu İşlemler
 | Metod | Endpoint | Açıklama |
@@ -936,11 +951,11 @@ ikas-ai-seo-agent/
 | `POST` | `/api/batch/jobs` | Yeni batch iş oluştur ve analizi başlat |
 | `GET` | `/api/batch/jobs/{id}` | Batch iş detayı (öğelerle birlikte) |
 | `GET` | `/api/batch/jobs/{id}/stream` | SSE ile gerçek zamanlı ilerleme |
-| `POST` | `/api/batch/jobs/{id}/apply` | Onaylı önerileri ikas'a uygula |
+| `POST` | `/api/batch/jobs/{id}/apply` | Onaylı önerileri ikas'a uygula (permission guard) |
 | `POST` | `/api/batch/jobs/{id}/stop` | Çalışan işi durdur |
 | `DELETE` | `/api/batch/jobs/{id}` | Batch işi sil |
-| `POST` | `/api/batch/jobs/{id}/rollback` | Tüm batch'i geri al |
-| `POST` | `/api/batch/items/{id}/rollback` | Tekil öğeyi geri al |
+| `POST` | `/api/batch/jobs/{id}/rollback` | Tüm batch'i geri al (permission guard) |
+| `POST` | `/api/batch/items/{id}/rollback` | Tekil öğeyi geri al (permission guard) |
 | `POST` | `/api/batch/items/{id}/regenerate` | Öğeyi yeniden üret |
 | `POST` | `/api/batch/items/{id}/fields/{field}/regenerate` | Tek alanı yeniden üret |
 | `PATCH` | `/api/batch/items/{id}` | Öğeyi onayla / reddet |
@@ -1038,6 +1053,26 @@ Claude'un tool calling yetenegi sayesinde **otonom SEO optimizasyonu** calisir:
 Chat modunda uc uzman ajan (SEO Uzmani, Magaza Operatoru, Genel Asistan) Claude uzerinden calisir ve semantik yonlendirme ile otomatik secilir.
 
 ---
+
+## Tool Runtime v2 Notu
+
+Tool runtime artik ortak bir `ToolDefinition` modeli uzerinden calisir. Hem agent tool'lari hem chat-local tool'lari merkezi registry tarafindan expose edilir; agent gorunurlugu allowlist ile filtrelenir ve tool sonuclari tek tip `{ok, tool_name, data, error, meta}` envelope'u ile doner.
+
+Bu degisiklik pratikte su anlama gelir:
+- `core/agent/tools.py` sadece toolkit fabrikasi degil, runtime registry ve normalized response katmanidir.
+- Chat'teki `save_seo_suggestion` ve `apply_seo_to_ikas` tool'lari da ayni kontrati kullanir.
+- Frontend tool kartlari envelope'u unwrap ederek eski semantik kartlari korur.
+
+## Permission Engine Notu
+
+Permission engine `core/permissions/` altinda merkezi olarak tanimlanir ve riskli operasyonlar icin ortak karar verir:
+
+- Varsayilan politika: `apply`, `rollback`, `bulk_apply`, `db_reset`, `external_write` islemleri `ask`
+- Explicit kullanici eylemleri: chat apply onayi, batch apply, rollback ve reset endpoint'leri runtime override ile `allow`
+- REST cevirisi: permission hatalari `409 approval required` veya `403 denied` olarak doner
+- Audit: onay gerektiren tum kararlar `permission_audit_log` tablosuna yazilir
+
+Bu katman hem `ToolRegistry.invoke()` seviyesinde hem de `ProductManager` servis akislarinda devrededir; yani handler calismadan once izin kontrolu zorunludur.
 
 ## Lisans
 

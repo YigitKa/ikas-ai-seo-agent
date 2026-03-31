@@ -21,7 +21,8 @@ from core.agent.tools import (
     create_local_chat_tool_registry,
     create_seo_rewrite_toolkit,
 )
-from core.models import Product
+from core.models import AppConfig, Product
+from core.permissions import build_runtime_allow_rule, create_permission_engine
 
 
 def _parse_envelope(result_text: str) -> dict:
@@ -133,6 +134,60 @@ async def test_toolkit_execute_handler_error():
     assert parsed["ok"] is False
     assert parsed["error"]["code"] == "tool_execution_failed"
     assert "boom" in parsed["error"]["message"]
+
+
+@pytest.mark.anyio
+async def test_registry_blocks_apply_tool_without_explicit_permission():
+    called = False
+    audit_records = []
+
+    async def audit_logger(record):
+        audit_records.append(record)
+
+    async def handler(args):
+        nonlocal called
+        called = True
+        return {"message": "applied"}
+
+    registry = ToolRegistry(
+        [build_apply_seo_to_ikas_tool(handler)],
+        permission_engine=create_permission_engine(AppConfig(), audit_logger=audit_logger),
+    )
+
+    parsed = _parse_envelope(await registry.execute(APPLY_SEO_TO_IKAS_TOOL_NAME, {"product_id": "p1", "name": "Yeni"}))
+
+    assert parsed["ok"] is False
+    assert parsed["error"]["code"] == "permission_approval_required"
+    assert called is False
+    assert len(audit_records) == 1
+    assert audit_records[0].decision == "ask"
+
+
+@pytest.mark.anyio
+async def test_registry_allows_apply_tool_with_runtime_override():
+    called = False
+
+    async def audit_logger(record):
+        return None
+
+    async def handler(args):
+        nonlocal called
+        called = True
+        return {"message": "applied"}
+
+    registry = ToolRegistry(
+        [build_apply_seo_to_ikas_tool(handler)],
+        permission_engine=create_permission_engine(AppConfig(), audit_logger=audit_logger),
+        runtime_rule_provider=lambda tool, args, agent_type: [
+            build_runtime_allow_rule("apply", description="Test override"),
+        ],
+    )
+
+    parsed = _parse_envelope(await registry.execute(APPLY_SEO_TO_IKAS_TOOL_NAME, {"product_id": "p1", "name": "Yeni"}))
+
+    assert parsed["ok"] is True
+    assert parsed["data"]["message"] == "applied"
+    assert called is True
 
 
 def test_builtin_tool_metadata_and_schema():
@@ -278,4 +333,3 @@ def test_create_batch_toolkit():
     assert "search_products" in toolkit
     assert "save_suggestion" in toolkit
     assert len(toolkit) == 5
-

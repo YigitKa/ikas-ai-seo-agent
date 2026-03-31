@@ -68,6 +68,7 @@ from core.chat.support import (
 from core.clients.ikas import IkasClient
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.clients.mcp import IkasMCPClient, MCPError
+from core.permissions import build_runtime_allow_rule
 from core.seo.analyzer import analyze_product
 from data.db import save_product as db_save_product, save_score as db_save_score
 
@@ -685,21 +686,37 @@ class ChatServiceSuggestionMixin:
                     self._get_session_pending_suggestion(suggestion.product_id),
                 )
 
-            ikas_client = IkasClient()
-            try:
-                await ikas_client.update_product(suggestion.product_id, updates)
-            except Exception as exc:
-                logger.error("Chat single-product apply failed: %s", exc)
+            tool_args = {
+                "product_id": suggestion.product_id,
+                "name": updates.get("name", ""),
+                "description": updates.get("description", ""),
+                "description_en": description_translations.get("en", ""),
+                "meta_title": updates.get("meta_title", ""),
+                "meta_description": updates.get("meta_description", ""),
+            }
+
+            with self._temporary_permission_runtime_rules([
+                build_runtime_allow_rule(
+                    "apply",
+                    description="Single-product apply action was explicitly confirmed in chat.",
+                )
+            ]):
+                execution = await self._tool_registry.invoke(
+                    APPLY_SEO_TO_IKAS_TOOL_NAME,
+                    tool_args,
+                    agent_type="chat:operator",
+                )
+
+            if not execution.ok:
+                error_message = execution.error.message if execution.error else "Bilinmeyen izin hatasi."
+                logger.error("Chat single-product apply failed: %s", error_message)
                 return (
                     "ikas uygulama adimi basarisiz oldu. Hata: "
-                    f"{exc}\n\nLutfen secenekleri gozden gecirip tekrar dene.\n\n"
+                    f"{error_message}\n\nLutfen secenekleri gozden gecirip tekrar dene.\n\n"
                     + self._build_single_apply_confirmation_response(suggestion, available_fields),
                     [],
                     self._get_session_pending_suggestion(suggestion.product_id),
                 )
-            finally:
-                with contextlib.suppress(Exception):
-                    await ikas_client.close()
 
             # Verify by re-reading from ikas, update local data, re-run SEO analysis
             verification_note = ""
@@ -785,10 +802,7 @@ class ChatServiceSuggestionMixin:
                     "action": "single_apply_execute",
                     "fields": selected_fields,
                 },
-                "result": json.dumps(
-                    {"ok": True, "updates": updates, "remaining_fields": list(remaining_fields.keys())},
-                    ensure_ascii=False,
-                ),
+                "result": execution.content,
             }
 
             response_lines = [
