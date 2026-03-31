@@ -108,6 +108,9 @@ class ChatServiceStreamingMessagesMixin:
             system_parts: list[str] = [
                 _build_product_context(self._product, self._score, agent_type, compact=compact),
             ]
+            active_skill_prompt = self._build_active_skill_system_prompt()
+            if active_skill_prompt:
+                system_parts.append(active_skill_prompt)
             if _should_request_structured_suggestion_options(cleaned_message):
                 system_parts.append(load_prompt_template("chat_suggestion_options_system"))
 
@@ -137,6 +140,7 @@ class ChatServiceStreamingMessagesMixin:
                 guided_context=guided_context,
                 agent_type=agent_type,
                 include_save_seo_tool=include_save_seo_tool,
+                allowed_tool_names=self._get_active_skill_allowed_tools(),
             )
             if not compact:
                 system_parts.extend(tool_instructions)
@@ -189,9 +193,12 @@ class ChatServiceStreamingMessagesMixin:
                 "diger alanlari BOZ birak."
             )
 
+            skill_prompt = self._build_active_skill_system_prompt()
             system_prompt = (
-                "Sen SEO uzmansin. " + field_instruction + " "
-                "Dusunme, dogrudan araci cagir. /no_think\n\n"
+                ((skill_prompt + "\n\n") if skill_prompt else "")
+                + "Sen SEO uzmansin. "
+                + field_instruction
+                + " Dusunme, dogrudan araci cagir. /no_think\n\n"
                 + "\n".join(product_lines)
             )
 

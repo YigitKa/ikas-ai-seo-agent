@@ -72,6 +72,7 @@ from core.clients.ikas import IkasClient
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.clients.mcp import IkasMCPClient, MCPError
 from core.permissions import PermissionRule, create_permission_engine
+from core.skills import SkillDefinition, build_skill_prompt, get_skill_definition, list_skill_definitions
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,7 @@ class ChatServiceStateMixin:
             self._active_http_client: httpx.AsyncClient | None = None
             self._permission_engine = create_permission_engine(config)
             self._permission_runtime_rules: list[PermissionRule] = []
+            self._active_skill_slug: str | None = None
 
             # Local tool registry — add new local tools here without touching _execute_chat_tool
             self._tool_registry = create_local_chat_tool_registry(
@@ -151,6 +153,143 @@ class ChatServiceStateMixin:
             self._history.clear()
             self._session_pending_suggestions.clear()
             self._permission_runtime_rules.clear()
+            self._active_skill_slug = None
+
+        def get_active_skill(self) -> SkillDefinition | None:
+            if not self._active_skill_slug:
+                return None
+            try:
+                return get_skill_definition(self._active_skill_slug)
+            except Exception:
+                logger.warning("Active skill could not be reloaded: %s", self._active_skill_slug, exc_info=True)
+                self._active_skill_slug = None
+                return None
+
+        def get_active_skill_payload(self) -> dict[str, Any] | None:
+            skill = self.get_active_skill()
+            if skill is None:
+                return None
+            return {
+                "slug": skill.slug,
+                "name": skill.name,
+                "description": skill.description,
+                "applies_to": list(skill.applies_to),
+                "allowed_tools": list(skill.allowed_tools),
+                "status": skill.status,
+                "source": skill.source,
+            }
+
+        def set_active_skill(self, slug: str) -> SkillDefinition:
+            skill = get_skill_definition(slug)
+            if skill.status != "active":
+                raise ValueError(f"Skill aktif degil: {skill.slug}")
+            if "chat" not in skill.applies_to:
+                raise ValueError(f"Skill chat akisi icin uygun degil: {skill.slug}")
+            self._active_skill_slug = skill.slug
+            return skill
+
+        def clear_active_skill(self) -> None:
+            self._active_skill_slug = None
+
+        def list_available_skills(self) -> list[SkillDefinition]:
+            return list_skill_definitions()
+
+        def _build_active_skill_system_prompt(self) -> str:
+            skill = self.get_active_skill()
+            if skill is None or skill.status != "active":
+                return ""
+            return build_skill_prompt(skill, applies_to="chat")
+
+        def _get_active_skill_allowed_tools(self) -> set[str] | None:
+            skill = self.get_active_skill()
+            if skill is None or skill.status != "active" or not skill.allowed_tools:
+                return None
+            return set(skill.allowed_tools)
+
+        @staticmethod
+        def _format_skill_status_message(
+            *,
+            title: str,
+            active_skill: SkillDefinition | None,
+            available_skills: list[SkillDefinition],
+        ) -> str:
+            lines = [f"**{title}**"]
+            if active_skill is None:
+                lines.append("- Aktif skill yok.")
+            else:
+                lines.append(f"- Aktif skill: `{active_skill.slug}`")
+                if active_skill.description:
+                    lines.append(f"- Aciklama: {active_skill.description}")
+                if active_skill.allowed_tools:
+                    lines.append(f"- Tool siniri: {', '.join(active_skill.allowed_tools)}")
+
+            active_skills = [skill for skill in available_skills if skill.status == "active" and "chat" in skill.applies_to]
+            if active_skills:
+                lines.append("")
+                lines.append("Kullanilabilir chat skill'leri:")
+                for skill in active_skills[:12]:
+                    summary = f"{skill.slug}: {skill.description}" if skill.description else skill.slug
+                    lines.append(f"- {summary}")
+
+            lines.append("")
+            lines.append("Komutlar: `/skill`, `/skill set <slug>`, `/skill clear`")
+            return "\n".join(lines)
+
+        async def _maybe_handle_skill_command(
+            self,
+            user_message: str,
+            *,
+            chunk_handler: Callable[[str], Awaitable[None]] | None = None,
+        ) -> ChatResponse | None:
+            cleaned = (user_message or "").strip()
+            if not cleaned.lower().startswith("/skill"):
+                return None
+
+            parts = cleaned.split()
+            available_skills = self.list_available_skills()
+
+            if len(parts) == 1 or (len(parts) == 2 and parts[1].lower() in {"list", "status"}):
+                content = self._format_skill_status_message(
+                    title="Skill Durumu",
+                    active_skill=self.get_active_skill(),
+                    available_skills=available_skills,
+                )
+            elif len(parts) >= 2 and parts[1].lower() in {"clear", "off", "none"}:
+                self.clear_active_skill()
+                content = self._format_skill_status_message(
+                    title="Skill Temizlendi",
+                    active_skill=None,
+                    available_skills=available_skills,
+                )
+            else:
+                slug = parts[-1].strip().lower()
+                try:
+                    skill = self.set_active_skill(slug)
+                except Exception as exc:
+                    content = self._format_skill_status_message(
+                        title=f"Skill Secilemedi: {exc}",
+                        active_skill=self.get_active_skill(),
+                        available_skills=available_skills,
+                    )
+                else:
+                    content = self._format_skill_status_message(
+                        title="Skill Aktif Edildi",
+                        active_skill=skill,
+                        available_skills=available_skills,
+                    )
+
+            if chunk_handler and content:
+                await chunk_handler(content)
+
+            self._history.append(ChatMessage(role="assistant", content=content))
+            return ChatResponse(
+                content=content,
+                thinking="",
+                tool_results=[],
+                error=False,
+                meta={"active_skill": self.get_active_skill_payload()},
+                pending_suggestion=self._get_session_pending_suggestion(),
+            )
 
         def _get_tool_permission_runtime_rules(
             self,
@@ -518,6 +657,7 @@ class ChatServiceStateMixin:
             guided_context: str,
             agent_type: str,
             include_save_seo_tool: bool,
+            allowed_tool_names: set[str] | None = None,
         ) -> tuple[list[dict[str, Any]] | None, list[str]]:
             tools: list[dict[str, Any]] = []
             instructions: list[str] = []
@@ -526,6 +666,9 @@ class ChatServiceStateMixin:
             if include_save_seo_tool:
                 local_tool_names.insert(0, SAVE_SEO_SUGGESTION_TOOL_NAME)
                 instructions.append(_get_save_tool_instruction())
+
+            if allowed_tool_names is not None:
+                local_tool_names = [name for name in local_tool_names if name in allowed_tool_names]
 
             # Always include the apply_seo_to_ikas tool — it handles both
             # native ikas API and MCP routes internally so the LLM never
@@ -536,17 +679,35 @@ class ChatServiceStateMixin:
                     names=local_tool_names,
                 )
             )
-            instructions.append(
-                "Kullanici urun degisikliklerini onayladiginda, arka planda uygun araclari cagir. "
-                "Kullaniciya arac adlarini gosterme; onay aldiktan sonra sessizce uygula."
-            )
+            if local_tool_names:
+                instructions.append(
+                    "Kullanici urun degisikliklerini onayladiginda, arka planda uygun araclari cagir. "
+                    "Kullaniciya arac adlarini gosterme; onay aldiktan sonra sessizce uygula."
+                )
 
             # Add agent toolkit tools (SEO scoring, product details, validation, etc.)
-            tools.extend(self._agent_toolkit.get_openai_functions())
+            toolkit_tools = self._agent_toolkit.get_openai_functions()
+            if allowed_tool_names is not None:
+                toolkit_tools = [
+                    tool for tool in toolkit_tools
+                    if str(tool.get("function", {}).get("name") or "") in allowed_tool_names
+                ]
+            tools.extend(toolkit_tools)
 
             if allow_mcp_tools and self._mcp_initialized and self._mcp and not guided_context:
-                tools.extend(self._mcp.get_tools_as_openai_functions())
-                tool_catalog_instruction = _build_tool_catalog_instruction(self.mcp_tools)
+                mcp_tools = self._mcp.get_tools_as_openai_functions()
+                mcp_tool_summaries = self.mcp_tools
+                if allowed_tool_names is not None:
+                    mcp_tools = [
+                        tool for tool in mcp_tools
+                        if str(tool.get("function", {}).get("name") or "") in allowed_tool_names
+                    ]
+                    mcp_tool_summaries = [
+                        tool for tool in mcp_tool_summaries
+                        if str(tool.get("name") or "") in allowed_tool_names
+                    ]
+                tools.extend(mcp_tools)
+                tool_catalog_instruction = _build_tool_catalog_instruction(mcp_tool_summaries)
                 if tool_catalog_instruction:
                     instructions.append(tool_catalog_instruction)
 

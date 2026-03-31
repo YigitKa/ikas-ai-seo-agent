@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "slug": "launch-readiness",
+  "name": "Launch Readiness",
+  "description": "Yayina cikmadan once urunun SEO ve icerik eksiklerini kontrol eder.",
+  "when_to_use": "Urun yayina alinmadan once son kontrol, alan eksigi taramasi veya yayina hazirlik checklist'i istendiginde kullan.",
+  "applies_to": [
+    "chat",
+    "rewrite"
+  ],
+  "allowed_tools": [
+    "get_product_details",
+    "seo_score_product",
+    "validate_rewrite",
+    "get_seo_guidelines",
+    "save_seo_suggestion",
+    "apply_seo_to_ikas"
+  ],
+  "prompt_layers": [
+    {
+      "type": "inline",
+      "label": "Launch Checklist",
+      "content": "Urunu yayin oncesi checklist mantigiyla kontrol et. Baslik, meta title, meta description, TR/EN aciklama, kategori uyumu ve AI citability acisindan eksikleri net sirala. Onceligi eksik veya sifir puanli alanlara ver."
+    }
+  ],
+  "tags": [
+    "launch",
+    "checklist",
+    "seo"
+  ],
+  "priority": 10,
+  "status": "active"
+}

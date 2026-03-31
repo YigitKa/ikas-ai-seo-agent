@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "slug": "brand-voice-rewrite",
+  "name": "Brand Voice Rewrite",
+  "description": "Mevcut urun anlatimini daha tutarli, kontrollu ve marka tonuna uygun hale getirir.",
+  "when_to_use": "Marka tonu daginik oldugunda, urun metni fazla teknik veya fazla genelse ve kontrollu bir rewrite isteniyorsa kullan.",
+  "applies_to": [
+    "chat",
+    "rewrite",
+    "batch"
+  ],
+  "allowed_tools": [
+    "get_product_details",
+    "seo_score_product",
+    "validate_rewrite",
+    "save_seo_suggestion",
+    "save_suggestion"
+  ],
+  "prompt_layers": [
+    {
+      "type": "inline",
+      "label": "Brand Voice Constraints",
+      "content": "Marka tonu net, kontrollu ve guven verici olsun. Abartili reklam dili, asiri iddia ve belirsiz superlative ifadelerden kacın. Okunabilirligi artirirken ticari niyeti koru."
+    }
+  ],
+  "tags": [
+    "rewrite",
+    "brand",
+    "tone"
+  ],
+  "priority": 30,
+  "status": "active"
+}

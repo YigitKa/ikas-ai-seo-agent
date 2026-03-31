@@ -474,6 +474,16 @@ class ProductManager:
         """Clear the chat conversation history."""
         self._chat.clear_history()
 
+    def set_chat_active_skill(self, slug: str) -> dict[str, Any] | None:
+        self._chat.set_active_skill(slug)
+        return self._chat.get_active_skill_payload()
+
+    def clear_chat_active_skill(self) -> None:
+        self._chat.clear_active_skill()
+
+    def get_chat_active_skill(self) -> dict[str, Any] | None:
+        return self._chat.get_active_skill_payload()
+
     @property
     def chat_has_mcp(self) -> bool:
         return self._chat.has_mcp

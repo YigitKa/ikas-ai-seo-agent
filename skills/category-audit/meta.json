@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "slug": "category-audit",
+  "name": "Category Audit",
+  "description": "Secili urunun kategori uyumunu, arama niyetini ve alan bazli eksiklerini inceler.",
+  "when_to_use": "Kategori uyumu zayif oldugunda, urun farkli kategori niyetleriyle karisiyorsa veya SEO onceligi kategorik hizalama ise kullan.",
+  "applies_to": [
+    "chat",
+    "rewrite"
+  ],
+  "allowed_tools": [
+    "get_product_details",
+    "seo_score_product",
+    "validate_rewrite",
+    "get_seo_guidelines",
+    "save_seo_suggestion"
+  ],
+  "prompt_layers": [
+    {
+      "type": "inline",
+      "label": "Category Audit Lens",
+      "content": "Kategori uyumuna odaklan. Urun basligi, meta alanlari ve aciklamada kategori niyetiyle uyumsuz ifadelere dikkat et. Once mevcut kategoriyle uyumlu keyword bosluklarini belirle, sonra yalnizca gercek urun verisine dayanan duzeltmeler oner."
+    }
+  ],
+  "tags": [
+    "seo",
+    "category",
+    "audit"
+  ],
+  "priority": 20,
+  "status": "active"
+}

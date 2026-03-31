@@ -1,4 +1,5 @@
 from core.services.settings import SettingsService
+from core.skills import SkillDefinition
 
 
 def test_settings_service_exposes_provider_labels():
@@ -66,3 +67,20 @@ def test_settings_service_resets_prompt_templates(monkeypatch):
         "description_system": "default:description_system",
         "translation_user": "default:translation_user",
     }
+
+
+def test_settings_service_saves_skill(monkeypatch):
+    captured = {}
+
+    def fake_save(skill: SkillDefinition):
+        captured["skill"] = skill
+        return skill
+
+    monkeypatch.setattr("core.services.settings.save_skill_definition", fake_save)
+
+    service = SettingsService()
+    skill = SkillDefinition(slug="custom-audit", name="Custom Audit", instructions_markdown="Test")
+    saved = service.save_skill(skill)
+
+    assert saved.slug == "custom-audit"
+    assert captured["skill"].name == "Custom Audit"

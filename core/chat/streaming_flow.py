@@ -42,6 +42,14 @@ class ChatServiceStreamingFlowMixin:
             if is_generate_request:
                 user_message = GENERATE_SUGGESTION_PATTERN.sub("", user_message).strip()
 
+            skill_command_response = await self._maybe_handle_skill_command(
+                user_message,
+                chunk_handler=chunk_handler,
+            )
+            if skill_command_response is not None:
+                self._schedule_history_summarization()
+                return skill_command_response
+
             cleaned_message, routing_instruction, agent_type, allow_tools = await self._extract_message_directives(user_message)
             has_apply_intent = _message_has_apply_intent(cleaned_message)
             has_save_intent = _message_has_save_intent(cleaned_message)
@@ -111,18 +119,23 @@ class ChatServiceStreamingFlowMixin:
                             agent_type=agent_type,
                         )
                         self._history.append(ChatMessage(role="assistant", content=guided_content))
-                        response = ChatResponse(
-                            content=guided_content,
-                            thinking="",
-                            tool_results=guided_tool_results,
-                            error=False,
-                            meta={"model": "ikas MCP", "finish_reason": "guided_mcp", "source": "ikas_mcp"},
-                            pending_suggestion=self._get_session_pending_suggestion(),
-                        )
-                        if chunk_handler and response.content:
-                            await chunk_handler(response.content)
-                        self._schedule_history_summarization()
-                        return response
+                    response = ChatResponse(
+                        content=guided_content,
+                        thinking="",
+                        tool_results=guided_tool_results,
+                        error=False,
+                        meta={
+                            "model": "ikas MCP",
+                            "finish_reason": "guided_mcp",
+                            "source": "ikas_mcp",
+                            "active_skill": self.get_active_skill_payload(),
+                        },
+                        pending_suggestion=self._get_session_pending_suggestion(),
+                    )
+                    if chunk_handler and response.content:
+                        await chunk_handler(response.content)
+                    self._schedule_history_summarization()
+                    return response
 
             messages, tools = self._build_completion_messages(
                 cleaned_message,
@@ -190,7 +203,12 @@ class ChatServiceStreamingFlowMixin:
                         thinking="",
                         tool_results=tool_results,
                         error=False,
-                        meta={"model": "ikas MCP", "finish_reason": "guided_mcp_fallback", "source": "ikas_mcp"},
+                        meta={
+                            "model": "ikas MCP",
+                            "finish_reason": "guided_mcp_fallback",
+                            "source": "ikas_mcp",
+                            "active_skill": self.get_active_skill_payload(),
+                        },
                         pending_suggestion=pending_suggestion,
                     )
                 else:
@@ -202,7 +220,7 @@ class ChatServiceStreamingFlowMixin:
                         thinking="",
                         tool_results=tool_results,
                         error=True,
-                        meta={},
+                        meta={"active_skill": self.get_active_skill_payload()},
                         pending_suggestion=pending_suggestion,
                     )
                 if chunk_handler and response.content:
@@ -251,6 +269,9 @@ class ChatServiceStreamingFlowMixin:
 
             self._history.append(ChatMessage(role="assistant", content=response_text))
             self._schedule_history_summarization()
+
+            meta = dict(meta)
+            meta["active_skill"] = self.get_active_skill_payload()
 
             return ChatResponse(
                 content=response_text,
@@ -318,6 +339,7 @@ class ChatServiceStreamingFlowMixin:
                     if response.pending_suggestion
                     else None
                 ),
+                "active_skill": response.meta.get("active_skill"),
             }
             if response.suggestion_saved:
                 payload["suggestion_saved"] = response.suggestion_saved

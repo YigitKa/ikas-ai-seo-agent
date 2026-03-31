@@ -20,6 +20,7 @@ from core.chat import (
 )
 from core.models import AppConfig, ChatMessage, Product, SeoScore
 from core.permissions import build_runtime_allow_rule
+import core.skills.store as skill_store
 
 
 def _make_config(**overrides) -> AppConfig:
@@ -73,6 +74,12 @@ def _stub_routing(service: ChatService, allow_tools: bool) -> None:
         return "operator" if allow_tools else "general"
 
     service._route_to_agent = fake_route_to_agent  # type: ignore[method-assign]
+
+
+def _use_temp_skills(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(skill_store, "SKILLS_DIR", tmp_path / "skills")
+    skill_store._skill_cache.clear()
+    skill_store.ensure_skill_files()
 
 
 def test_chat_service_init():
@@ -229,6 +236,39 @@ async def test_extract_message_directives_operator_routing_with_mixed_message():
     assert cleaned == "varyantlari ozetle"
     assert instruction is not None
     assert allow_tools is True
+
+
+@pytest.mark.anyio
+async def test_skill_command_sets_active_skill(monkeypatch, tmp_path):
+    _use_temp_skills(monkeypatch, tmp_path)
+    service = ChatService(_make_config())
+
+    response = await service.send_message("/skill set category-audit")
+
+    assert "Skill Aktif Edildi" in response.content
+    assert response.meta["active_skill"]["slug"] == "category-audit"
+
+
+def test_build_completion_messages_includes_active_skill_and_filters_tools(monkeypatch, tmp_path):
+    _use_temp_skills(monkeypatch, tmp_path)
+    service = ChatService(_make_config())
+    service.set_active_skill("category-audit")
+    service.set_product_context(_make_product(), _make_score())
+
+    messages, tools = service._build_completion_messages(
+        "urun aciklamasini yorumla",
+        "route instruction",
+        "general",
+        False,
+        "",
+        False,
+        True,
+    )
+
+    assert "Aktif skill: Category Audit" in messages[0]["content"]
+    tool_names = [tool["function"]["name"] for tool in tools or []]
+    assert SAVE_SEO_SUGGESTION_TOOL_NAME in tool_names
+    assert APPLY_SEO_TO_IKAS_TOOL_NAME not in tool_names
 
 
 def test_build_product_context_with_product():

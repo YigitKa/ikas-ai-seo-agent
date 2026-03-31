@@ -18,6 +18,13 @@ from api.schemas import (
     PromptTemplateResponse,
     PromptTemplatesResponse,
     PromptTemplatesUpdateRequest,
+    SkillImportRequest,
+    SkillPreviewResponse,
+    SkillResolvedPromptLayerResponse,
+    SkillResponse,
+    SkillsResponse,
+    SkillUpsertRequest,
+    SkillValidationResponse,
     ProviderHealthResponse,
     ProviderModelsResponse,
     SettingsResponse,
@@ -25,6 +32,7 @@ from api.schemas import (
     TestConnectionResponse,
 )
 from core.product_manager import ProductManager
+from core.skills import SkillDefinition
 from core.services.provider import PROVIDERS, PROVIDER_LABELS
 from core.services.settings import SettingsService
 
@@ -51,6 +59,14 @@ def _build_prompt_templates_response() -> PromptTemplatesResponse:
             )
         groups.append(PromptGroupResponse(label=group_label, prompts=prompts))
     return PromptTemplatesResponse(groups=groups)
+
+
+def _build_skills_response() -> SkillsResponse:
+    items = [SkillResponse.from_model(skill) for skill in settings_service.list_skills()]
+    return SkillsResponse(
+        items=items,
+        available_tools=settings_service.get_available_tool_names(),
+    )
 
 
 def _raise_prompt_http_error(exc: Exception) -> None:
@@ -151,6 +167,124 @@ async def reset_prompt_templates(
     except Exception as exc:
         _raise_prompt_http_error(exc)
     return _build_prompt_templates_response()
+
+
+@router.get("/skills", response_model=SkillsResponse)
+async def list_skills() -> SkillsResponse:
+    """Return all disk-backed skills with metadata."""
+    return _build_skills_response()
+
+
+@router.get("/skills/item/{slug}", response_model=SkillResponse)
+async def get_skill(slug: str) -> SkillResponse:
+    """Return a single skill definition."""
+    try:
+        return SkillResponse.from_model(settings_service.get_skill(slug))
+    except Exception as exc:
+        _raise_prompt_http_error(exc)
+
+
+@router.put("/skills/item/{slug}", response_model=SkillResponse)
+async def save_skill(
+    slug: str,
+    body: SkillUpsertRequest,
+) -> SkillResponse:
+    """Create or update a skill."""
+    try:
+        payload = body.skill.model_dump(mode="json")
+        payload["slug"] = slug
+        saved = settings_service.save_skill(SkillDefinition.model_validate(payload))
+    except Exception as exc:
+        _raise_prompt_http_error(exc)
+    return SkillResponse.from_model(saved)
+
+
+@router.post("/skills/item/{slug}/reset", response_model=SkillResponse)
+async def reset_skill(slug: str) -> SkillResponse:
+    """Reset a default skill to its seeded version."""
+    try:
+        return SkillResponse.from_model(settings_service.reset_skill(slug))
+    except Exception as exc:
+        _raise_prompt_http_error(exc)
+
+
+@router.delete("/skills/item/{slug}", response_model=MessageResponse)
+async def delete_skill(slug: str) -> MessageResponse:
+    """Delete a custom skill."""
+    try:
+        settings_service.delete_skill(slug)
+    except Exception as exc:
+        _raise_prompt_http_error(exc)
+    return MessageResponse(message="Skill silindi")
+
+
+@router.post("/skills/validate", response_model=SkillValidationResponse)
+async def validate_skill(
+    body: SkillUpsertRequest,
+) -> SkillValidationResponse:
+    """Validate a skill payload without saving it."""
+    try:
+        result = settings_service.validate_skill(SkillDefinition.model_validate(body.skill.model_dump(mode="json")))
+    except Exception as exc:
+        _raise_prompt_http_error(exc)
+    layers = [
+        layer if isinstance(layer, dict) else dict(layer)
+        for layer in result.get("resolved_prompt_layers", [])
+    ]
+    return SkillValidationResponse(
+        ok=bool(result.get("ok", False)),
+        errors=[str(item) for item in result.get("errors", [])],
+        warnings=[str(item) for item in result.get("warnings", [])],
+        resolved_prompt_layers=[SkillResolvedPromptLayerResponse(**layer) for layer in layers],
+    )
+
+
+@router.post("/skills/preview", response_model=SkillPreviewResponse)
+async def preview_skill(
+    body: SkillUpsertRequest,
+    applies_to: str = "chat",
+) -> SkillPreviewResponse:
+    """Return resolved prompt preview for a skill payload."""
+    try:
+        preview = settings_service.preview_skill(
+            SkillDefinition.model_validate(body.skill.model_dump(mode="json")),
+            applies_to=applies_to,
+        )
+    except Exception as exc:
+        _raise_prompt_http_error(exc)
+    validation_payload = preview.get("validation", {})
+    return SkillPreviewResponse(
+        validation=SkillValidationResponse(
+            ok=bool(validation_payload.get("ok", False)),
+            errors=[str(item) for item in validation_payload.get("errors", [])],
+            warnings=[str(item) for item in validation_payload.get("warnings", [])],
+            resolved_prompt_layers=[
+                SkillResolvedPromptLayerResponse(**layer)
+                for layer in validation_payload.get("resolved_prompt_layers", [])
+            ],
+        ),
+        composed_prompt=str(preview.get("composed_prompt") or ""),
+    )
+
+
+@router.get("/skills/item/{slug}/export", response_model=SkillResponse)
+async def export_skill(slug: str) -> SkillResponse:
+    """Export a skill payload suitable for import."""
+    try:
+        payload = settings_service.export_skill(slug)
+    except Exception as exc:
+        _raise_prompt_http_error(exc)
+    return SkillResponse(**payload)
+
+
+@router.post("/skills/import", response_model=SkillResponse)
+async def import_skill(body: SkillImportRequest) -> SkillResponse:
+    """Import a skill payload and persist it on disk."""
+    try:
+        saved = settings_service.import_skill(body.skill.model_dump(mode="json"))
+    except Exception as exc:
+        _raise_prompt_http_error(exc)
+    return SkillResponse.from_model(saved)
 
 
 @router.get("/providers")

@@ -19,6 +19,9 @@ import type {
   ProductWithScore,
   PromptGroup,
   PromptLayeringOrder,
+  SkillDefinition,
+  SkillPreview,
+  SkillValidation,
   LMStudioLiveStatus,
   SettingsData,
   ProviderInfo,
@@ -237,6 +240,65 @@ export async function resetPromptTemplates(
 
 export async function getPromptLayeringOrder(): Promise<PromptLayeringOrder> {
   return request('/api/settings/prompts/layering');
+}
+
+export async function getSkills(): Promise<{ items: SkillDefinition[]; available_tools: string[] }> {
+  return request('/api/settings/skills');
+}
+
+export async function getSkill(slug: string): Promise<SkillDefinition> {
+  return request(`/api/settings/skills/item/${encodeURIComponent(slug)}`);
+}
+
+export async function saveSkill(
+  slug: string,
+  skill: SkillDefinition,
+): Promise<SkillDefinition> {
+  return request(`/api/settings/skills/item/${encodeURIComponent(slug)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ skill }),
+  });
+}
+
+export async function resetSkill(slug: string): Promise<SkillDefinition> {
+  return request(`/api/settings/skills/item/${encodeURIComponent(slug)}/reset`, {
+    method: 'POST',
+  });
+}
+
+export async function deleteSkill(slug: string): Promise<{ message: string; ok: boolean }> {
+  return request(`/api/settings/skills/item/${encodeURIComponent(slug)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function validateSkill(skill: SkillDefinition): Promise<SkillValidation> {
+  return request('/api/settings/skills/validate', {
+    method: 'POST',
+    body: JSON.stringify({ skill }),
+  });
+}
+
+export async function previewSkill(
+  skill: SkillDefinition,
+  appliesTo = 'chat',
+): Promise<SkillPreview> {
+  const suffix = appliesTo ? `?applies_to=${encodeURIComponent(appliesTo)}` : '';
+  return request(`/api/settings/skills/preview${suffix}`, {
+    method: 'POST',
+    body: JSON.stringify({ skill }),
+  });
+}
+
+export async function exportSkill(slug: string): Promise<SkillDefinition> {
+  return request(`/api/settings/skills/item/${encodeURIComponent(slug)}/export`);
+}
+
+export async function importSkill(skill: SkillDefinition): Promise<SkillDefinition> {
+  return request('/api/settings/skills/import', {
+    method: 'POST',
+    body: JSON.stringify({ skill }),
+  });
 }
 
 export async function getProviders(): Promise<{ providers: ProviderInfo[] }> {

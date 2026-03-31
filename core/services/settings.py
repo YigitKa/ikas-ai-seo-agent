@@ -13,6 +13,19 @@ from core.prompt_store import (
     reset_prompt_template,
     save_prompt_template,
 )
+from core.skills import (
+    SkillDefinition,
+    delete_skill_definition,
+    export_skill_definition,
+    get_available_tool_names,
+    get_skill_definition,
+    import_skill_definition,
+    list_skill_definitions,
+    preview_skill_definition,
+    reset_skill_definition,
+    save_skill_definition,
+    validate_skill_definition,
+)
 from core.services.provider import (
     PROVIDER_LABELS,
     discover_provider_models,
@@ -65,6 +78,36 @@ class SettingsService:
             reset_prompt_template(prompt_key)
             contents[prompt_key] = load_prompt_template(prompt_key)
         return contents
+
+    def list_skills(self) -> list[SkillDefinition]:
+        return list_skill_definitions()
+
+    def get_skill(self, slug: str) -> SkillDefinition:
+        return get_skill_definition(slug)
+
+    def save_skill(self, skill: SkillDefinition) -> SkillDefinition:
+        return save_skill_definition(skill)
+
+    def reset_skill(self, slug: str) -> SkillDefinition:
+        return reset_skill_definition(slug)
+
+    def delete_skill(self, slug: str) -> None:
+        delete_skill_definition(slug)
+
+    def validate_skill(self, skill: SkillDefinition) -> dict[str, Any]:
+        return validate_skill_definition(skill).model_dump(mode="json")
+
+    def preview_skill(self, skill: SkillDefinition, *, applies_to: str = "chat") -> dict[str, Any]:
+        return preview_skill_definition(skill, applies_to=applies_to)
+
+    def export_skill(self, slug: str) -> dict[str, Any]:
+        return export_skill_definition(slug)
+
+    def import_skill(self, payload: dict[str, Any]) -> SkillDefinition:
+        return import_skill_definition(payload)
+
+    def get_available_tool_names(self) -> list[str]:
+        return get_available_tool_names()
 
     def save_settings(self, values: dict[str, Any]) -> None:
         asyncio.run(save_config_to_db(values))

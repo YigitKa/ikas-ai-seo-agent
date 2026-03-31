@@ -836,6 +836,39 @@ graph TB
 
 <p align="center"><i>Prompt Studio ile sistem ve kullanıcı prompt'ları tek yerden düzenlenip katmanlı yapı korunur</i></p>
 
+### Skill Runtime ve Skill Studio
+
+Prompt katmanlarının üstüne artık diskten yüklenen bir **skill runtime** katmanı eklenir. Her skill `skills/<skill-slug>/` altında yaşar ve iki dosyadan oluşur:
+
+- `meta.json` — metadata, `allowed_tools`, `applies_to`, `prompt_layers`, `priority`, `status`
+- `SKILL.md` — insan okunur talimatlar, örnekler ve ek rehber
+
+Sistem açılışında varsayılan skill'ler otomatik olarak seed edilir:
+
+- `category-audit`
+- `brand-voice-rewrite`
+- `launch-readiness`
+
+Bir skill chat oturumunda aktif edildiğinde iki şey olur:
+
+1. Skill'in prompt katmanları mevcut chat system prompt'una eklenir
+2. Skill'in `allowed_tools` listesi gerçek tool yüzeyini daraltır
+
+Bu sayede skill sadece ek talimat değil, kontrollü bir çalışma modu haline gelir. Chat içinde hızlı kontrol için şu komutlar desteklenir:
+
+```text
+/skill
+/skill set category-audit
+/skill clear
+```
+
+Frontend'deki **Skill Studio** ekranı skill metadata'sını, prompt layer kompozisyonunu, validation uyarılarını ve composed prompt preview'ını tek yerden yönetir.
+
+<p align="center">
+  <img src="./assets/skillStudio.png" alt="Prompt Studio ekranı" width="900" />
+</p>
+
+<p align="center"><i>Skill studio ile mevcut skiller düzenlenebilir.</i></p>
 ---
 
 ## Teknoloji Yığını
@@ -880,6 +913,7 @@ ikas-ai-seo-agent/
 │   ├── permissions/            # Permission / approval engine + rule modeli
 │   ├── tasks/                  # Unified task runtime + ortak resume/retry/stop servisleri
 │   ├── prompt_store.py         # Template yükleme + multi-agent prompt'lar
+│   ├── skills/                 # Disk tabanlı skill loader, validation, preview ve seed skill'ler
 │   │
 │   ├── ai/client.py            # Multi-provider AI soyutlaması (fabrika + adaptörler)
 │   ├── agent/orchestrator.py   # Jenerik agent döngüsü (run + stream)
@@ -910,7 +944,7 @@ ikas-ai-seo-agent/
 │   └── routers/                # products, seo, suggestions, settings, chat, batch, llms, tasks, reports
 │
 ├── web/src/                    # React/TypeScript SPA
-│   ├── pages/                  # Dashboard, LlmsLab, BatchOperations, Reports
+│   ├── pages/                  # Dashboard, LlmsLab, BatchOperations, Reports, PromptEditor, SkillStudio
 │   │   └── settings/           # SettingsPage (modüler): ControlSidebar, ProviderSection, StoreSettingsSection, LiveStatusCard, LmStudioStatusCard
 │   ├── components/             # ChatPanel, ProductTable, ScoreCard (Quick Wins)
 │   │   ├── chat/messages/      # MessageBubble, ToolResultCard (SEO agent + MCP), ThinkingBlock, CostCard
@@ -928,6 +962,7 @@ ikas-ai-seo-agent/
 │   └── db.py                   # Async SQLite + bağlantı havuzu + unified task storage + batch sorgular + permission audit log
 │
 ├── prompts/                    # Düzenlenebilir AI prompt şablonları
+├── skills/                     # Diskten yüklenen skill klasörleri (`meta.json` + `SKILL.md`)
 └── tests/                      # 20+ test dosyası, canlı API çağrısı yok
 ```
 
@@ -1032,6 +1067,19 @@ ikas-ai-seo-agent/
 | `GET` | `/api/settings/health` | Seçili sağlayıcı sağlık kontrolü |
 | `GET` | `/api/settings/models/{provider}` | Sağlayıcıya ait kullanılabilir modelleri getir |
 | `POST` | `/api/settings/test-connection` | Sağlayıcı bağlantısını test et |
+
+### Skills
+| Metod | Endpoint | Açıklama |
+|---|---|---|
+| `GET` | `/api/settings/skills` | Tüm skill'leri ve kullanılabilir tool isimlerini getir |
+| `GET` | `/api/settings/skills/item/{slug}` | Tekil skill tanımını getir |
+| `PUT` | `/api/settings/skills/item/{slug}` | Skill oluştur veya güncelle |
+| `POST` | `/api/settings/skills/item/{slug}/reset` | Varsayılan skill'i seed haline döndür |
+| `DELETE` | `/api/settings/skills/item/{slug}` | Custom skill sil |
+| `POST` | `/api/settings/skills/validate` | Skill payload'ını kaydetmeden doğrula |
+| `POST` | `/api/settings/skills/preview` | Skill'in resolved prompt preview'ını üret |
+| `GET` | `/api/settings/skills/item/{slug}/export` | Import edilebilir skill payload'ı döndür |
+| `POST` | `/api/settings/skills/import` | Export edilmiş bir skill payload'ını içe al |
 
 ### MCP
 | Metod | Endpoint | Açıklama |

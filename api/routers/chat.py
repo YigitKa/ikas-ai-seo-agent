@@ -47,6 +47,20 @@ def _build_mcp_status_payload(
     }
 
 
+def _build_skill_status_payload(
+    manager: ProductManager,
+    *,
+    message_override: str | None = None,
+) -> dict[str, object]:
+    active_skill = manager.get_chat_active_skill()
+    message = message_override or ("Aktif skill var" if active_skill else "Aktif skill yok")
+    return {
+        "type": "skill_status",
+        "active_skill": active_skill,
+        "message": message,
+    }
+
+
 # ── REST endpoints for MCP ───────────────────────────────────────────────────
 
 @router.get("/api/mcp/status", response_model=MCPStatusResponse)
@@ -110,6 +124,7 @@ async def ws_chat(ws: WebSocket) -> None:
         return True
 
     await ws.send_json(_build_mcp_status_payload(manager))
+    await ws.send_json(_build_skill_status_payload(manager))
 
     # Auto-initialize MCP if token is configured
     if manager.chat_has_mcp and not manager.chat_mcp_initialized:
@@ -178,6 +193,24 @@ async def ws_chat(ws: WebSocket) -> None:
                 await cancel_active_chat(notify=False)
                 manager.clear_chat_history()
                 await send_json({"type": "cleared"})
+                continue
+
+            if action == "set_skill":
+                slug = str(payload.get("skill_slug") or "").strip()
+                if not slug:
+                    await send_json({"type": "error", "content": "Skill slug gerekli"})
+                    continue
+                try:
+                    manager.set_chat_active_skill(slug)
+                except Exception as exc:
+                    await send_json(_build_skill_status_payload(manager, message_override=str(exc)))
+                    continue
+                await send_json(_build_skill_status_payload(manager, message_override=f"Skill secildi: {slug}"))
+                continue
+
+            if action == "clear_skill":
+                manager.clear_chat_active_skill()
+                await send_json(_build_skill_status_payload(manager, message_override="Skill temizlendi"))
                 continue
 
             if action == "cancel":

@@ -126,6 +126,60 @@ export interface PromptLayeringOrder {
   flows: PromptLayeringFlow[];
 }
 
+export interface SkillPromptLayer {
+  type: 'inline' | 'prompt_reference' | string;
+  label: string;
+  prompt_key: string;
+  content: string;
+}
+
+export interface SkillResolvedPromptLayer {
+  type: 'inline' | 'prompt_reference' | string;
+  label: string;
+  source: string;
+  content: string;
+}
+
+export interface SkillDefinition {
+  schema_version: number;
+  slug: string;
+  name: string;
+  description: string;
+  when_to_use: string;
+  applies_to: string[];
+  allowed_tools: string[];
+  prompt_layers: SkillPromptLayer[];
+  tags: string[];
+  priority: number;
+  status: string;
+  instructions_markdown: string;
+  source: string;
+  content_hash: string;
+  is_default: boolean;
+}
+
+export interface SkillValidation {
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+  resolved_prompt_layers: SkillResolvedPromptLayer[];
+}
+
+export interface SkillPreview {
+  validation: SkillValidation;
+  composed_prompt: string;
+}
+
+export interface ActiveSkillSummary {
+  slug: string;
+  name: string;
+  description: string;
+  applies_to: string[];
+  allowed_tools: string[];
+  status: string;
+  source: string;
+}
+
 export interface RewriteResponse {
   suggestion: SeoSuggestion | null;
   field_value: string;
@@ -183,6 +237,7 @@ export interface ChatResponseMeta extends Record<string, unknown> {
   context_length?: number;
   context_used_percent?: number;
   context_remaining_percent?: number;
+  active_skill?: ActiveSkillSummary | null;
 }
 
 export interface LMStudioModelStatus {
@@ -218,7 +273,7 @@ export interface SuggestionSavedInfo {
 }
 
 export interface ChatWsMessage {
-  type: 'chunk' | 'thinking_chunk' | 'response_done' | 'response' | 'error' | 'thinking' | 'mcp_status' | 'context_set' | 'cleared' | 'cancelled';
+  type: 'chunk' | 'thinking_chunk' | 'response_done' | 'response' | 'error' | 'thinking' | 'mcp_status' | 'skill_status' | 'context_set' | 'cleared' | 'cancelled';
   content?: string;
   thinking?: string;
   tool_results?: ToolResult[];
@@ -233,6 +288,7 @@ export interface ChatWsMessage {
   product_name?: string;
   suggestion_saved?: SuggestionSavedInfo;
   pending_suggestion?: SeoSuggestion | null;
+  active_skill?: ActiveSkillSummary | null;
 }
 
 export interface LlmsJob {

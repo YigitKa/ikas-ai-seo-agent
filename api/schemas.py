@@ -7,6 +7,7 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 from core.models import Product, SeoScore, SeoSuggestion, TaskRecord
+from core.skills import SkillDefinition, SkillPromptLayer, SkillResolvedPromptLayer
 
 
 # ── Generic ──────────────────────────────────────────────────────────────────
@@ -184,6 +185,81 @@ class PromptLayeringFlowResponse(BaseModel):
 
 class PromptLayeringOrderResponse(BaseModel):
     flows: list[PromptLayeringFlowResponse] = Field(default_factory=list)
+
+
+class SkillPromptLayerResponse(BaseModel):
+    type: str = "inline"
+    label: str = ""
+    prompt_key: str = ""
+    content: str = ""
+
+    @classmethod
+    def from_model(cls, layer: SkillPromptLayer) -> "SkillPromptLayerResponse":
+        return cls(**layer.model_dump(mode="json"))
+
+
+class SkillResolvedPromptLayerResponse(BaseModel):
+    type: str = "inline"
+    label: str = ""
+    source: str = ""
+    content: str = ""
+
+    @classmethod
+    def from_model(cls, layer: SkillResolvedPromptLayer) -> "SkillResolvedPromptLayerResponse":
+        return cls(**layer.model_dump(mode="json"))
+
+
+class SkillResponse(BaseModel):
+    schema_version: int = 1
+    slug: str
+    name: str
+    description: str = ""
+    when_to_use: str = ""
+    applies_to: list[str] = Field(default_factory=list)
+    allowed_tools: list[str] = Field(default_factory=list)
+    prompt_layers: list[SkillPromptLayerResponse] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    priority: int = 100
+    status: str = "active"
+    instructions_markdown: str = ""
+    source: str = "project"
+    content_hash: str = ""
+    is_default: bool = False
+
+    @classmethod
+    def from_model(cls, skill: SkillDefinition) -> "SkillResponse":
+        payload = skill.model_dump(mode="json")
+        payload["prompt_layers"] = [
+            SkillPromptLayerResponse.from_model(SkillPromptLayer.model_validate(layer))
+            for layer in payload.get("prompt_layers", [])
+        ]
+        payload.pop("path", None)
+        return cls(**payload)
+
+
+class SkillsResponse(BaseModel):
+    items: list[SkillResponse] = Field(default_factory=list)
+    available_tools: list[str] = Field(default_factory=list)
+
+
+class SkillUpsertRequest(BaseModel):
+    skill: SkillResponse
+
+
+class SkillValidationResponse(BaseModel):
+    ok: bool = True
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    resolved_prompt_layers: list[SkillResolvedPromptLayerResponse] = Field(default_factory=list)
+
+
+class SkillPreviewResponse(BaseModel):
+    validation: SkillValidationResponse
+    composed_prompt: str = ""
+
+
+class SkillImportRequest(BaseModel):
+    skill: SkillResponse
 
 
 class ProviderHealthResponse(BaseModel):

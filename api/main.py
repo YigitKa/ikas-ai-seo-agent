@@ -16,6 +16,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from api.dependencies import init_manager, shutdown_manager
 from api.routers import products, seo, suggestions, settings, chat, llms, batch, reports, tasks
 from core.prompt_store import ensure_prompt_files
+from core.skills import ensure_skill_files
 from data import db
 from data.db import close_pool as close_db_pool
 from core.llms.service import llms_service
@@ -50,6 +51,7 @@ async def _run_daily_snapshot_safe() -> None:
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting ikas AI SEO Agent API")
     ensure_prompt_files()
+    ensure_skill_files()
     await db.init_db()
     await llms_service.bootstrap()
     init_manager()
