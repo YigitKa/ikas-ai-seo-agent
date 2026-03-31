@@ -31,10 +31,10 @@ function BrandMark() {
   return (
     <Link
       to="/"
-      className="flex min-w-0 items-center gap-3 rounded-2xl px-1 py-1 transition-opacity duration-200 hover:opacity-90"
+      className="flex min-w-0 items-center gap-2.5 rounded-2xl px-1 py-0.5 transition-opacity duration-200 hover:opacity-90"
     >
       <div
-        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl text-sm font-bold text-white"
+        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[18px] text-sm font-bold text-white"
         style={{
           background: 'linear-gradient(135deg, #0f172a, #1d4ed8)',
           border: '1px solid rgba(96,165,250,0.34)',
@@ -78,7 +78,7 @@ function HistoryButton({
       aria-label={isBack ? 'Geri' : 'Ileri'}
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-200 hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-xl transition-all duration-200 hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40"
       style={{
         background: 'rgba(15, 23, 42, 0.72)',
         border: '1px solid rgba(148,163,184,0.22)',
@@ -137,20 +137,20 @@ function MetaCard({ item }: { item: AppHeaderMeta }) {
 
   return (
     <div
-      className="rounded-2xl px-3 py-2.5"
+      className="min-w-[150px] max-w-[240px] rounded-xl px-3 py-2"
       style={{
         background: 'rgba(15,23,42,0.52)',
         border: '1px solid rgba(148,163,184,0.18)',
       }}
     >
       <div
-        className="text-[9px] font-semibold uppercase tracking-[0.18em]"
+        className="text-[8px] font-semibold uppercase tracking-[0.18em]"
         style={{ color: 'var(--color-text-muted)' }}
       >
         {item.label}
       </div>
       <div
-        className="mt-1 text-[12px] font-medium sm:text-[13px]"
+        className="mt-0.5 truncate text-[11px] font-semibold sm:text-[12px]"
         style={{ color: accentMap[tone] }}
       >
         {item.value}
@@ -204,13 +204,13 @@ export default function AppHeader({
       }}
     >
       <div className={wrapperClassName}>
-        <div className="flex flex-col gap-3 py-3">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex min-w-0 flex-wrap items-center gap-3">
+        <div className="flex flex-col gap-2 py-2.5">
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-2.5">
               <BrandMark />
 
               <div
-                className="hidden h-6 w-px md:block"
+                className="hidden h-5 w-px md:block"
                 style={{ background: 'rgba(148,163,184,0.18)' }}
               />
 
@@ -228,7 +228,7 @@ export default function AppHeader({
               </div>
 
               {breadcrumbs.length > 0 && (
-                <nav className="flex min-w-0 flex-wrap items-center gap-1.5 text-[12px]">
+                <nav className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
                   {breadcrumbs.map((item, index) => {
                     const isCurrent = index === breadcrumbs.length - 1;
 
@@ -297,7 +297,7 @@ export default function AppHeader({
               ))}
 
               <span
-                className="rounded-full px-2.5 py-1 text-[10px] tabular-nums"
+                className="rounded-full px-2.5 py-1 text-[9px] tabular-nums"
                 style={{
                   background: 'rgba(15,23,42,0.72)',
                   border: '1px solid rgba(148,163,184,0.18)',
@@ -317,31 +317,33 @@ export default function AppHeader({
 
           <div
             className={classNames(
-              'enterprise-surface rounded-[28px] px-4 py-4 sm:px-5',
+              'enterprise-surface rounded-3xl px-4 py-3 sm:px-4.5',
               panelClassName,
             )}
           >
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0 flex-1">
-                {eyebrow && (
-                  <EnterprisePill tone={eyebrow.tone ?? 'primary'} className="gap-1.5 px-2.5 py-1 text-[9px]">
-                    <span>{eyebrow.label}</span>
-                    {eyebrow.withDot && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-90" />
-                    )}
-                  </EnterprisePill>
-                )}
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  {eyebrow && (
+                    <EnterprisePill tone={eyebrow.tone ?? 'primary'} className="gap-1 px-2 py-0.5 text-[8px]">
+                      <span>{eyebrow.label}</span>
+                      {eyebrow.withDot && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-current opacity-90" />
+                      )}
+                    </EnterprisePill>
+                  )}
 
-                <h1
-                  className="mt-2 text-[2rem] font-semibold leading-tight tracking-tight sm:text-[2.2rem]"
-                  style={{ color: 'var(--color-text-primary)' }}
-                >
-                  {title}
-                </h1>
+                  <h1
+                    className="min-w-0 text-[1.75rem] font-semibold leading-tight tracking-tight sm:text-[1.95rem]"
+                    style={{ color: 'var(--color-text-primary)' }}
+                  >
+                    {title}
+                  </h1>
+                </div>
 
                 {description && (
                   <p
-                    className="mt-1.5 max-w-3xl text-[12px] leading-5 sm:text-[13px]"
+                    className="mt-1 max-w-3xl truncate text-[11px] leading-5 sm:text-[12px]"
                     style={{ color: 'var(--color-text-secondary)' }}
                   >
                     {description}
@@ -350,9 +352,9 @@ export default function AppHeader({
               </div>
 
               {(meta.length > 0 || actions) && (
-                <div className="flex w-full flex-col gap-2 lg:max-w-[43%] lg:items-end">
+                <div className="flex w-full flex-wrap items-center gap-2 lg:max-w-[62%] lg:justify-end">
                   {meta.length > 0 && (
-                    <div className="grid w-full gap-2 sm:grid-cols-2">
+                    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                       {meta.map((item) => (
                         <MetaCard key={item.label} item={item} />
                       ))}
@@ -360,7 +362,7 @@ export default function AppHeader({
                   )}
 
                   {actions && (
-                    <div className="flex w-full flex-wrap items-center gap-2 lg:justify-end">
+                    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                       {actions}
                     </div>
                   )}
