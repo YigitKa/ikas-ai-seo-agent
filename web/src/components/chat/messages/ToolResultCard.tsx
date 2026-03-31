@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import type { ToolResult } from '../../../types';
-
-// ── SEO agent tool metadata ───────────────────────────────────────────────────
+import type { ToolResult, ToolResultEnvelope } from '../../../types';
 
 const SEO_AGENT_TOOLS: Record<string, { label: string; icon: string }> = {
   seo_score_product: {
@@ -9,84 +7,108 @@ const SEO_AGENT_TOOLS: Record<string, { label: string; icon: string }> = {
     icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
   },
   validate_rewrite: {
-    label: 'Yeniden Yazım Doğrulama',
+    label: 'Yeniden Yazim Dogrulama',
     icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
   },
   save_suggestion: {
-    label: 'Öneri Kaydedildi',
+    label: 'Oneri Kaydedildi',
     icon: 'M5 13l4 4L19 7',
   },
   get_product_details: {
-    label: 'Ürün Detayları Alındı',
+    label: 'Urun Detaylari Alindi',
     icon: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
   },
   get_seo_guidelines: {
-    label: 'SEO Kılavuzları',
+    label: 'SEO Kilavuzlari',
     icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253',
   },
   search_products: {
-    label: 'Ürün Arama',
+    label: 'Urun Arama',
     icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
   },
 };
 
-// ── Score extraction helpers ──────────────────────────────────────────────────
-
-function extractSeoScoreResult(resultJson: string): { score?: number; previous?: number } | null {
+function unwrapToolEnvelope(resultJson: string): { payload: unknown; envelope: ToolResultEnvelope | null } {
   try {
     const parsed = JSON.parse(resultJson);
-    if (typeof parsed?.total_score === 'number') {
+    if (
+      parsed
+      && typeof parsed === 'object'
+      && 'ok' in parsed
+      && 'tool_name' in parsed
+      && 'meta' in parsed
+    ) {
+      const envelope = parsed as ToolResultEnvelope;
+      return {
+        payload: envelope.ok ? envelope.data : envelope,
+        envelope,
+      };
+    }
+    return { payload: parsed, envelope: null };
+  } catch {
+    return { payload: resultJson, envelope: null };
+  }
+}
+
+function formatToolPayload(resultJson: string): string {
+  const { payload } = unwrapToolEnvelope(resultJson);
+  if (typeof payload === 'string') return payload;
+  try {
+    return JSON.stringify(payload, null, 2);
+  } catch {
+    return String(payload);
+  }
+}
+
+function extractSeoScoreResult(resultJson: string): { score?: number; previous?: number } | null {
+  const { payload } = unwrapToolEnvelope(resultJson);
+  if (payload && typeof payload === 'object') {
+    const parsed = payload as { total_score?: number; score?: { total_score?: number }; previous_score?: number };
+    if (typeof parsed.total_score === 'number') {
       return { score: parsed.total_score };
     }
-    // Sometimes result is wrapped: { score: { total_score: 72 }, previous_score: 65 }
-    if (typeof parsed?.score?.total_score === 'number') {
+    if (typeof parsed.score?.total_score === 'number') {
       return {
         score: parsed.score.total_score,
         previous: typeof parsed.previous_score === 'number' ? parsed.previous_score : undefined,
       };
     }
-    // Flat result string like "Total score: 72/100"
-    const match = String(resultJson).match(/(\d+)\s*\/\s*100/);
-    if (match) return { score: parseInt(match[1]) };
-  } catch {
-    const match = String(resultJson).match(/(\d+)\s*\/\s*100/);
-    if (match) return { score: parseInt(match[1]) };
   }
+  const match = String(resultJson).match(/(\d+)\s*\/\s*100/);
+  if (match) return { score: parseInt(match[1], 10) };
   return null;
 }
 
 function extractValidateResult(resultJson: string): { improved: boolean; delta?: number } | null {
-  try {
-    const parsed = JSON.parse(resultJson);
-    if (typeof parsed?.improved === 'boolean') {
+  const { payload } = unwrapToolEnvelope(resultJson);
+  if (payload && typeof payload === 'object') {
+    const parsed = payload as { improved?: boolean; score_delta?: number };
+    if (typeof parsed.improved === 'boolean') {
       return {
         improved: parsed.improved,
         delta: typeof parsed.score_delta === 'number' ? parsed.score_delta : undefined,
       };
     }
-    const text = String(resultJson).toLowerCase();
-    const improved = text.includes('improved') || text.includes('iyilesti') || text.includes('artis');
-    return { improved };
-  } catch {
-    const text = String(resultJson).toLowerCase();
-    const improved = text.includes('improved') || text.includes('iyilesti');
-    return { improved };
   }
+  const text = String(resultJson).toLowerCase();
+  const improved = text.includes('improved') || text.includes('iyilesti') || text.includes('artis');
+  return { improved };
 }
 
-// ── SEO Agent Tool Card ───────────────────────────────────────────────────────
+function isSavedResult(resultJson: string): boolean {
+  const { envelope } = unwrapToolEnvelope(resultJson);
+  if (!envelope || !envelope.ok || !envelope.data || typeof envelope.data !== 'object') {
+    return false;
+  }
+  return 'success' in envelope.data || 'suggestion_saved' in envelope.data;
+}
 
 function SeoAgentToolCard({ result, toolMeta }: { result: ToolResult; toolMeta: { label: string; icon: string } }) {
   const [expanded, setExpanded] = useState(false);
+  const scoreResult = result.tool === 'seo_score_product' ? extractSeoScoreResult(result.result) : null;
+  const validateResult = result.tool === 'validate_rewrite' ? extractValidateResult(result.result) : null;
+  const isSaved = result.tool === 'save_suggestion' && isSavedResult(result.result);
 
-  // Parse specialized result data
-  const scoreResult =
-    result.tool === 'seo_score_product' ? extractSeoScoreResult(result.result) : null;
-  const validateResult =
-    result.tool === 'validate_rewrite' ? extractValidateResult(result.result) : null;
-  const isSaved = result.tool === 'save_suggestion';
-
-  // Color themes per tool
   const colorMap: Record<string, { bg: string; border: string; icon: string; badge: string }> = {
     seo_score_product: {
       bg: 'rgba(99, 102, 241, 0.06)',
@@ -121,13 +143,7 @@ function SeoAgentToolCard({ result, toolMeta }: { result: ToolResult; toolMeta: 
   };
 
   const colors = colorMap[result.tool] ?? colorMap.default;
-
-  let parsed: string;
-  try {
-    parsed = JSON.stringify(JSON.parse(result.result), null, 2);
-  } catch {
-    parsed = result.result;
-  }
+  const parsed = formatToolPayload(result.result);
 
   return (
     <div
@@ -150,7 +166,6 @@ function SeoAgentToolCard({ result, toolMeta }: { result: ToolResult; toolMeta: 
           {toolMeta.label}
         </span>
 
-        {/* Score badge for seo_score_product */}
         {scoreResult?.score !== undefined && (
           <span
             className="ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold"
@@ -159,35 +174,32 @@ function SeoAgentToolCard({ result, toolMeta }: { result: ToolResult; toolMeta: 
             {scoreResult.score}/100
             {scoreResult.previous !== undefined && scoreResult.previous !== scoreResult.score && (
               <span className="ml-1 opacity-70">
-                (önceki: {scoreResult.previous})
+                (onceki: {scoreResult.previous})
               </span>
             )}
           </span>
         )}
 
-        {/* Validate result badge */}
         {validateResult !== null && (
           <span
             className="ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold"
             style={{ background: colors.badge, color: colors.icon }}
           >
             {validateResult.improved
-              ? `✓ İyileşme${validateResult.delta !== undefined && validateResult.delta > 0 ? ` (+${validateResult.delta})` : ''}`
-              : '↻ Devam ediyor'}
+              ? `Iyilesme${validateResult.delta !== undefined && validateResult.delta > 0 ? ` (+${validateResult.delta})` : ''}`
+              : 'Devam ediyor'}
           </span>
         )}
 
-        {/* Save confirmation */}
         {isSaved && (
           <span
             className="ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold"
             style={{ background: colors.badge, color: colors.icon }}
           >
-            ✓ Kaydedildi
+            Kaydedildi
           </span>
         )}
 
-        {/* Expand toggle (only for non-save tools) */}
         {!isSaved && (
           <button
             onClick={() => setExpanded((v) => !v)}
@@ -211,16 +223,9 @@ function SeoAgentToolCard({ result, toolMeta }: { result: ToolResult; toolMeta: 
   );
 }
 
-// ── MCP Tool Card (existing style) ───────────────────────────────────────────
-
 function McpToolCard({ result }: { result: ToolResult }) {
   const [expanded, setExpanded] = useState(false);
-  let parsed: string;
-  try {
-    parsed = JSON.stringify(JSON.parse(result.result), null, 2);
-  } catch {
-    parsed = result.result;
-  }
+  const parsed = formatToolPayload(result.result);
 
   return (
     <div
@@ -261,8 +266,6 @@ function McpToolCard({ result }: { result: ToolResult }) {
     </div>
   );
 }
-
-// ── Main export ───────────────────────────────────────────────────────────────
 
 export default function ToolResultCard({ result }: { result: ToolResult }) {
   const seoMeta = SEO_AGENT_TOOLS[result.tool];

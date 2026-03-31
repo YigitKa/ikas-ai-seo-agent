@@ -22,7 +22,7 @@ from typing import Any
 
 import httpx
 
-from core.agent.tools import AgentToolkit
+from core.agent.tools import AgentToolkit, SAVE_SUGGESTION_TOOL_NAME
 from core.models import AgentEvent, AgentResult, AgentToolCall, AppConfig
 
 logger = logging.getLogger(__name__)
@@ -162,6 +162,7 @@ class AgentOrchestrator:
                 # Update last tool call with its result
                 if result.tool_calls_made:
                     result.tool_calls_made[-1].result = event.tool_result
+                    result.tool_calls_made[-1].duration_ms = int(event.meta.get("duration_ms", 0) or 0)
             elif event.type == "thinking":
                 result.thinking += event.content
             elif event.type == "error":
@@ -240,16 +241,13 @@ class AgentOrchestrator:
 
                 yield AgentEvent(type="tool_call", tool_name=tool_name, tool_args=args)
 
-                result_text = await self._toolkit.execute(tool_name, args)
+                execution = await self._toolkit.invoke(tool_name, args)
+                result_text = execution.content
 
                 # Track save_suggestion success so AgentResult.suggestion_saved is populated
-                if tool_name == "save_suggestion":
-                    try:
-                        parsed = json.loads(result_text)
-                        if isinstance(parsed, dict) and parsed.get("success"):
-                            suggestion_saved_data = parsed
-                    except (json.JSONDecodeError, AttributeError):
-                        pass
+                if tool_name == SAVE_SUGGESTION_TOOL_NAME:
+                    if execution.ok and isinstance(execution.data, dict) and execution.data.get("success"):
+                        suggestion_saved_data = execution.data
 
                 all_tool_calls.append({
                     "tool": tool_name,
@@ -257,7 +255,12 @@ class AgentOrchestrator:
                     "result": result_text[:2000],
                 })
 
-                yield AgentEvent(type="tool_result", tool_name=tool_name, tool_result=result_text[:2000])
+                yield AgentEvent(
+                    type="tool_result",
+                    tool_name=tool_name,
+                    tool_result=result_text[:2000],
+                    meta={"duration_ms": execution.duration_ms},
+                )
 
                 messages.append({
                     "role": "tool",

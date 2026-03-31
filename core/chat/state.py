@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 
-from core.agent.tools import AgentToolkit, create_chat_toolkit
+from core.agent.tools import AgentToolkit, create_chat_toolkit, create_local_chat_tool_registry
 from core.chat.support import (
     APPLY_SEO_TO_IKAS_TOOL_NAME,
     CHAT_ACTION_PATTERN,
@@ -29,17 +29,14 @@ from core.chat.support import (
     SUGGESTION_APPLY_FIELD_CONFIG,
     SUGGESTION_SAVE_SUCCESS_MESSAGE,
     SUGGESTION_REQUEST_HINT_PATTERN,
-    ToolRegistry,
     _LMStudioNativeUnavailable,
     _StreamingVisibleTextFilter,
     _append_false_action_disclaimer,
     _append_operation_suggestion,
     _apply_choice_delta,
-    _build_apply_seo_to_ikas_tool,
     _build_completion_meta,
     _build_local_no_think_instruction,
     _build_product_context,
-    _build_save_seo_suggestion_tool,
     _build_tool_catalog_instruction,
     _compact_preview_text,
     _decode_json_string_fragment,
@@ -93,9 +90,10 @@ class ChatServiceStateMixin:
             self._active_http_client: httpx.AsyncClient | None = None
 
             # Local tool registry — add new local tools here without touching _execute_chat_tool
-            self._tool_registry = ToolRegistry()
-            self._tool_registry.register(SAVE_SEO_SUGGESTION_TOOL_NAME, self._save_suggestion_from_tool_args)
-            self._tool_registry.register("apply_seo_to_ikas", self._apply_seo_to_ikas_handler)
+            self._tool_registry = create_local_chat_tool_registry(
+                self._save_suggestion_from_tool_args,
+                self._apply_seo_to_ikas_handler,
+            )
 
             # Agent toolkit — provides additional local tools (SEO scoring, validation, etc.)
             self._agent_toolkit: AgentToolkit = create_chat_toolkit()
@@ -497,15 +495,21 @@ class ChatServiceStateMixin:
         ) -> tuple[list[dict[str, Any]] | None, list[str]]:
             tools: list[dict[str, Any]] = []
             instructions: list[str] = []
+            local_tool_names = [APPLY_SEO_TO_IKAS_TOOL_NAME]
 
             if include_save_seo_tool:
-                tools.append(_build_save_seo_suggestion_tool())
+                local_tool_names.insert(0, SAVE_SEO_SUGGESTION_TOOL_NAME)
                 instructions.append(_get_save_tool_instruction())
 
             # Always include the apply_seo_to_ikas tool — it handles both
             # native ikas API and MCP routes internally so the LLM never
             # needs to write raw GraphQL mutations.
-            tools.append(_build_apply_seo_to_ikas_tool())
+            tools.extend(
+                self._tool_registry.get_openai_functions(
+                    agent_type=f"chat:{agent_type}",
+                    names=local_tool_names,
+                )
+            )
             instructions.append(
                 "Kullanici urun degisikliklerini onayladiginda, arka planda uygun araclari cagir. "
                 "Kullaniciya arac adlarini gosterme; onay aldiktan sonra sessizce uygula."

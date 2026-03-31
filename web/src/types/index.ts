@@ -151,6 +151,21 @@ export interface ToolResult {
   result: string;
 }
 
+export interface ToolResultEnvelopeError {
+  code: string;
+  message: string;
+  details: Record<string, unknown>;
+  retryable: boolean;
+}
+
+export interface ToolResultEnvelope<T = unknown> {
+  ok: boolean;
+  tool_name: string;
+  data: T | null;
+  error: ToolResultEnvelopeError | null;
+  meta: Record<string, unknown>;
+}
+
 export interface ChatResponseMeta extends Record<string, unknown> {
   model?: string;
   finish_reason?: string;

@@ -778,6 +778,10 @@ async def test_handle_apply_intent_no_history():
     assert response.suggestion_saved is not None
     assert response.suggestion_saved["product_id"] == product.id
     assert response.suggestion_saved["fields"]["suggested_meta_title"] == "Yeni Meta Title"
+    tool_payload = json.loads(response.tool_results[0]["result"])
+    assert tool_payload["ok"] is True
+    assert tool_payload["tool_name"] == SAVE_SEO_SUGGESTION_TOOL_NAME
+    assert tool_payload["data"]["suggestion_saved"]["fields"]["suggested_meta_title"] == "Yeni Meta Title"
 
 
 @pytest.mark.anyio
@@ -814,6 +818,10 @@ async def test_handle_apply_intent_creates_suggestion(monkeypatch):
     assert response.suggestion_saved["fields"]["suggested_meta_title"] == "Airontek 60X Tasinabilir Mikroskop | Mavi Isik"
     assert response.suggestion_saved["fields"]["suggested_description"] == "<p>Yeni urun aciklamasi</p>"
     assert response.tool_results[0]["tool"] == SAVE_SEO_SUGGESTION_TOOL_NAME
+    tool_payload = json.loads(response.tool_results[0]["result"])
+    assert tool_payload["ok"] is True
+    assert tool_payload["tool_name"] == SAVE_SEO_SUGGESTION_TOOL_NAME
+    assert tool_payload["data"]["suggestion_saved"]["fields"]["suggested_description"] == "<p>Yeni urun aciklamasi</p>"
 
 
 class _FakeStreamResponse:

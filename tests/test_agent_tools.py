@@ -1,97 +1,124 @@
-"""Tests for core/agent_tools.py — AgentTool, AgentToolkit, built-in tools."""
-
 import json
+
 import pytest
 
 from core.agent.tools import (
+    APPLY_SEO_TO_IKAS_TOOL_NAME,
+    SAVE_SEO_SUGGESTION_TOOL_NAME,
     AgentTool,
     AgentToolkit,
+    ToolRegistry,
+    build_apply_seo_to_ikas_tool,
     build_get_product_details_tool,
     build_get_seo_guidelines_tool,
+    build_save_seo_suggestion_tool,
     build_save_suggestion_tool,
     build_seo_score_product_tool,
     build_search_products_tool,
     build_validate_rewrite_tool,
-    create_seo_rewrite_toolkit,
-    create_chat_toolkit,
     create_batch_toolkit,
+    create_chat_toolkit,
+    create_local_chat_tool_registry,
+    create_seo_rewrite_toolkit,
 )
-from core.models import Product, SeoScore
+from core.models import Product
 
 
-# ── AgentTool ────────────────────────────────────────────────────────────
+def _parse_envelope(result_text: str) -> dict:
+    parsed = json.loads(result_text)
+    assert "ok" in parsed
+    assert "tool_name" in parsed
+    assert "meta" in parsed
+    return parsed
 
 
-def test_agent_tool_to_openai_function():
+def test_agent_tool_to_openai_function_uses_schema_alias():
     tool = AgentTool(
         name="test_tool",
         description="A test tool",
         parameters={"type": "object", "properties": {"x": {"type": "string"}}},
+        risk_level="medium",
     )
+
     result = tool.to_openai_function()
+
     assert result["type"] == "function"
     assert result["function"]["name"] == "test_tool"
     assert result["function"]["description"] == "A test tool"
     assert "x" in result["function"]["parameters"]["properties"]
+    assert tool.input_schema == tool.parameters
 
 
-# ── AgentToolkit ─────────────────────────────────────────────────────────
+def test_tool_definition_allowlist_supports_scoped_agent_names():
+    tool = AgentTool(name="restricted", description="Restricted", allowlist={"chat"})
+
+    assert tool.is_available_to("chat")
+    assert tool.is_available_to("chat:seo")
+    assert not tool.is_available_to("batch")
 
 
-def test_toolkit_register_and_get():
-    toolkit = AgentToolkit()
-    tool = AgentTool(name="foo", description="bar")
-    toolkit.register(tool)
+def test_registry_get_openai_functions_filters_allowlist():
+    registry = ToolRegistry([
+        build_search_products_tool(),
+        build_save_seo_suggestion_tool(),
+    ])
 
-    assert toolkit.get("foo") is tool
-    assert toolkit.get("nonexistent") is None
-    assert "foo" in toolkit
-    assert "nonexistent" not in toolkit
-    assert len(toolkit) == 1
-    assert toolkit.tool_names == ["foo"]
+    chat_names = [item["function"]["name"] for item in registry.get_openai_functions(agent_type="chat:seo")]
+    batch_names = [item["function"]["name"] for item in registry.get_openai_functions(agent_type="batch")]
 
-
-def test_toolkit_init_with_tools():
-    tools = [
-        AgentTool(name="a", description="Tool A"),
-        AgentTool(name="b", description="Tool B"),
-    ]
-    toolkit = AgentToolkit(tools)
-    assert len(toolkit) == 2
-    assert toolkit.tool_names == ["a", "b"]
-
-
-def test_toolkit_get_openai_functions():
-    tools = [
-        AgentTool(name="a", description="Tool A"),
-        AgentTool(name="b", description="Tool B"),
-    ]
-    toolkit = AgentToolkit(tools)
-    funcs = toolkit.get_openai_functions()
-    assert len(funcs) == 2
-    assert funcs[0]["function"]["name"] == "a"
-    assert funcs[1]["function"]["name"] == "b"
+    assert SAVE_SEO_SUGGESTION_TOOL_NAME in chat_names
+    assert SAVE_SEO_SUGGESTION_TOOL_NAME not in batch_names
+    assert "search_products" in batch_names
 
 
 @pytest.mark.anyio
-async def test_toolkit_execute_calls_handler():
+async def test_toolkit_invoke_wraps_success_payload():
+    async def handler(args):
+        return {"result": args.get("x", 0) * 2}
+
+    toolkit = AgentToolkit([AgentTool(name="double", description="Double x", handler=handler)], agent_type="chat")
+
+    result = await toolkit.invoke("double", {"x": 5})
+    parsed = _parse_envelope(result.content)
+
+    assert result.ok is True
+    assert parsed["data"] == {"result": 10}
+    assert parsed["meta"]["risk_level"] == "low"
+    assert parsed["meta"]["read_only"] is True
+
+
+@pytest.mark.anyio
+async def test_toolkit_invoke_wraps_legacy_json_string():
     async def handler(args):
         return json.dumps({"result": args.get("x", 0) * 2})
 
-    tool = AgentTool(name="double", description="Double x", handler=handler)
-    toolkit = AgentToolkit([tool])
+    toolkit = AgentToolkit([AgentTool(name="double", description="Double x", handler=handler)], agent_type="chat")
 
-    result = await toolkit.execute("double", {"x": 5})
-    assert json.loads(result) == {"result": 10}
+    result = await toolkit.invoke("double", {"x": 3})
+
+    assert result.data == {"result": 6}
+    assert _parse_envelope(result.content)["data"]["result"] == 6
 
 
 @pytest.mark.anyio
 async def test_toolkit_execute_unknown_tool():
-    toolkit = AgentToolkit()
-    result = await toolkit.execute("nonexistent", {})
-    parsed = json.loads(result)
-    assert "error" in parsed
-    assert "nonexistent" in parsed["error"]
+    toolkit = AgentToolkit(agent_type="chat")
+
+    parsed = _parse_envelope(await toolkit.execute("nonexistent", {}))
+
+    assert parsed["ok"] is False
+    assert parsed["error"]["code"] == "tool_not_found"
+    assert "nonexistent" in parsed["error"]["message"]
+
+
+@pytest.mark.anyio
+async def test_toolkit_execute_respects_allowlist():
+    toolkit = AgentToolkit([build_save_seo_suggestion_tool()], agent_type="batch")
+
+    parsed = _parse_envelope(await toolkit.execute(SAVE_SEO_SUGGESTION_TOOL_NAME, {}))
+
+    assert parsed["ok"] is False
+    assert parsed["error"]["code"] == "tool_not_allowed"
 
 
 @pytest.mark.anyio
@@ -99,64 +126,47 @@ async def test_toolkit_execute_handler_error():
     async def handler(args):
         raise ValueError("boom")
 
-    tool = AgentTool(name="broken", description="Broken tool", handler=handler)
-    toolkit = AgentToolkit([tool])
+    toolkit = AgentToolkit([AgentTool(name="broken", description="Broken tool", handler=handler)], agent_type="chat")
 
-    result = await toolkit.execute("broken", {})
-    parsed = json.loads(result)
-    assert "error" in parsed
-    assert "boom" in parsed["error"]
+    parsed = _parse_envelope(await toolkit.execute("broken", {}))
 
-
-# ── Built-in tools ───────────────────────────────────────────────────────
+    assert parsed["ok"] is False
+    assert parsed["error"]["code"] == "tool_execution_failed"
+    assert "boom" in parsed["error"]["message"]
 
 
-def test_seo_score_product_tool_schema():
-    tool = build_seo_score_product_tool()
-    assert tool.name == "seo_score_product"
-    assert tool.handler is not None
-    assert "product_id" in tool.parameters["properties"]
+def test_builtin_tool_metadata_and_schema():
+    save_chat_tool = build_save_seo_suggestion_tool()
+    apply_tool = build_apply_seo_to_ikas_tool()
+    save_suggestion_tool = build_save_suggestion_tool()
 
+    assert save_chat_tool.name == SAVE_SEO_SUGGESTION_TOOL_NAME
+    assert save_chat_tool.risk_level == "medium"
+    assert save_chat_tool.read_only is False
+    assert "suggested_meta_title" in save_chat_tool.input_schema["properties"]
 
-def test_get_product_details_tool_schema():
-    tool = build_get_product_details_tool()
-    assert tool.name == "get_product_details"
-    assert "product_id" in tool.parameters["properties"]
+    assert apply_tool.name == APPLY_SEO_TO_IKAS_TOOL_NAME
+    assert apply_tool.risk_level == "high"
+    assert apply_tool.read_only is False
+    assert "product_id" in apply_tool.input_schema["properties"]
 
-
-def test_search_products_tool_schema():
-    tool = build_search_products_tool()
-    assert tool.name == "search_products"
-    assert "max_score" in tool.parameters["properties"]
-
-
-def test_validate_rewrite_tool_schema():
-    tool = build_validate_rewrite_tool()
-    assert tool.name == "validate_rewrite"
-    assert "product_id" in tool.parameters["properties"]
-    assert "updates" in tool.parameters["properties"]
-
-
-def test_save_suggestion_tool_schema():
-    tool = build_save_suggestion_tool()
-    assert tool.name == "save_suggestion"
-    assert "product_id" in tool.parameters["properties"]
+    assert save_suggestion_tool.name == "save_suggestion"
+    assert "product_id" in save_suggestion_tool.input_schema["properties"]
 
 
 @pytest.mark.anyio
-async def test_get_seo_guidelines_returns_rubric():
-    tool = build_get_seo_guidelines_tool()
-    result = await tool.handler({})
-    parsed = json.loads(result)
-    assert "rubric" in parsed
-    assert parsed["total_max"] == 100
-    assert "title" in parsed["rubric"]
-    assert "description_tr" in parsed["rubric"]
+async def test_get_seo_guidelines_returns_runtime_envelope():
+    toolkit = AgentToolkit([build_get_seo_guidelines_tool()], agent_type="chat")
+
+    result = await toolkit.invoke("get_seo_guidelines", {})
+
+    assert result.ok is True
+    assert result.data["total_max"] == 100
+    assert "title" in result.data["rubric"]
 
 
 @pytest.mark.anyio
 async def test_seo_score_product_tool_missing_product(monkeypatch):
-    """Tool should return error when product not found."""
     from data import db as db_module
 
     async def fake_get_product(product_id):
@@ -164,15 +174,16 @@ async def test_seo_score_product_tool_missing_product(monkeypatch):
 
     monkeypatch.setattr(db_module, "get_product", fake_get_product)
 
-    tool = build_seo_score_product_tool()
-    result = await tool.handler({"product_id": "nonexistent"})
-    parsed = json.loads(result)
-    assert "error" in parsed
+    toolkit = AgentToolkit([build_seo_score_product_tool()], agent_type="seo_rewrite")
+    result = await toolkit.invoke("seo_score_product", {"product_id": "missing"})
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error.code == "product_not_found"
 
 
 @pytest.mark.anyio
 async def test_seo_score_product_tool_scores_product(monkeypatch):
-    """Tool should return a valid score for an existing product."""
     from data import db as db_module
 
     product = Product(
@@ -188,17 +199,17 @@ async def test_seo_score_product_tool_scores_product(monkeypatch):
 
     monkeypatch.setattr(db_module, "get_product", fake_get_product)
 
-    tool = build_seo_score_product_tool()
-    result = await tool.handler({"product_id": "p1"})
-    parsed = json.loads(result)
-    assert "total_score" in parsed
-    assert "issues" in parsed
-    assert isinstance(parsed["total_score"], int)
+    toolkit = AgentToolkit([build_seo_score_product_tool()], agent_type="seo_rewrite")
+    result = await toolkit.invoke("seo_score_product", {"product_id": "p1"})
+
+    assert result.ok is True
+    assert "total_score" in result.data
+    assert "issues" in result.data
+    assert isinstance(result.data["total_score"], int)
 
 
 @pytest.mark.anyio
 async def test_validate_rewrite_tool_compares_scores(monkeypatch):
-    """Tool should return before/after score comparison."""
     from data import db as db_module
 
     product = Product(
@@ -214,22 +225,38 @@ async def test_validate_rewrite_tool_compares_scores(monkeypatch):
 
     monkeypatch.setattr(db_module, "get_product", fake_get_product)
 
-    tool = build_validate_rewrite_tool()
-    result = await tool.handler({
-        "product_id": "p1",
-        "updates": {"name": "Cok Daha Uzun ve Detayli Bir Urun Adi Test Icin"},
-    })
-    parsed = json.loads(result)
-    assert "original_score" in parsed
-    assert "new_score" in parsed
-    assert "improvement" in parsed
+    toolkit = AgentToolkit([build_validate_rewrite_tool()], agent_type="seo_rewrite")
+    result = await toolkit.invoke(
+        "validate_rewrite",
+        {
+            "product_id": "p1",
+            "updates": {"name": "Cok Daha Uzun ve Detayli Bir Urun Adi Test Icin"},
+        },
+    )
+
+    assert result.ok is True
+    assert "original_score" in result.data
+    assert "new_score" in result.data
+    assert "score_delta" in result.data
+    assert "improved" in result.data
 
 
-# ── Toolkit factories ────────────────────────────────────────────────────
+def test_create_local_chat_tool_registry():
+    async def save_handler(args):
+        return {"message": "saved"}, {"suggestion_saved": {"product_id": "p1"}}
+
+    async def apply_handler(args):
+        return {"message": "applied"}, None
+
+    registry = create_local_chat_tool_registry(save_handler, apply_handler)
+
+    assert SAVE_SEO_SUGGESTION_TOOL_NAME in registry.tool_names
+    assert APPLY_SEO_TO_IKAS_TOOL_NAME in registry.tool_names
 
 
 def test_create_seo_rewrite_toolkit():
     toolkit = create_seo_rewrite_toolkit()
+
     assert "seo_score_product" in toolkit
     assert "validate_rewrite" in toolkit
     assert "save_suggestion" in toolkit
@@ -239,6 +266,7 @@ def test_create_seo_rewrite_toolkit():
 
 def test_create_chat_toolkit():
     toolkit = create_chat_toolkit()
+
     assert "search_products" in toolkit
     assert "seo_score_product" in toolkit
     assert len(toolkit) == 6
@@ -246,6 +274,8 @@ def test_create_chat_toolkit():
 
 def test_create_batch_toolkit():
     toolkit = create_batch_toolkit()
+
     assert "search_products" in toolkit
     assert "save_suggestion" in toolkit
     assert len(toolkit) == 5
+

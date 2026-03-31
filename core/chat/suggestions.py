@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 
-from core.agent.tools import AgentToolkit, create_chat_toolkit
+from core.agent.tools import tool_error, tool_success
 from core.chat.support import (
     APPLY_SEO_TO_IKAS_TOOL_NAME,
     CHAT_ACTION_PATTERN,
@@ -28,7 +28,6 @@ from core.chat.support import (
     SUGGESTION_APPLY_FIELD_CONFIG,
     SUGGESTION_SAVE_SUCCESS_MESSAGE,
     SUGGESTION_REQUEST_HINT_PATTERN,
-    ToolRegistry,
     _LMStudioNativeUnavailable,
     _StreamingVisibleTextFilter,
     _append_false_action_disclaimer,
@@ -79,14 +78,14 @@ class ChatServiceSuggestionMixin:
         async def _save_suggestion_from_tool_args(
             self,
             args: dict[str, Any],
-        ) -> tuple[str, dict[str, Any] | None]:
+        ) -> tuple[dict[str, Any], dict[str, Any] | None]:
             from core.services.suggestion import apply_suggestion_field, create_pending_suggestion
 
             if not self._product:
-                return json.dumps({
-                    "ok": False,
-                    "error": "Secili urun olmadan oneri kaydedilemez.",
-                }, ensure_ascii=False), None
+                return tool_error(
+                    "missing_selected_product",
+                    "Secili urun olmadan oneri kaydedilemez.",
+                ), None
 
             suggestion = self._get_session_pending_suggestion(self._product.id) or create_pending_suggestion(self._product)
             saved_fields: dict[str, str] = {}
@@ -102,10 +101,10 @@ class ChatServiceSuggestionMixin:
                     saved_fields[arg_key] = cleaned_value
 
             if not saved_fields:
-                return json.dumps({
-                    "ok": False,
-                    "error": "Kaydedilecek gecerli bir SEO onerisi bulunamadi.",
-                }, ensure_ascii=False), None
+                return tool_error(
+                    "suggestion_fields_missing",
+                    "Kaydedilecek gecerli bir SEO onerisi bulunamadi.",
+                ), None
 
             self._set_session_pending_suggestion(suggestion)
             suggestion_saved = {
@@ -113,33 +112,31 @@ class ChatServiceSuggestionMixin:
                 "product_name": self._product.name,
                 "fields": saved_fields,
             }
-            return json.dumps({
-                "ok": True,
+            return tool_success({
                 "message": SUGGESTION_SAVE_SUCCESS_MESSAGE,
                 "suggestion_saved": suggestion_saved,
-            }, ensure_ascii=False), suggestion_saved
+            }), suggestion_saved
 
         async def _apply_seo_to_ikas_handler(
             self,
             args: dict[str, Any],
-        ) -> tuple[str, dict[str, Any] | None]:
+        ) -> tuple[dict[str, Any], dict[str, Any] | None]:
             """Apply SEO changes to ikas via IkasClient or MCP.
 
             This tool gives the LLM a structured way to update product fields
-            without requiring raw GraphQL knowledge.  It tries the native
-            IkasClient first (needs OAuth credentials) and falls back to MCP.
+            without requiring raw GraphQL knowledge. It tries the native
+            IkasClient first and falls back to MCP.
             """
-            product_id = args.get("product_id", "")
+            product_id = str(args.get("product_id") or "")
             if not product_id:
                 if self._product:
                     product_id = self._product.id
                 else:
-                    return json.dumps({
-                        "ok": False,
-                        "error": "product_id gerekli ama sağlanmadı ve seçili ürün yok.",
-                    }, ensure_ascii=False), None
+                    return tool_error(
+                        "missing_product_id",
+                        "product_id gerekli ama saglanmadi ve secili urun yok.",
+                    ), None
 
-            # Build the update dict from provided fields
             updates: dict[str, Any] = {}
             description_translations: dict[str, str] = {}
 
@@ -158,14 +155,12 @@ class ChatServiceSuggestionMixin:
                 updates["description_translations"] = description_translations
 
             if not updates:
-                return json.dumps({
-                    "ok": False,
-                    "error": "Güncellenecek alan belirtilmedi.",
-                }, ensure_ascii=False), None
+                return tool_error(
+                    "empty_updates",
+                    "Guncellenecek alan belirtilmedi.",
+                ), None
 
             updated_fields = list(updates.keys())
-
-            # Strategy 1: Try IkasClient (needs IKAS_CLIENT_ID + SECRET)
             ikas_client_available = bool(
                 self._config.ikas_client_id and self._config.ikas_client_secret
             )
@@ -173,29 +168,25 @@ class ChatServiceSuggestionMixin:
                 ikas_client = IkasClient()
                 try:
                     await ikas_client.update_product(product_id, updates)
-                    result = {
-                        "ok": True,
+                    return tool_success({
                         "method": "ikas_api",
                         "product_id": product_id,
                         "updated_fields": updated_fields,
                         "dry_run": self._config.dry_run,
                         "message": (
-                            f"Ürün başarıyla güncellendi (alanlar: {', '.join(updated_fields)})."
+                            f"Urun basariyla guncellendi (alanlar: {', '.join(updated_fields)})."
                             if not self._config.dry_run
-                            else f"DRY_RUN: Güncelleme simüle edildi (alanlar: {', '.join(updated_fields)})."
+                            else f"DRY_RUN: Guncelleme simule edildi (alanlar: {', '.join(updated_fields)})."
                         ),
-                    }
-                    return json.dumps(result, ensure_ascii=False), None
+                    }), None
                 except Exception as exc:
                     logger.warning("IkasClient update failed, trying MCP: %s", exc)
                 finally:
                     with contextlib.suppress(Exception):
                         await ikas_client.close()
 
-            # Strategy 2: Use MCP updateProduct mutation
             if self._mcp and self._mcp_initialized:
                 try:
-                    # Prefetch required fields via a temporary IkasClient
                     prefetch_product: dict[str, Any] | None = None
                     try:
                         _pf_client = IkasClient()
@@ -220,8 +211,8 @@ class ChatServiceSuggestionMixin:
                         input_data["salesChannelIds"] = prefetch_product.get("salesChannelIds") or []
                         input_data["description"] = prefetch_product.get("description") or ""
                         input_data["variants"] = [
-                            {k: v for k, v in var.items() if v is not None}
-                            for var in (prefetch_product.get("variants") or [])
+                            {key: value for key, value in variant.items() if value is not None}
+                            for variant in (prefetch_product.get("variants") or [])
                         ]
                         if prefetch_product.get("brandId"):
                             input_data["brandId"] = prefetch_product["brandId"]
@@ -237,9 +228,8 @@ class ChatServiceSuggestionMixin:
                             "pageTitle": pf_meta.get("pageTitle", ""),
                             "description": pf_meta.get("description", ""),
                         }
-                    else:
-                        if "name" in updates:
-                            input_data["name"] = updates["name"]
+                    elif "name" in updates:
+                        input_data["name"] = updates["name"]
 
                     if "description" in updates:
                         input_data["description"] = updates["description"]
@@ -262,29 +252,28 @@ class ChatServiceSuggestionMixin:
                         _MCP_SAVE_PRODUCT_MUTATION,
                         {"input": input_data},
                     )
-                    return json.dumps({
-                        "ok": True,
+                    return tool_success({
                         "method": "mcp",
                         "product_id": product_id,
                         "updated_fields": updated_fields,
                         "result": _extract_mcp_text(result)[:2000] if isinstance(result, dict) else str(result)[:2000],
-                        "message": f"Ürün MCP üzerinden güncellendi (alanlar: {', '.join(updated_fields)}).",
-                    }, ensure_ascii=False), None
+                        "message": f"Urun MCP uzerinden guncellendi (alanlar: {', '.join(updated_fields)}).",
+                    }), None
                 except Exception as exc:
                     logger.error("MCP update also failed: %s", exc)
-                    return json.dumps({
-                        "ok": False,
-                        "error": f"Güncelleme başarısız. ikas API hatası: {exc}",
-                        "tried": ["ikas_api", "mcp"] if ikas_client_available else ["mcp"],
-                    }, ensure_ascii=False), None
+                    return tool_error(
+                        "apply_failed",
+                        f"Guncelleme basarisiz. ikas API hatasi: {exc}",
+                        details={"tried": ["ikas_api", "mcp"] if ikas_client_available else ["mcp"]},
+                    ), None
 
-            return json.dumps({
-                "ok": False,
-                "error": (
-                    "Ürün güncellemesi yapılamadı. Ne ikas API kimlik bilgileri "
-                    "(IKAS_CLIENT_ID/SECRET) ne de MCP bağlantısı mevcut."
+            return tool_error(
+                "apply_unavailable",
+                (
+                    "Urun guncellemesi yapilamadi. Ne ikas API kimlik bilgileri "
+                    "(IKAS_CLIENT_ID/SECRET) ne de MCP baglantisi mevcut."
                 ),
-            }, ensure_ascii=False), None
+            ), None
 
         async def _extract_pending_suggestion_from_history(
             self,
@@ -917,17 +906,18 @@ class ChatServiceSuggestionMixin:
             tool_name: str,
             args: dict[str, Any],
         ) -> tuple[str, dict[str, Any] | None]:
-            # Check the local registry first (Open-Closed: new tools registered, not hardcoded)
-            handler = self._tool_registry.get(tool_name)
-            if handler:
-                return await handler(args)
+            local_tool = self._tool_registry.get(tool_name)
+            if local_tool is not None:
+                execution = await self._tool_registry.invoke(tool_name, args, agent_type="chat")
+                suggestion_saved = execution.internal_meta.get("suggestion_saved")
+                if not isinstance(suggestion_saved, dict) and execution.internal_meta:
+                    suggestion_saved = execution.internal_meta
+                return execution.content, suggestion_saved if isinstance(suggestion_saved, dict) else None
 
-            # Check the agent toolkit (SEO scoring, validation, product details, etc.)
             if tool_name in self._agent_toolkit:
-                result = await self._agent_toolkit.execute(tool_name, args)
-                return result, None
+                result = await self._agent_toolkit.invoke(tool_name, args)
+                return result.content, None
 
-            # Fall through to MCP for all dynamically-discovered ikas tools
             if self._mcp and self._mcp_initialized:
                 try:
                     result = await self._mcp.call_tool(tool_name, args)
@@ -938,7 +928,7 @@ class ChatServiceSuggestionMixin:
                         "available_tools": self._mcp.get_tool_names(),
                     }, ensure_ascii=False), None
 
-            available = self._tool_registry.local_tool_names + self._agent_toolkit.tool_names
+            available = self._tool_registry.tool_names + self._agent_toolkit.tool_names
             return json.dumps({
                 "error": f"Tool '{tool_name}' is not available.",
                 "available_tools": available,

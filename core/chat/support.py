@@ -27,7 +27,13 @@ ToolHandler = Callable[[dict[str, Any]], Awaitable[tuple[str, "dict[str, Any] | 
 
 import httpx
 
-from core.agent.tools import AgentToolkit, create_chat_toolkit
+from core.agent.tools import (
+    APPLY_SEO_TO_IKAS_TOOL_NAME,
+    SAVE_SEO_SUGGESTION_TOOL_NAME,
+    ToolRegistry as RuntimeToolRegistry,
+    build_apply_seo_to_ikas_tool,
+    build_save_seo_suggestion_tool,
+)
 from core.clients.ikas import IkasClient
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.clients.mcp import IkasMCPClient, MCPError
@@ -154,7 +160,6 @@ FALSE_ACTION_CONFIRMATION_NORMALIZED_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-SAVE_SEO_SUGGESTION_TOOL_NAME = "save_seo_suggestion"
 SUGGESTION_SAVE_SUCCESS_MESSAGE = "\u00d6neri ba\u015far\u0131yla kaydedildi"
 SAVE_SEO_SUGGESTION_FIELD_MAP = {
     "suggested_name": ("name", "suggested_name"),
@@ -227,47 +232,7 @@ SINGLE_PRODUCT_APPLY_ACTIONS = frozenset({
 
 
 def _build_save_seo_suggestion_tool() -> dict[str, Any]:
-    return {
-        "type": "function",
-        "function": {
-            "name": SAVE_SEO_SUGGESTION_TOOL_NAME,
-            "description": (
-                "Kullanici sohbet sirasinda sunulan SEO degisikliklerini "
-                "(baslik, aciklama vb.) begendiginde ve 'uygula', 'kaydet', "
-                "'bunu sectim' dediginde bu araci cagir."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "suggested_name": {
-                        "type": "string",
-                        "description": "Kaydedilecek yeni urun adi onerisi.",
-                    },
-                    "suggested_meta_title": {
-                        "type": "string",
-                        "description": "Kaydedilecek yeni meta title onerisi.",
-                    },
-                    "suggested_meta_description": {
-                        "type": "string",
-                        "description": "Kaydedilecek yeni meta description onerisi.",
-                    },
-                    "suggested_description": {
-                        "type": "string",
-                        "description": "Kaydedilecek Turkce urun aciklamasi onerisi.",
-                    },
-                    "suggested_description_en": {
-                        "type": "string",
-                        "description": "Kaydedilecek Ingilizce urun aciklamasi onerisi.",
-                    },
-                },
-                "required": [],
-                "additionalProperties": False,
-            },
-        },
-    }
-
-
-APPLY_SEO_TO_IKAS_TOOL_NAME = "apply_seo_to_ikas"
+    return build_save_seo_suggestion_tool().to_openai_function()
 
 # GraphQL mutation used by the apply_seo_to_ikas tool when routing through MCP
 _MCP_SAVE_PRODUCT_MUTATION = """mutation SaveProduct($input: ProductInput!) {
@@ -281,48 +246,7 @@ _MCP_SAVE_PRODUCT_MUTATION = """mutation SaveProduct($input: ProductInput!) {
 
 
 def _build_apply_seo_to_ikas_tool() -> dict[str, Any]:
-    return {
-        "type": "function",
-        "function": {
-            "name": APPLY_SEO_TO_IKAS_TOOL_NAME,
-            "description": (
-                "Onaylanan SEO degisikliklerini ikas'a uygular. "
-                "Kullanici urun uzerindeki degisiklikleri onayladiginda (orn: 'uygula', 'ikas'a kaydet', 'guncelle') "
-                "bu araci cagir. Alan bos ise o alan guncellenmez."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "product_id": {
-                        "type": "string",
-                        "description": "Guncellenecek urunun ID'si.",
-                    },
-                    "name": {
-                        "type": "string",
-                        "description": "Yeni urun adi (bos birak = degistirme).",
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "Yeni TR aciklama HTML (bos birak = degistirme).",
-                    },
-                    "description_en": {
-                        "type": "string",
-                        "description": "Yeni EN aciklama (bos birak = degistirme).",
-                    },
-                    "meta_title": {
-                        "type": "string",
-                        "description": "Yeni meta title (bos birak = degistirme).",
-                    },
-                    "meta_description": {
-                        "type": "string",
-                        "description": "Yeni meta description (bos birak = degistirme).",
-                    },
-                },
-                "required": ["product_id"],
-                "additionalProperties": False,
-            },
-        },
-    }
+    return build_apply_seo_to_ikas_tool().to_openai_function()
 
 
 SELECTED_PRODUCT_LIVE_QUERY = """query listProduct($id: StringFilterInput, $pagination: PaginationInput) {
@@ -1238,28 +1162,7 @@ def _merge_stream_meta_payload(target: dict[str, Any], payload: dict[str, Any]) 
     return merged
 
 
-class ToolRegistry:
-    """Dictionary-based registry that maps local tool names to async handler functions.
-
-    Follows the Open-Closed Principle: new local tools can be registered without
-    modifying _execute_chat_tool. Handlers must be async callables with the
-    signature ``async (args: dict[str, Any]) -> tuple[str, dict[str, Any] | None]``.
-    """
-
-    def __init__(self) -> None:
-        self._handlers: dict[str, ToolHandler] = {}
-
-    def register(self, name: str, handler: ToolHandler) -> None:
-        """Register a new tool handler under the given name."""
-        self._handlers[name] = handler
-
-    def get(self, name: str) -> ToolHandler | None:
-        """Return the handler for *name*, or None if not registered."""
-        return self._handlers.get(name)
-
-    @property
-    def local_tool_names(self) -> list[str]:
-        """Names of all locally registered tools."""
-        return list(self._handlers.keys())
+class ToolRegistry(RuntimeToolRegistry):
+    """Backward-compatible alias for the shared Tool Runtime v2 registry."""
 
 
