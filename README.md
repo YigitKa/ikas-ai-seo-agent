@@ -434,10 +434,10 @@ graph TB
     end
 
     subgraph BACKEND ["⚡ Backend"]
-        API["FastAPI<br/>REST + WebSocket + SSE<br/>Request-scoped DI"]
+        API["FastAPI<br/>REST + WebSocket + SSE<br/>Singleton DI (REST) · Per-connection (Chat)"]
     end
 
-    subgraph CORE ["🧠 Core — ProductManager <i>(istek başına yeni instance)</i>"]
+    subgraph CORE ["🧠 Core — ProductManager <i>(REST: singleton · Chat: bağlantı başına)</i>"]
         direction TB
         subgraph ROW1 [" "]
             IKAS_C["IkasClient<br/><i>OAuth + GraphQL</i>"]
@@ -456,7 +456,7 @@ graph TB
     end
 
     subgraph DATA ["💾 Veri Katmanı"]
-        DB["Async SQLite — aiosqlite<br/>ürünler · skorlar · öneriler · loglar"]
+        DB["Async SQLite — aiosqlite<br/>bağlantı havuzu (5) · ürünler · skorlar · öneriler · loglar"]
     end
 
     FE <-->|REST + WS| API
@@ -477,10 +477,10 @@ graph TB
 ```mermaid
 mindmap
   root(("🏗️ Tasarım<br/>Kararları"))
-    ("🔒 Request-Scoped DI")
-      ("ProductManager istek başına yeni")
-      ("Chat state WebSocket başına izole")
-      ("Cross-request kontaminasyonu yok")
+    ("🔒 Singleton + İzolasyon")
+      ("REST: ProductManager singleton")
+      ("Chat: WebSocket başına izole instance")
+      ("SQLite bağlantı havuzu (5 conn)")
     ("🔧 3 Katmanlı Tool Çözümleme")
       ("1 — Registry: kaydet/uygula")
       ("2 — Toolkit: SEO skorlama")
@@ -859,7 +859,7 @@ ikas-ai-seo-agent/
 │
 ├── api/                        # FastAPI REST + WebSocket
 │   ├── main.py                 # Uygulama kurulumu, CORS, SPA sunumu
-│   ├── dependencies.py         # Request-scoped DI
+│   ├── dependencies.py         # Singleton ProductManager (REST) + per-connection (Chat)
 │   └── routers/                # products, seo, suggestions, settings, chat, batch, llms, reports
 │
 ├── web/src/                    # React/TypeScript SPA
@@ -877,8 +877,7 @@ ikas-ai-seo-agent/
 │       └── chat/chatHistory.ts # localStorage chat geçmişi (ürün başına, son 50 mesaj)
 │
 ├── data/
-│   ├── db.py                   # Async SQLite şema + yardımcılar
-│   └── cache.py                # Dosya tabanlı TTL cache
+│   └── db.py                   # Async SQLite + bağlantı havuzu + batch sorgular
 │
 ├── prompts/                    # Düzenlenebilir AI prompt şablonları
 └── tests/                      # 20+ test dosyası, canlı API çağrısı yok

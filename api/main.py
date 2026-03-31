@@ -17,6 +17,7 @@ from api.dependencies import init_manager, shutdown_manager
 from api.routers import products, seo, suggestions, settings, chat, llms, batch, reports
 from core.prompt_store import ensure_prompt_files
 from data import db
+from data.db import close_pool as close_db_pool
 from core.llms.service import llms_service
 from core.services.daily_tracker import run_daily_snapshot
 
@@ -55,6 +56,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     asyncio.create_task(_run_daily_snapshot_safe())
     yield
     await shutdown_manager()
+    await close_db_pool()
     logger.info("Shut down ikas AI SEO Agent API")
 
 

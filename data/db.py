@@ -208,7 +208,7 @@ async def _create_connection() -> aiosqlite.Connection:
 async def _init_pool() -> None:
     global _pool, _pool_initialized
     if _pool_initialized:
-        return
+        await close_pool()
     _pool = asyncio.Queue(maxsize=_POOL_SIZE)
     for _ in range(_POOL_SIZE):
         conn = await _create_connection()
@@ -292,6 +292,7 @@ async def init_db() -> None:
         except Exception:
             pass  # Column already exists
         await conn.commit()
+    await _init_pool()
 
 
 async def save_product(product: Product) -> None:
@@ -328,6 +329,22 @@ async def get_product(product_id: str) -> Optional[Product]:
     if row:
         return Product.model_validate_json(row["data"])
     return None
+
+
+async def get_products_by_ids(product_ids: Sequence[str]) -> dict[str, Product]:
+    """Return products keyed by ID in a single query."""
+    if not product_ids:
+        return {}
+    placeholders = ",".join("?" for _ in product_ids)
+    result: dict[str, Product] = {}
+    async with connection() as conn:
+        async with conn.execute(
+            f"SELECT id, data FROM products WHERE id IN ({placeholders})",
+            list(product_ids),
+        ) as cursor:
+            async for row in cursor:
+                result[row["id"]] = Product.model_validate_json(row["data"])
+    return result
 
 
 async def get_all_products() -> List[Product]:

@@ -9,9 +9,13 @@ router = APIRouter()
 
 
 async def _enrich_entries(entries):
+    if not entries:
+        return []
+    product_ids = [e.product_id for e in entries]
+    products_map = await db.get_products_by_ids(product_ids)
     enriched = []
     for entry in entries:
-        product = await db.get_product(entry.product_id)
+        product = products_map.get(entry.product_id)
         enriched.append(
             {
                 "product_id": entry.product_id,

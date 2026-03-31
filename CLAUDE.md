@@ -86,7 +86,7 @@ ikas-ai-seo-agent/
 │
 ├── api/                     # FastAPI REST API + WebSocket
 │   ├── main.py              # FastAPI app with CORS, lifespan, SPA static file serving
-│   ├── dependencies.py      # Request-scoped ProductManager injection (fresh per request)
+│   ├── dependencies.py      # Application-scoped ProductManager singleton (REST); per-connection for WebSocket chat
 │   ├── schemas.py           # API request/response Pydantic schemas
 │   └── routers/
 │       ├── products.py      # Product list, fetch, detail, sync, reset endpoints
@@ -154,8 +154,7 @@ ikas-ai-seo-agent/
 │           └── index.ts     # TypeScript type definitions
 │
 ├── data/
-│   ├── db.py                # Async SQLite schema + helpers (aiosqlite)
-│   └── cache.py             # File-based TTL cache keyed by MD5 hash
+│   └── db.py                # Async SQLite with connection pool + helpers (aiosqlite)
 │
 ├── prompts/                 # Editable AI prompt templates ({{variable}} substitution)
 │   ├── description_rewrite.system.txt
@@ -315,7 +314,7 @@ All configuration is loaded from `.env` via `config/settings.py`. The `AppConfig
 [ FastAPI REST API + WebSocket ]
           |
           v
-ProductManager (core/product_manager.py)  [request-scoped — fresh per HTTP request]
+ProductManager (core/product_manager.py)  [singleton for REST; per-connection for WebSocket chat]
     ├── IkasClient           -> ikas GraphQL API
     ├── AIClient             -> AI provider (pluggable)
     ├── AgentOrchestrator    -> tool-calling agent loop (iterative rewrite)
@@ -325,7 +324,7 @@ ProductManager (core/product_manager.py)  [request-scoped — fresh per HTTP req
     ├── ChatService          -> multi-turn AI chat + multi-agent routing + MCP tools + AgentToolkit
     ├── IkasMCPClient        -> ikas MCP (live store queries)
     ├── ProviderService      -> provider detection & health
-    └── Database             -> async SQLite (aiosqlite) + file cache
+    └── Database             -> async SQLite (aiosqlite) with connection pool
 ```
 
 ### Data flow for a typical "analyze + rewrite" operation
@@ -364,17 +363,17 @@ ProductManager (core/product_manager.py)  [request-scoped — fresh per HTTP req
 - **Orchestrator** — `ProductManager` coordinates all core modules; the UI/API only calls it
 - **Agent Loop** — `AgentOrchestrator` in `core/agent/orchestrator.py` runs an iterative tool-calling loop: LLM call → tool execution → result injection → repeat until done or max iterations
 - **Toolkit** — `AgentToolkit` in `core/agent/tools.py` groups related tools; toolkit factories (`create_seo_rewrite_toolkit`, `create_chat_toolkit`, `create_batch_toolkit`) assemble curated subsets for different use cases
-- **Singleton** — `get_config()` caches a single `AppConfig` instance per process
+- **Singleton** — `get_config()` caches a single `AppConfig` instance per process; `ProductManager` is a singleton for REST endpoints (initialized at startup, shared across requests); WebSocket chat connections create their own per-connection instances for state isolation
 - **Template** — Prompts use `{{variable}}` placeholders, rendered by `PromptStore`
 - **Repository** — `data/db.py` abstracts all async SQLite reads/writes behind plain functions
-- **Dependency Injection** — `api/dependencies.py` yields a fresh `ProductManager` per FastAPI request (request-scoped, not a global singleton)
+- **Dependency Injection** — `api/dependencies.py` provides the application-scoped `ProductManager` singleton to REST endpoints via `get_manager()`
 - **Multi-agent routing** — `core/chat/streaming.py` selects one of three agent personas (SEO Expert, Store Operator, General) based on the conversation context; prompts are defined in `prompt_store.py` as `AGENT_SYSTEM_PROMPTS_TR`
 - **Registry** — `ToolRegistry` in `core/chat/support.py` decouples tool dispatch from implementation; tools register without modifying the dispatcher
 - **Strategy** — `apply_seo_to_ikas` uses IkasClient (OAuth/GraphQL) first, with MCP mutation as fallback
 - **Structured Options** — AI responses and programmatic builders (e.g. `_build_suggestion_saved_response`) embed JSON option arrays that the frontend parses into clickable buttons, ensuring deterministic user input without free-text ambiguity
 
 ### Async usage
-`IkasClient`, `IkasMCPClient`, `GeoAuditor`, and `data/db.py` use async I/O (`httpx.AsyncClient`, `aiosqlite`). The FastAPI backend handles async natively. All database access is async — do not call `db.*` functions from synchronous code.
+`IkasClient`, `IkasMCPClient`, `GeoAuditor`, and `data/db.py` use async I/O (`httpx.AsyncClient`, `aiosqlite`). The FastAPI backend handles async natively. All database access is async — do not call `db.*` functions from synchronous code. `score_products()` and `apply_suggestions()` use `asyncio.gather()` for parallel execution (with `asyncio.to_thread()` for CPU-bound scoring and `asyncio.Semaphore(3)` for rate-limited ikas API calls).
 
 ---
 
@@ -491,6 +490,8 @@ Key implementations:
 
 ### `core/prompt_store.py` — prompt templates and multi-agent system prompts
 
+Prompt templates are cached in-memory (`_prompt_cache` dict) after first disk read. `save_prompt_template()` and `reset_prompt_template()` invalidate the cache entry on write. `ensure_prompt_files()` runs once at startup (guarded by `_prompts_initialized` flag) and is no longer called per-request.
+
 **Editable prompt files** (stored in `prompts/`, auto-created from defaults if missing):
 | Key | File | Variables |
 |---|---|---|
@@ -569,7 +570,7 @@ Key implementations:
 - `sanitize_html_for_prompt()` — Clean HTML for AI prompts
 - `has_html_markup()` — Detect HTML content
 
-### `data/db.py` — async SQLite tables (aiosqlite)
+### `data/db.py` — async SQLite with connection pool (aiosqlite)
 | Table | Purpose |
 |---|---|
 | `products` | Cached product snapshots |
@@ -577,6 +578,12 @@ Key implementations:
 | `suggestions` | AI-generated rewrites with status |
 | `operation_log` | Audit log of all apply operations |
 | `settings` | Persisted key-value settings |
+
+**Connection pool:** `init_db()` initializes an `asyncio.Queue`-based connection pool (5 connections). The `connection()` async context manager acquires from the pool and returns on exit; falls back to direct `aiosqlite.connect()` when the pool is not initialized (e.g., in tests). `close_pool()` drains and closes all pooled connections at shutdown.
+
+**Batch query helpers:**
+- `get_latest_scores_for_products(product_ids)` — fetches the most recent `SeoScore` for each product in a single SQL query (eliminates N+1 in product list)
+- `get_products_by_ids(product_ids)` — fetches multiple products by ID in a single query (eliminates N+1 in llms entry enrichment)
 
 Database file is created at `./seo_optimizer.db` in the working directory. All functions are `async` — always `await` them.
 
@@ -727,7 +734,7 @@ To add a new prompt type: add `.system.txt` + `.user.txt` entries to `PROMPT_FIL
 - New API endpoints go in `api/routers/` and are registered in `api/main.py`
 - Frontend API client functions go in `web/src/api/client.ts`
 - **`.env` is read-only at runtime** — never write to it; use `save_config_to_db()` to persist settings to `.cache/user_settings.json`
-- `ProductManager` is request-scoped in FastAPI — never store it as a module-level global
+- `ProductManager` is an application-scoped singleton for REST endpoints (initialized once at startup via `init_manager()`); WebSocket chat creates per-connection instances for chat state isolation
 - `GeoAuditor` is stateless and instantiated directly in the route handler — it does not go through `ProductManager`
 
 ---
@@ -820,7 +827,7 @@ websockets>=12.0
 - SQLite database file is created at `./seo_optimizer.db` in the working directory
 - All `data/db.py` functions are async — calling them without `await` will silently return a coroutine object
 - Port 8000 is used by default for the backend; `start.py` auto-falls back to next available port if busy
-- `ProductManager` is request-scoped — do not cache it across requests or store it as a module-level global
+- `ProductManager` is a singleton for REST endpoints (shared across requests) but per-connection for WebSocket chat (chat state isolation)
 - The desktop UI (`ui/` directory) has been removed; the project is now web-only
 - `GeoAuditor` makes real outbound HTTP requests to the target website — tests must mock `httpx.AsyncClient` or the `_fetch()` method
 - GEO audit `geo_rewrite.system.txt` / `geo_rewrite.user.txt` prompt files are auto-created on first use; they will not appear in `prompts/` until the app runs at least once or `ensure_prompt_files()` is called

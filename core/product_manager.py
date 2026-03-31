@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from typing import Any, List, Optional, TypeVar
@@ -112,15 +113,13 @@ class ProductManager:
         return counts
 
     async def score_products(self, products: List[Product]) -> List[tuple[Product, SeoScore]]:
-        scored_products: List[tuple[Product, SeoScore]] = []
-        scores: List[SeoScore] = []
+        keywords = self._config.seo_target_keywords
+        scores = await asyncio.gather(
+            *[asyncio.to_thread(analyze_product, p, keywords) for p in products]
+        )
+        scored_products = list(zip(products, scores))
 
-        for product in products:
-            score = analyze_product(product, self._config.seo_target_keywords)
-            scored_products.append((product, score))
-            scores.append(score)
-
-        await db.save_scores(scores)
+        await db.save_scores(list(scores))
         logger.info("Analyzed %s products", len(products))
         return scored_products
 
@@ -273,17 +272,19 @@ class ProductManager:
         return get_lm_studio_live_status(self._config, job_id=job_id)
 
     async def apply_suggestions(self, suggestions: List[SeoSuggestion]) -> int:
-        applied = 0
-        for suggestion in suggestions:
-            if suggestion.status != "approved":
-                continue
-            updates = {}
+        sem = asyncio.Semaphore(3)
+        approved = [s for s in suggestions if s.status == "approved"]
+        if not approved:
+            return 0
+
+        async def _apply_one(suggestion: SeoSuggestion) -> bool:
+            updates: dict[str, Any] = {}
             if suggestion.suggested_name:
                 updates["name"] = suggestion.suggested_name
             if suggestion.suggested_description:
                 updates["description"] = suggestion.suggested_description
 
-            description_translations = {}
+            description_translations: dict[str, str] = {}
             if suggestion.suggested_description:
                 description_translations["tr"] = suggestion.suggested_description
             if suggestion.suggested_description_en:
@@ -296,39 +297,45 @@ class ProductManager:
                 updates["meta_description"] = suggestion.suggested_meta_description
 
             try:
-                # Capture score before update for change log
                 old_score_obj = await db.get_latest_score(suggestion.product_id)
                 score_before = old_score_obj.total_score if old_score_obj else None
 
-                success = await self._ikas.update_product(suggestion.product_id, updates)
-                if success:
-                    await db.update_suggestion_status(suggestion.product_id, "applied")
-                    await db.log_operation("apply", suggestion.product_id, updates, True)
-                    applied += 1
-                    # Post-apply verification: re-fetch and re-score
-                    score_after = None
-                    try:
+                async with sem:
+                    success = await self._ikas.update_product(suggestion.product_id, updates)
+                if not success:
+                    return False
+
+                await db.update_suggestion_status(suggestion.product_id, "applied")
+                await db.log_operation("apply", suggestion.product_id, updates, True)
+
+                score_after = None
+                try:
+                    async with sem:
                         updated_product = await self._ikas.get_product_by_id(suggestion.product_id)
-                        if updated_product:
-                            await db.save_product(updated_product)
-                            new_score = analyze_product(updated_product, self._config.seo_target_keywords)
-                            await db.save_scores([new_score])
-                            score_after = new_score.total_score
-                            logger.info("Post-apply verify %s: new score %s", suggestion.product_id, new_score.total_score)
-                    except Exception as verify_exc:
-                        logger.warning("Post-apply verify failed for %s: %s", suggestion.product_id, verify_exc)
-                    # Log the score change event
-                    await db.insert_score_change_log(
-                        product_id=suggestion.product_id,
-                        product_name=suggestion.original_name or "",
-                        operation="apply",
-                        score_before=score_before,
-                        score_after=score_after,
-                    )
+                    if updated_product:
+                        await db.save_product(updated_product)
+                        new_score = analyze_product(updated_product, self._config.seo_target_keywords)
+                        await db.save_scores([new_score])
+                        score_after = new_score.total_score
+                        logger.info("Post-apply verify %s: new score %s", suggestion.product_id, new_score.total_score)
+                except Exception as verify_exc:
+                    logger.warning("Post-apply verify failed for %s: %s", suggestion.product_id, verify_exc)
+
+                await db.insert_score_change_log(
+                    product_id=suggestion.product_id,
+                    product_name=suggestion.original_name or "",
+                    operation="apply",
+                    score_before=score_before,
+                    score_after=score_after,
+                )
+                return True
             except Exception as e:
                 logger.error(f"Failed to apply suggestion for {suggestion.product_id}: {e}")
                 await db.log_operation("apply", suggestion.product_id, {"error": str(e)}, False)
+                return False
 
+        results = await asyncio.gather(*[_apply_one(s) for s in approved])
+        applied = sum(1 for r in results if r)
         logger.info(f"Applied {applied}/{len(suggestions)} suggestions")
         return applied
 
