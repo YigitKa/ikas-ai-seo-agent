@@ -120,7 +120,7 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen flex-col" style={{ background: 'var(--color-bg-base)' }}>
       <AppHeader
-        title="ChatGPT destekli SEO Asistanı"
+        title="AI destekli SEO Asistanı"
         description="Urun kataloğunu tarayin, secili urunlerde AI destekli SEO akisini denetimli sekilde ilerletin."
         eyebrow={{ label: 'Dashboard', tone: 'primary' }}
         breadcrumbs={[{ label: 'Dashboard' }]}
