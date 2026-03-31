@@ -237,6 +237,7 @@ export interface ChatWsMessage {
 
 export interface LlmsJob {
   id: string;
+  task_id: string | null;
   status: string;
   total_count: number;
   processed_count: number;
@@ -255,6 +256,27 @@ export interface LlmsEntrySummary {
   summary: string;
   status: string;
   updated_at: string;
+}
+
+export interface TaskErrorInfo {
+  code: string;
+  message: string;
+  details: Record<string, unknown>;
+}
+
+export interface TaskRecord {
+  id: string;
+  type: string;
+  status: string;
+  progress: number;
+  payload: Record<string, unknown>;
+  result: Record<string, unknown>;
+  error: TaskErrorInfo | null;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  heartbeat_at: string | null;
 }
 
 export interface LlmsStatus {
@@ -304,6 +326,7 @@ export type BatchJobStatus =
 
 export interface BatchJob {
   id: string;
+  task_id: string | null;
   status: BatchJobStatus;
   config: BatchConfig;
   total_count: number;

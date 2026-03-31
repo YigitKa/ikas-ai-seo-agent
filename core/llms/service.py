@@ -65,6 +65,21 @@ class LlmsService:
             await self._start_worker(job.id, resume=True)
             return job
 
+    async def retry_job(self, job_id: str) -> LlmsJob:
+        async with self._lock:
+            if self._task and not self._task.done():
+                raise RuntimeError("Zaten calisan bir llms.txt isi var.")
+            job = await db.get_llms_job(job_id)
+            if not job:
+                raise RuntimeError("Tekrarlanacak llms.txt isi bulunamadi.")
+            await db.reset_llms_processing_entries(job.id)
+            await db.reset_llms_failed_entries(job.id)
+            await db.refresh_llms_job_counters(job.id)
+            await db.update_llms_job_status(job.id, "queued", last_error=None)
+            await self._start_worker(job.id, resume=True)
+            refreshed = await db.get_llms_job(job.id)
+            return refreshed or job
+
     async def pause_job(self) -> None:
         async with self._lock:
             if self._task and not self._task.done():

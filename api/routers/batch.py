@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,11 +20,11 @@ from api.schemas import (
     BatchStatsResponse,
     StartBatchRequest,
 )
-from core.permissions import PermissionDecisionError, PermissionRule, build_runtime_allow_rule
+from core.permissions import PermissionDecisionError, build_runtime_allow_rule
 from core.product_manager import ProductManager
+from core.tasks.runtime import launch_batch_analysis, launch_batch_apply
 from data import db
 
-logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -71,12 +70,17 @@ async def create_batch_job(
 
     job_id = str(uuid4())
     config_json = body.config.model_dump_json()
-    await db.create_batch_job(job_id, config_json)
-    await db.update_batch_job(job_id, status="analyzing", total_count=len(body.product_ids))
-
-    asyncio.create_task(
-        _run_analysis_task(job_id, body.product_ids, body.config, manager)
+    await db.create_batch_job(
+        job_id,
+        config_json,
+        task_payload={
+            "config": body.config.model_dump(),
+            "product_ids": list(body.product_ids),
+            "stage": "analysis",
+        },
     )
+    await db.update_batch_job(job_id, status="analyzing", total_count=len(body.product_ids))
+    launch_batch_analysis(job_id, body.product_ids, body.config, manager)
 
     job = await db.get_batch_job(job_id)
     if not job:
@@ -135,19 +139,18 @@ async def apply_batch_job(
         raise HTTPException(status_code=400, detail="İş henüz analiz aşamasında değil.")
 
     config = BatchConfig(**job["config"])
+    await db.patch_task_payload(job_id, {"stage": "apply", "config": config.model_dump()})
     await db.update_batch_job(job_id, status="running")
-    asyncio.create_task(
-        _run_apply_task(
-            job_id,
-            config,
-            manager,
-            permission_rules=[
-                build_runtime_allow_rule(
-                    "bulk_apply",
-                    description="The batch apply endpoint was invoked explicitly by the user.",
-                )
-            ],
-        )
+    launch_batch_apply(
+        job_id,
+        config,
+        manager,
+        permission_rules=[
+            build_runtime_allow_rule(
+                "bulk_apply",
+                description="The batch apply endpoint was invoked explicitly by the user.",
+            )
+        ],
     )
 
     updated = await db.get_batch_job(job_id)
@@ -309,29 +312,3 @@ async def bulk_update_item_decisions(
 
 # ── Background task helpers ───────────────────────────────────────────────────
 
-async def _run_analysis_task(
-    job_id: str,
-    product_ids: list[str],
-    config: BatchConfig,
-    manager: ProductManager,
-) -> None:
-    """Background: generate AI suggestions for each selected product."""
-    try:
-        await manager.run_analysis(job_id, product_ids, config)
-    except Exception as exc:
-        logger.exception("Analysis failed for job %s", job_id)
-        await db.update_batch_job(job_id, status="failed", error=str(exc))
-
-
-async def _run_apply_task(
-    job_id: str,
-    config: BatchConfig,
-    manager: ProductManager,
-    permission_rules: list[PermissionRule] | None = None,
-) -> None:
-    """Background: apply approved suggestions to ikas."""
-    try:
-        await manager.apply_batch_job(job_id, config, permission_rules=permission_rules)
-    except Exception as exc:
-        logger.exception("Batch apply %s failed", job_id)
-        await db.update_batch_job(job_id, status="failed", error=str(exc))

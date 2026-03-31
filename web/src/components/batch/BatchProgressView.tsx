@@ -3,6 +3,7 @@ import type { BatchJob } from '../../types';
 import ProgressBar from '../../shared/ui/ProgressBar';
 import ConfirmDialog from '../../shared/ui/ConfirmDialog';
 import { createBatchJobStream } from '../../api/client';
+import TaskStatusCard from '../tasks/TaskStatusCard';
 
 interface ProgressEvent {
   type: 'progress' | 'completed' | 'error';
@@ -74,6 +75,29 @@ export default function BatchProgressView({ job, onStop, onJobComplete }: Props)
 
   return (
     <div className="space-y-5">
+      <TaskStatusCard
+        title="Batch gorevi"
+        status={liveJob.status}
+        progress={pct}
+        subtitle="Analiz ve uygulama adimlari ortak task semantigiyle izleniyor"
+        stats={[
+          { label: 'Islenen', value: `${liveJob.processed_count}/${liveJob.total_count}` },
+          { label: 'Atlanan', value: liveJob.skipped_count },
+        ]}
+        action={isRunning ? (
+          <button
+            type="button"
+            onClick={() => setShowStopConfirm(true)}
+            className="rounded-lg px-3 py-1 text-[11px] font-medium transition-colors hover:bg-[var(--color-bg-hover)]"
+            style={{
+              border: '1px solid rgba(239,68,68,0.3)',
+              color: '#ef4444',
+            }}
+          >
+            Islemi Durdur
+          </button>
+        ) : undefined}
+      />
       {/* Main progress card */}
       <div
         className="rounded-xl p-5"

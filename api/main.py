@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.dependencies import init_manager, shutdown_manager
-from api.routers import products, seo, suggestions, settings, chat, llms, batch, reports
+from api.routers import products, seo, suggestions, settings, chat, llms, batch, reports, tasks
 from core.prompt_store import ensure_prompt_files
 from data import db
 from data.db import close_pool as close_db_pool
@@ -81,6 +81,7 @@ app.include_router(suggestions.router, prefix="/api/suggestions", tags=["suggest
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(llms.router, prefix="/api/llms", tags=["llms"])
 app.include_router(batch.router, prefix="/api/batch", tags=["batch"])
+app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
 app.include_router(chat.router, tags=["chat"])
 app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 

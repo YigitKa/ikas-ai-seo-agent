@@ -388,6 +388,33 @@ graph LR
 - **Kesintiden devam** — backend yeniden başlatılsa bile yarıda kalan iş otomatik sürdürülür
 - **Tek tıkla indirme** — tüm özetler standart `llms.txt` formatında dışa aktarılır
 
+### Unified Task Runtime
+
+Uzun süren `llms` ve `batch` operasyonları artık ortak bir task lifecycle modeliyle izlenir. Bu katman, farklı domain akışlarının tek tip `status`, `progress`, `result`, `error` ve `heartbeat` semantiği kullanmasını sağlar.
+
+```mermaid
+graph LR
+    UI["React UI"] --> API["/api/tasks/*"]
+    API --> TASKS["tasks tablosu"]
+    TASKS --> LLMS["llms job sync"]
+    TASKS --> BATCH["batch job sync"]
+    LLMS --> WORKER1["llms worker"]
+    BATCH --> WORKER2["analysis/apply worker"]
+
+    style UI fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style API fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
+    style TASKS fill:#1e293b,stroke:#10b981,color:#e2e8f0
+    style LLMS fill:#0f172a,stroke:#f59e0b,color:#e2e8f0
+    style BATCH fill:#0f172a,stroke:#f59e0b,color:#e2e8f0
+    style WORKER1 fill:#0f172a,stroke:#64748b,color:#e2e8f0
+    style WORKER2 fill:#0f172a,stroke:#64748b,color:#e2e8f0
+```
+
+- **Tek tip lifecycle** — `queued`, `running`, `paused`, `failed`, `completed`, `cancelled`, `stopped`
+- **Ortak kontrol yüzeyi** — `resume`, `retry`, `stop`, `cancel`, `get status`
+- **Heartbeat ve progress standardı** — frontend canlı durum kartları aynı veri modeliyle beslenir
+- **Geriye dönük uyumluluk** — `llms_jobs` ve `batch_jobs` korunur, ama ortak task kaydıyla senkronize çalışır
+
 ### Prompts Studio
 
 Sistemdeki **tüm AI prompt şablonlarını** düzenleyip yönetebileceğiniz tam özellikli editör. Hiçbir Python dosyasına dokunmadan, Settings sayfasından canlı olarak her prompt'u güncelleyebilirsiniz.
@@ -851,6 +878,7 @@ ikas-ai-seo-agent/
 │   ├── models.py               # Pydantic modeller (Product, SeoScore, AgentEvent, vb.)
 │   ├── product_manager.py      # Merkezi orkestratör + permission guard'ları
 │   ├── permissions/            # Permission / approval engine + rule modeli
+│   ├── tasks/                  # Unified task runtime + ortak resume/retry/stop servisleri
 │   ├── prompt_store.py         # Template yükleme + multi-agent prompt'lar
 │   │
 │   ├── ai/client.py            # Multi-provider AI soyutlaması (fabrika + adaptörler)
@@ -879,13 +907,14 @@ ikas-ai-seo-agent/
 │   ├── main.py                 # Uygulama kurulumu, CORS, SPA sunumu
 │   ├── dependencies.py         # Singleton ProductManager (REST) + per-connection (Chat)
 │   ├── permissions.py          # PermissionDecisionError -> HTTPException çevirici
-│   └── routers/                # products, seo, suggestions, settings, chat, batch, llms, reports
+│   └── routers/                # products, seo, suggestions, settings, chat, batch, llms, tasks, reports
 │
 ├── web/src/                    # React/TypeScript SPA
 │   ├── pages/                  # Dashboard, LlmsLab, BatchOperations, Reports
 │   │   └── settings/           # SettingsPage (modüler): ControlSidebar, ProviderSection, StoreSettingsSection, LiveStatusCard, LmStudioStatusCard
 │   ├── components/             # ChatPanel, ProductTable, ScoreCard (Quick Wins)
 │   │   ├── chat/messages/      # MessageBubble, ToolResultCard (SEO agent + MCP), ThinkingBlock, CostCard
+│   │   ├── tasks/              # TaskStatusCard ve ortak progress UI parçaları
 │   │   └── dashboard/          # DashboardHeader (sync butonu), DashboardSidebar (boş arama durumu)
 │   ├── shared/
 │   │   ├── score/scoreUtils.ts # SCORE_FIELDS, getScoreColor, explainIssue
@@ -896,7 +925,7 @@ ikas-ai-seo-agent/
 │       └── chat/chatHistory.ts # localStorage chat geçmişi (ürün başına, son 50 mesaj)
 │
 ├── data/
-│   └── db.py                   # Async SQLite + bağlantı havuzu + batch sorgular + permission audit log
+│   └── db.py                   # Async SQLite + bağlantı havuzu + unified task storage + batch sorgular + permission audit log
 │
 ├── prompts/                    # Düzenlenebilir AI prompt şablonları
 └── tests/                      # 20+ test dosyası, canlı API çağrısı yok
@@ -934,6 +963,18 @@ ikas-ai-seo-agent/
 | `GET` | `/api/llms/processed` | İşlenmiş özetleri listele (sayfalandırılmış) |
 | `GET` | `/api/llms/pending` | İşlenmemiş ürünleri listele |
 | `POST` | `/api/llms/regenerate/{productId}` | Tek ürün özetini yeniden üret |
+
+### Unified Tasks
+| Metod | Endpoint | Açıklama |
+|---|---|---|
+| `GET` | `/api/tasks` | Tüm birleşik task kayıtlarını filtrelenebilir biçimde listele |
+| `GET` | `/api/tasks/{id}` | Tekil task durumu, payload, result, error ve heartbeat bilgisi |
+| `POST` | `/api/tasks/{id}/resume` | Desteklenen task tipleri için devam ettir |
+| `POST` | `/api/tasks/{id}/retry` | Desteklenen task tipleri için retry çalıştır |
+| `POST` | `/api/tasks/{id}/stop` | Çalışan task'i durdur |
+| `POST` | `/api/tasks/{id}/cancel` | Stop ile aynı lifecycle üzerinden task'i iptal et |
+
+`/api/llms/status` ve `/api/batch/jobs/{id}` cevaplarında dönen `task_id`, bu ortak endpoint yüzeyine bağlanmak için kullanılır.
 
 ### Öneriler
 | Metod | Endpoint | Açıklama |
@@ -1073,6 +1114,16 @@ Permission engine `core/permissions/` altinda merkezi olarak tanimlanir ve riskl
 - Audit: onay gerektiren tum kararlar `permission_audit_log` tablosuna yazilir
 
 Bu katman hem `ToolRegistry.invoke()` seviyesinde hem de `ProductManager` servis akislarinda devrededir; yani handler calismadan once izin kontrolu zorunludur.
+
+## Unified Task Runtime Notu
+
+Uzun süren `llms` ve `batch` akışları artık ortak `tasks` kaydıyla izlenir. Her task için `type`, `status`, `progress`, `payload`, `result`, `error`, `started_at`, `finished_at` ve `heartbeat_at` tutulur.
+
+- `llms_jobs` ve `batch_jobs` tabloları mevcut UI ve domain verisi için korunur, ama lifecycle bilgisi `tasks` tablosuna da senkronize edilir
+- Ortak endpoint yüzeyi `/api/tasks/*` üzerinden stop, cancel, resume, retry ve status okumaları yapılabilir
+- Frontend tarafında `TaskStatusCard` ile llms ve batch ekranları aynı task semantiğini kullanır
+
+Tam task-native migration için kalan işler [docs/unified-task-system-follow-up.md](./docs/unified-task-system-follow-up.md) içinde izlenir.
 
 ## Lisans
 

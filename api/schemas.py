@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
-from core.models import Product, SeoScore, SeoSuggestion
+from core.models import Product, SeoScore, SeoSuggestion, TaskRecord
 
 
 # ── Generic ──────────────────────────────────────────────────────────────────
@@ -246,6 +246,48 @@ class ChatMessageSchema(BaseModel):
     meta: dict[str, Any] = Field(default_factory=dict)
 
 
+class TaskErrorResponse(BaseModel):
+    code: str = ""
+    message: str = ""
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class TaskResponse(BaseModel):
+    id: str
+    type: str
+    status: str
+    progress: int
+    payload: dict[str, Any] = Field(default_factory=dict)
+    result: dict[str, Any] = Field(default_factory=dict)
+    error: Optional[TaskErrorResponse] = None
+    created_at: str
+    updated_at: str
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    heartbeat_at: Optional[str] = None
+
+    @classmethod
+    def from_record(cls, task: TaskRecord) -> "TaskResponse":
+        return cls(
+            id=task.id,
+            type=task.type,
+            status=task.status,
+            progress=task.progress,
+            payload=task.payload,
+            result=task.result,
+            error=TaskErrorResponse(**task.error.model_dump()) if task.error else None,
+            created_at=task.created_at.isoformat(),
+            updated_at=task.updated_at.isoformat(),
+            started_at=task.started_at.isoformat() if task.started_at else None,
+            finished_at=task.finished_at.isoformat() if task.finished_at else None,
+            heartbeat_at=task.heartbeat_at.isoformat() if task.heartbeat_at else None,
+        )
+
+
+class TaskListResponse(BaseModel):
+    items: list[TaskResponse] = Field(default_factory=list)
+
+
 # ── Batch Operations ──────────────────────────────────────────────────────────
 
 ALL_TARGET_FIELDS = ["meta_title", "meta_description", "name", "description", "description_en"]
@@ -263,6 +305,7 @@ class BatchConfig(BaseModel):
 
 class BatchJobResponse(BaseModel):
     id: str
+    task_id: Optional[str] = None
     status: str
     config: dict[str, Any]
     total_count: int

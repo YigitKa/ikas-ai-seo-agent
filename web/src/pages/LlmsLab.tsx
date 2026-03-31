@@ -4,6 +4,7 @@ import AppHeader from '../shared/ui/AppHeader';
 import { EnterpriseButton } from '../shared/ui/EnterprisePrimitives';
 import {
   generateLlmsTxt,
+  getTask,
   getLlmsStatus,
   listLlmsPending,
   listLlmsProcessed,
@@ -13,7 +14,8 @@ import {
   startLlmsJob,
   stopLlmsJob,
 } from '../api/client';
-import type { LlmsEntrySummary, LlmsStatus } from '../types';
+import type { LlmsEntrySummary, LlmsStatus, TaskRecord } from '../types';
+import TaskStatusCard from '../components/tasks/TaskStatusCard';
 
 function StatCard({
   label,
@@ -76,8 +78,16 @@ export default function LlmsLab() {
   const statusQ = useQuery<LlmsStatus>({
     queryKey: ['llms-status'],
     queryFn: getLlmsStatus,
-  refetchInterval: (query) => (query.state.data?.job?.status === 'running' ? 4000 : false),
-});
+    refetchInterval: (query) => (query.state.data?.job?.status === 'running' ? 4000 : false),
+  });
+
+  const taskId = statusQ.data?.job?.task_id ?? null;
+  const taskQ = useQuery<TaskRecord>({
+    queryKey: ['task', taskId],
+    queryFn: () => getTask(taskId!),
+    enabled: Boolean(taskId),
+    refetchInterval: statusQ.data?.job?.status === 'running' ? 4000 : false,
+  });
 
   const processedQ = useQuery<{ items: LlmsEntrySummary[] }>({
     queryKey: ['llms-processed'],
@@ -133,6 +143,7 @@ export default function LlmsLab() {
   });
 
   const status = statusQ.data;
+  const task = taskQ.data;
   const counts = status?.counts;
   const jobStatus = status?.job?.status ?? 'idle';
 
@@ -226,6 +237,19 @@ export default function LlmsLab() {
 
         <section className="mt-8 grid gap-6 md:grid-cols-2">
           <div className="enterprise-surface rounded-2xl p-5">
+            <TaskStatusCard
+              title="llms.txt gorevi"
+              status={task?.status ?? jobStatus}
+              progress={task?.progress ?? (status?.job?.total_count ? Math.round(((status.job.processed_count + status.job.failed_count) / status.job.total_count) * 100) : 0)}
+              subtitle={jobStatus === 'running' ? 'Ozetler uretiliyor ve unified task runtime uzerinden izleniyor' : 'Kuyruk durumu ortak task kaydi uzerinden saklaniyor'}
+              heartbeatAt={task?.heartbeat_at}
+              errorMessage={task?.error?.message ?? status?.job?.last_error ?? null}
+              stats={[
+                { label: 'Islenen', value: counts?.processed ?? 0 },
+                { label: 'Bekleyen', value: counts?.unprocessed ?? 0 },
+                { label: 'Hata', value: counts?.failed ?? 0 },
+              ]}
+            />
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-muted)' }}>Anlık is parcalari</div>

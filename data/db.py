@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Iterable, List, Optional, Sequence
 from uuid import uuid4
 
-from core.models import LlmsEntry, LlmsJob, Product, SeoScore, SeoSuggestion
+from core.models import LlmsEntry, LlmsJob, Product, SeoScore, SeoSuggestion, TaskError, TaskRecord
 
 DB_PATH = Path(__file__).parent.parent / "seo_optimizer.db"
 
@@ -64,8 +64,24 @@ CREATE TABLE IF NOT EXISTS permission_audit_log (
     created_at TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    progress INTEGER DEFAULT 0,
+    payload JSON,
+    result JSON,
+    error JSON,
+    started_at TIMESTAMP,
+    finished_at TIMESTAMP,
+    heartbeat_at TIMESTAMP,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS llms_jobs (
     id TEXT PRIMARY KEY,
+    task_id TEXT,
     status TEXT,
     total_count INTEGER,
     processed_count INTEGER DEFAULT 0,
@@ -109,6 +125,12 @@ ON permission_audit_log(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_permission_audit_log_operation
 ON permission_audit_log(operation, created_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_tasks_type_status
+ON tasks(type, status, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_updated_at
+ON tasks(updated_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_llms_entries_status
 ON llms_entries(status);
 
@@ -126,6 +148,7 @@ CREATE TABLE IF NOT EXISTS settings (
 
 CREATE TABLE IF NOT EXISTS batch_jobs (
     id TEXT PRIMARY KEY,
+    task_id TEXT,
     status TEXT DEFAULT 'idle',
     config_json JSON,
     total_count INTEGER DEFAULT 0,
@@ -276,6 +299,28 @@ def _now_iso() -> str:
     return datetime.now().isoformat()
 
 
+def _json_dumps(value: Any) -> str | None:
+    if value is None:
+        return None
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _json_loads_dict(value: str | None) -> dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _normalize_progress(value: int | float | None) -> int:
+    if value is None:
+        return 0
+    return max(0, min(100, int(round(value))))
+
+
 def _serialize_products(products: Iterable[Product], fetched_at: str) -> list[tuple[str, str, str]]:
     return [
         (product.id, product.model_dump_json(), fetched_at)
@@ -312,6 +357,15 @@ async def init_db() -> None:
             await conn.execute("ALTER TABLE batch_items ADD COLUMN suggestion_data JSON")
         except Exception:
             pass  # Column already exists
+        try:
+            await conn.execute("ALTER TABLE llms_jobs ADD COLUMN task_id TEXT")
+        except Exception:
+            pass
+        try:
+            await conn.execute("ALTER TABLE batch_jobs ADD COLUMN task_id TEXT")
+        except Exception:
+            pass
+        await _backfill_unified_tasks(conn)
         await conn.commit()
     await _init_pool()
 
@@ -701,9 +755,286 @@ async def set_settings(values: dict[str, str]) -> None:
 # ── llms.txt storage helpers ───────────────────────────────────────────────────
 
 
+TASK_TERMINAL_STATUSES = {
+    "completed",
+    "completed_with_errors",
+    "failed",
+    "cancelled",
+    "stopped",
+}
+
+
+def _task_has_started(status: str) -> bool:
+    return status not in {"idle", "queued"}
+
+
+def _task_is_terminal(status: str) -> bool:
+    return status in TASK_TERMINAL_STATUSES
+
+
+def _row_to_task(row) -> TaskRecord:
+    error_payload = _json_loads_dict(row["error"])
+    return TaskRecord(
+        id=row["id"],
+        type=row["type"],
+        status=row["status"],
+        progress=_normalize_progress(row["progress"]),
+        payload=_json_loads_dict(row["payload"]),
+        result=_json_loads_dict(row["result"]),
+        error=TaskError(**error_payload) if error_payload else None,
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
+        started_at=datetime.fromisoformat(row["started_at"]) if row["started_at"] else None,
+        finished_at=datetime.fromisoformat(row["finished_at"]) if row["finished_at"] else None,
+        heartbeat_at=datetime.fromisoformat(row["heartbeat_at"]) if row["heartbeat_at"] else None,
+    )
+
+
+async def create_task(
+    task_id: str,
+    task_type: str,
+    *,
+    status: str = "queued",
+    progress: int = 0,
+    payload: dict[str, Any] | None = None,
+    result: dict[str, Any] | None = None,
+    error: dict[str, Any] | None = None,
+    started_at: str | None = None,
+    finished_at: str | None = None,
+    heartbeat_at: str | None = None,
+) -> TaskRecord:
+    now = _now_iso()
+    started_value = started_at or (now if _task_has_started(status) else None)
+    finished_value = finished_at or (now if _task_is_terminal(status) else None)
+    heartbeat_value = heartbeat_at or (now if _task_has_started(status) else None)
+    async with connection() as conn:
+        await conn.execute(
+            """
+            INSERT INTO tasks (
+                id, type, status, progress, payload, result, error,
+                started_at, finished_at, heartbeat_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                type = excluded.type,
+                status = excluded.status,
+                progress = excluded.progress,
+                payload = excluded.payload,
+                result = excluded.result,
+                error = excluded.error,
+                started_at = COALESCE(tasks.started_at, excluded.started_at),
+                finished_at = excluded.finished_at,
+                heartbeat_at = excluded.heartbeat_at,
+                updated_at = excluded.updated_at
+            """,
+            (
+                task_id,
+                task_type,
+                status,
+                _normalize_progress(progress),
+                _json_dumps(payload or {}),
+                _json_dumps(result or {}),
+                _json_dumps(error),
+                started_value,
+                finished_value,
+                heartbeat_value,
+                now,
+                now,
+            ),
+        )
+        await conn.commit()
+    task = await get_task(task_id)
+    if task is None:
+        raise RuntimeError(f"Task {task_id} could not be created")
+    return task
+
+
+async def get_task(task_id: str) -> TaskRecord | None:
+    async with connection() as conn:
+        async with conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)) as cursor:
+            row = await cursor.fetchone()
+    return _row_to_task(row) if row else None
+
+
+async def list_tasks(
+    *,
+    task_types: Sequence[str] | None = None,
+    statuses: Sequence[str] | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[TaskRecord]:
+    conditions: list[str] = []
+    params: list[Any] = []
+    if task_types:
+        placeholders = ", ".join("?" for _ in task_types)
+        conditions.append(f"type IN ({placeholders})")
+        params.extend(task_types)
+    if statuses:
+        placeholders = ", ".join("?" for _ in statuses)
+        conditions.append(f"status IN ({placeholders})")
+        params.extend(statuses)
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    params.extend([limit, offset])
+    async with connection() as conn:
+        async with conn.execute(
+            f"SELECT * FROM tasks {where} ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+            params,
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [_row_to_task(row) for row in rows]
+
+
+async def update_task(task_id: str, **kwargs) -> TaskRecord | None:
+    if not kwargs:
+        return await get_task(task_id)
+
+    existing = await get_task(task_id)
+    if existing is None:
+        return None
+
+    now = _now_iso()
+    status = str(kwargs.get("status", existing.status))
+    progress = _normalize_progress(kwargs.get("progress", existing.progress))
+    payload = kwargs.get("payload", existing.payload)
+    result = kwargs.get("result", existing.result)
+    error = kwargs.get("error", existing.error.model_dump() if existing.error else None)
+    started_at = kwargs.get("started_at", existing.started_at.isoformat() if existing.started_at else None)
+    finished_at = kwargs.get("finished_at", existing.finished_at.isoformat() if existing.finished_at else None)
+    heartbeat_at = kwargs.get("heartbeat_at", existing.heartbeat_at.isoformat() if existing.heartbeat_at else None)
+
+    if _task_has_started(status) and started_at is None:
+        started_at = now
+    if _task_is_terminal(status):
+        finished_at = finished_at or now
+    elif "finished_at" not in kwargs:
+        finished_at = None
+    if kwargs.get("touch_heartbeat", False) or ("heartbeat_at" in kwargs and kwargs["heartbeat_at"] is not None):
+        heartbeat_at = kwargs.get("heartbeat_at") or now
+    elif _task_has_started(status) and heartbeat_at is None:
+        heartbeat_at = now
+
+    async with connection() as conn:
+        await conn.execute(
+            """
+            UPDATE tasks
+            SET status = ?, progress = ?, payload = ?, result = ?, error = ?,
+                started_at = ?, finished_at = ?, heartbeat_at = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                status,
+                progress,
+                _json_dumps(payload),
+                _json_dumps(result),
+                _json_dumps(error),
+                started_at,
+                finished_at,
+                heartbeat_at,
+                now,
+                task_id,
+            ),
+        )
+        await conn.commit()
+    return await get_task(task_id)
+
+
+async def patch_task_payload(task_id: str, patch: dict[str, Any]) -> TaskRecord | None:
+    task = await get_task(task_id)
+    if task is None:
+        return None
+    next_payload = dict(task.payload)
+    next_payload.update(patch)
+    return await update_task(task_id, payload=next_payload)
+
+
+async def patch_task_result(task_id: str, patch: dict[str, Any]) -> TaskRecord | None:
+    task = await get_task(task_id)
+    if task is None:
+        return None
+    next_result = dict(task.result)
+    next_result.update(patch)
+    return await update_task(task_id, result=next_result)
+
+
+async def _backfill_unified_tasks(conn: aiosqlite.Connection) -> None:
+    await conn.execute("UPDATE llms_jobs SET task_id = id WHERE task_id IS NULL OR task_id = ''")
+    await conn.execute("UPDATE batch_jobs SET task_id = id WHERE task_id IS NULL OR task_id = ''")
+
+    await conn.execute(
+        """
+        INSERT OR IGNORE INTO tasks (
+            id, type, status, progress, payload, result, error,
+            started_at, finished_at, heartbeat_at, created_at, updated_at
+        )
+        SELECT
+            id,
+            'llms_generation',
+            status,
+            CASE
+                WHEN total_count > 0 THEN CAST(ROUND((processed_count + failed_count) * 100.0 / total_count) AS INTEGER)
+                ELSE 0
+            END,
+            COALESCE(options, '{}'),
+            json_object(
+                'total_count', COALESCE(total_count, 0),
+                'processed_count', COALESCE(processed_count, 0),
+                'failed_count', COALESCE(failed_count, 0),
+                'skipped_count', COALESCE(skipped_count, 0)
+            ),
+            CASE
+                WHEN last_error IS NOT NULL AND last_error != '' THEN json_object('code', 'llms_error', 'message', last_error)
+                ELSE NULL
+            END,
+            CASE WHEN status NOT IN ('queued') THEN created_at ELSE NULL END,
+            CASE WHEN status IN ('completed', 'failed', 'cancelled', 'stopped') THEN updated_at ELSE NULL END,
+            CASE WHEN status NOT IN ('queued') THEN updated_at ELSE NULL END,
+            created_at,
+            updated_at
+        FROM llms_jobs
+        """
+    )
+
+    await conn.execute(
+        """
+        INSERT OR IGNORE INTO tasks (
+            id, type, status, progress, payload, result, error,
+            started_at, finished_at, heartbeat_at, created_at, updated_at
+        )
+        SELECT
+            id,
+            'batch_job',
+            status,
+            CASE
+                WHEN total_count > 0 THEN CAST(ROUND((processed_count + skipped_count + failed_count) * 100.0 / total_count) AS INTEGER)
+                ELSE 0
+            END,
+            json_object('config', json(COALESCE(config_json, '{}'))),
+            json_object(
+                'total_count', COALESCE(total_count, 0),
+                'processed_count', COALESCE(processed_count, 0),
+                'skipped_count', COALESCE(skipped_count, 0),
+                'failed_count', COALESCE(failed_count, 0),
+                'avg_score_before', COALESCE(avg_score_before, 0),
+                'avg_score_after', COALESCE(avg_score_after, 0)
+            ),
+            CASE
+                WHEN error IS NOT NULL AND error != '' THEN json_object('code', 'batch_error', 'message', error)
+                ELSE NULL
+            END,
+            CASE WHEN status NOT IN ('idle') THEN created_at ELSE NULL END,
+            CASE WHEN status IN ('completed', 'completed_with_errors', 'failed', 'cancelled', 'stopped') THEN COALESCE(completed_at, updated_at) ELSE NULL END,
+            CASE WHEN status NOT IN ('idle') THEN updated_at ELSE NULL END,
+            created_at,
+            updated_at
+        FROM batch_jobs
+        """
+    )
+
+
 def _row_to_llms_job(row) -> LlmsJob:
     return LlmsJob(
         id=row["id"],
+        task_id=row["task_id"] if "task_id" in row.keys() else row["id"],
         status=row["status"],
         total_count=int(row["total_count"] or 0),
         processed_count=int(row["processed_count"] or 0),
@@ -729,6 +1060,60 @@ def _row_to_llms_entry(row) -> LlmsEntry:
         created_at=datetime.fromisoformat(row["created_at"]),
         updated_at=datetime.fromisoformat(row["updated_at"]),
     )
+
+
+def _llms_task_progress(total_count: int, processed_count: int, failed_count: int) -> int:
+    if total_count <= 0:
+        return 0
+    return _normalize_progress(((processed_count + failed_count) / total_count) * 100)
+
+
+def _llms_task_result(job: LlmsJob) -> dict[str, Any]:
+    return {
+        "total_count": job.total_count,
+        "processed_count": job.processed_count,
+        "failed_count": job.failed_count,
+        "skipped_count": job.skipped_count,
+    }
+
+
+async def _sync_llms_task(job: LlmsJob, *, payload: dict[str, Any] | None = None) -> TaskRecord:
+    task_id = job.task_id or job.id
+    task_error = {"code": "llms_error", "message": job.last_error} if job.last_error else None
+    existing = await get_task(task_id)
+    if payload is not None:
+        task_payload = payload
+    elif existing is not None:
+        task_payload = {**existing.payload, **job.options}
+    else:
+        task_payload = dict(job.options)
+    if existing is None:
+        return await create_task(
+            task_id,
+            "llms_generation",
+            status=job.status,
+            progress=_llms_task_progress(job.total_count, job.processed_count, job.failed_count),
+            payload=task_payload,
+            result=_llms_task_result(job),
+            error=task_error,
+            started_at=job.created_at.isoformat() if _task_has_started(job.status) else None,
+            finished_at=job.updated_at.isoformat() if _task_is_terminal(job.status) else None,
+            heartbeat_at=job.updated_at.isoformat() if _task_has_started(job.status) else None,
+        )
+    updated = await update_task(
+        task_id,
+        status=job.status,
+        progress=_llms_task_progress(job.total_count, job.processed_count, job.failed_count),
+        payload=task_payload,
+        result=_llms_task_result(job),
+        error=task_error,
+        started_at=existing.started_at.isoformat() if existing.started_at else (job.created_at.isoformat() if _task_has_started(job.status) else None),
+        finished_at=job.updated_at.isoformat() if _task_is_terminal(job.status) else None,
+        heartbeat_at=job.updated_at.isoformat() if _task_has_started(job.status) else None,
+    )
+    if updated is None:
+        raise RuntimeError(f"Task {task_id} could not be updated")
+    return updated
 
 
 async def get_llms_processed_product_ids() -> set[str]:
@@ -768,6 +1153,7 @@ async def create_llms_job(product_ids: Sequence[str], options: dict[str, Any] | 
 
     now = _now_iso()
     job_id = str(uuid4())
+    task_id = job_id
     options_json = json.dumps(options or {})
 
     entry_rows = [
@@ -779,11 +1165,11 @@ async def create_llms_job(product_ids: Sequence[str], options: dict[str, Any] | 
         await conn.execute(
             """
             INSERT INTO llms_jobs (
-                id, status, total_count, processed_count, failed_count, skipped_count,
+                id, task_id, status, total_count, processed_count, failed_count, skipped_count,
                 created_at, updated_at, last_error, options
-            ) VALUES (?, 'queued', ?, 0, 0, 0, ?, ?, NULL, ?)
+            ) VALUES (?, ?, 'queued', ?, 0, 0, 0, ?, ?, NULL, ?)
             """,
-            (job_id, len(product_ids), now, now, options_json),
+            (job_id, task_id, len(product_ids), now, now, options_json),
         )
         await conn.executemany(
             """
@@ -796,8 +1182,9 @@ async def create_llms_job(product_ids: Sequence[str], options: dict[str, Any] | 
         )
         await conn.commit()
 
-    return LlmsJob(
+    job = LlmsJob(
         id=job_id,
+        task_id=task_id,
         status="queued",
         total_count=len(product_ids),
         processed_count=0,
@@ -808,6 +1195,8 @@ async def create_llms_job(product_ids: Sequence[str], options: dict[str, Any] | 
         last_error=None,
         options=options or {},
     )
+    await _sync_llms_task(job, payload={"product_ids": list(product_ids), **(options or {})})
+    return job
 
 
 async def update_llms_job_status(job_id: str, status: str, last_error: str | None = None) -> None:
@@ -817,6 +1206,9 @@ async def update_llms_job_status(job_id: str, status: str, last_error: str | Non
             (status, last_error, _now_iso(), job_id),
         )
         await conn.commit()
+    job = await get_llms_job(job_id)
+    if job is not None:
+        await _sync_llms_task(job)
 
 
 async def refresh_llms_job_counters(job_id: str) -> Optional[LlmsJob]:
@@ -851,7 +1243,10 @@ async def refresh_llms_job_counters(job_id: str) -> Optional[LlmsJob]:
         )
         await conn.commit()
 
-    return await get_llms_job(job_id)
+    job = await get_llms_job(job_id)
+    if job is not None:
+        await _sync_llms_task(job)
+    return job
 
 
 async def claim_next_llms_entry(job_id: str) -> Optional[LlmsEntry]:
@@ -886,6 +1281,16 @@ async def reset_llms_processing_entries(job_id: str) -> None:
     async with connection() as conn:
         await conn.execute(
             "UPDATE llms_entries SET status = 'pending', updated_at = ? WHERE job_id = ? AND status = 'processing'",
+            (_now_iso(), job_id),
+        )
+        await conn.commit()
+
+
+async def reset_llms_failed_entries(job_id: str) -> None:
+    """Move failed entries back to pending so a job can be retried."""
+    async with connection() as conn:
+        await conn.execute(
+            "UPDATE llms_entries SET status = 'pending', error = '', updated_at = ? WHERE job_id = ? AND status = 'failed'",
             (_now_iso(), job_id),
         )
         await conn.commit()
@@ -935,6 +1340,7 @@ async def get_llms_recent_entries(status: str, limit: int = 10) -> list[LlmsEntr
 async def ensure_manual_llms_job() -> str:
     """Ensure a reusable 'manual' llms job exists (used for single re-generations)."""
     job_id = "manual"
+    task_id = job_id
     now = _now_iso()
     async with connection() as conn:
         async with conn.execute("SELECT id FROM llms_jobs WHERE id = ?", (job_id,)) as cursor:
@@ -944,13 +1350,24 @@ async def ensure_manual_llms_job() -> str:
         await conn.execute(
             """
             INSERT INTO llms_jobs (
-                id, status, total_count, processed_count, failed_count, skipped_count,
+                id, task_id, status, total_count, processed_count, failed_count, skipped_count,
                 created_at, updated_at, last_error, options
-            ) VALUES (?, 'completed', 0, 0, 0, 0, ?, ?, NULL, ?)
+            ) VALUES (?, ?, 'completed', 0, 0, 0, 0, ?, ?, NULL, ?)
             """,
-            (job_id, now, now, json.dumps({"source": "manual"})),
+            (job_id, task_id, now, now, json.dumps({"source": "manual"})),
         )
         await conn.commit()
+    await create_task(
+        task_id,
+        "llms_generation",
+        status="completed",
+        progress=100,
+        payload={"source": "manual"},
+        result={"total_count": 0, "processed_count": 0, "failed_count": 0, "skipped_count": 0},
+        started_at=now,
+        finished_at=now,
+        heartbeat_at=now,
+    )
     return job_id
 
 
@@ -1004,6 +1421,20 @@ async def upsert_llms_entry_summary(
     async with connection() as conn:
         async with conn.execute("SELECT * FROM llms_entries WHERE id = ?", (entry_id,)) as cursor:
             stored = await cursor.fetchone()
+    await update_task(
+        job_id,
+        status="completed",
+        progress=100,
+        touch_heartbeat=True,
+        result={
+            "total_count": 0 if job_id == "manual" else 1,
+            "processed_count": 1,
+            "failed_count": 0,
+            "skipped_count": 0,
+            "last_product_id": product_id,
+        },
+        error=None,
+    )
     return _row_to_llms_entry(stored)
 
 
@@ -1095,6 +1526,7 @@ async def get_llms_dashboard_counts() -> dict[str, int]:
 def _row_to_batch_job(row) -> dict:
     return {
         "id": row["id"],
+        "task_id": row["task_id"] if "task_id" in row.keys() else row["id"],
         "status": row["status"],
         "config": json.loads(row["config_json"] or "{}"),
         "total_count": int(row["total_count"] or 0),
@@ -1133,17 +1565,95 @@ def _row_to_batch_item(row) -> dict:
     }
 
 
-async def create_batch_job(job_id: str, config_json: str) -> None:
+def _batch_task_progress(job: dict) -> int:
+    total_count = int(job.get("total_count") or 0)
+    if total_count <= 0:
+        return 0
+    processed = int(job.get("processed_count") or 0)
+    skipped = int(job.get("skipped_count") or 0)
+    failed = int(job.get("failed_count") or 0)
+    return _normalize_progress(((processed + skipped + failed) / total_count) * 100)
+
+
+def _batch_task_result(job: dict) -> dict[str, Any]:
+    return {
+        "total_count": int(job.get("total_count") or 0),
+        "processed_count": int(job.get("processed_count") or 0),
+        "skipped_count": int(job.get("skipped_count") or 0),
+        "failed_count": int(job.get("failed_count") or 0),
+        "avg_score_before": float(job.get("avg_score_before") or 0),
+        "avg_score_after": float(job.get("avg_score_after") or 0),
+    }
+
+
+async def _sync_batch_task(job: dict, *, payload: dict[str, Any] | None = None) -> TaskRecord:
+    task_id = str(job.get("task_id") or job["id"])
+    task_error = {"code": "batch_error", "message": job["error"]} if job.get("error") else None
+    existing = await get_task(task_id)
+    if payload is not None:
+        task_payload = payload
+    elif existing is not None:
+        task_payload = {**existing.payload, "config": dict(job.get("config") or {})}
+    else:
+        task_payload = {"config": dict(job.get("config") or {})}
+    if existing is None:
+        return await create_task(
+            task_id,
+            "batch_job",
+            status=str(job["status"]),
+            progress=_batch_task_progress(job),
+            payload=task_payload,
+            result=_batch_task_result(job),
+            error=task_error,
+            started_at=job["created_at"] if _task_has_started(str(job["status"])) else None,
+            finished_at=(job.get("completed_at") or job["updated_at"]) if _task_is_terminal(str(job["status"])) else None,
+            heartbeat_at=job["updated_at"] if _task_has_started(str(job["status"])) else None,
+        )
+    updated = await update_task(
+        task_id,
+        status=str(job["status"]),
+        progress=_batch_task_progress(job),
+        payload=task_payload,
+        result=_batch_task_result(job),
+        error=task_error,
+        started_at=existing.started_at.isoformat() if existing.started_at else (job["created_at"] if _task_has_started(str(job["status"])) else None),
+        finished_at=(job.get("completed_at") or job["updated_at"]) if _task_is_terminal(str(job["status"])) else None,
+        heartbeat_at=job["updated_at"] if _task_has_started(str(job["status"])) else None,
+    )
+    if updated is None:
+        raise RuntimeError(f"Task {task_id} could not be updated")
+    return updated
+
+
+async def create_batch_job(job_id: str, config_json: str, *, task_payload: dict[str, Any] | None = None) -> None:
     now = _now_iso()
+    task_id = job_id
     async with connection() as conn:
         await conn.execute(
             """
-            INSERT INTO batch_jobs (id, status, config_json, created_at, updated_at)
-            VALUES (?, 'idle', ?, ?, ?)
+            INSERT INTO batch_jobs (id, task_id, status, config_json, created_at, updated_at)
+            VALUES (?, ?, 'idle', ?, ?, ?)
             """,
-            (job_id, config_json, now, now),
+            (job_id, task_id, config_json, now, now),
         )
         await conn.commit()
+    await create_task(
+        task_id,
+        "batch_job",
+        status="idle",
+        progress=0,
+        payload=task_payload if task_payload is not None else {"config": json.loads(config_json or "{}")},
+        result=_batch_task_result(
+            {
+                "total_count": 0,
+                "processed_count": 0,
+                "skipped_count": 0,
+                "failed_count": 0,
+                "avg_score_before": 0,
+                "avg_score_after": 0,
+            }
+        ),
+    )
 
 
 async def get_batch_job(job_id: str) -> dict | None:
@@ -1164,12 +1674,17 @@ async def update_batch_job(job_id: str, **kwargs) -> None:
     if not kwargs:
         return
     now = _now_iso()
+    if "status" in kwargs and kwargs["status"] in TASK_TERMINAL_STATUSES | {"completed_with_errors"}:
+        kwargs.setdefault("completed_at", now)
     kwargs["updated_at"] = now
     set_clause = ", ".join(f"{k} = ?" for k in kwargs)
     values = list(kwargs.values()) + [job_id]
     async with connection() as conn:
         await conn.execute(f"UPDATE batch_jobs SET {set_clause} WHERE id = ?", values)
         await conn.commit()
+    job = await get_batch_job(job_id)
+    if job is not None:
+        await _sync_batch_task(job)
 
 
 async def create_batch_item(

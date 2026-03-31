@@ -30,6 +30,7 @@ import type {
   LlmsStatus,
   LlmsJob,
   LlmsEntrySummary,
+  TaskRecord,
   BatchConfig,
   BatchJob,
   BatchJobDetail,
@@ -285,6 +286,41 @@ export async function clearChat(): Promise<{ message: string }> {
 }
 
 // ── Batch Operations ─────────────────────────────────────────────────────────
+
+export async function listTasks(params: {
+  type?: string[];
+  status?: string[];
+  limit?: number;
+  offset?: number;
+} = {}): Promise<{ items: TaskRecord[] }> {
+  const qs = new URLSearchParams();
+  for (const taskType of params.type ?? []) qs.append('type', taskType);
+  for (const status of params.status ?? []) qs.append('status', status);
+  if (typeof params.limit === 'number') qs.set('limit', String(params.limit));
+  if (typeof params.offset === 'number') qs.set('offset', String(params.offset));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return request(`/api/tasks${suffix}`);
+}
+
+export async function getTask(taskId: string): Promise<TaskRecord> {
+  return request(`/api/tasks/${taskId}`);
+}
+
+export async function resumeTask(taskId: string): Promise<TaskRecord> {
+  return request(`/api/tasks/${taskId}/resume`, { method: 'POST' });
+}
+
+export async function retryTask(taskId: string): Promise<TaskRecord> {
+  return request(`/api/tasks/${taskId}/retry`, { method: 'POST' });
+}
+
+export async function stopTask(taskId: string): Promise<TaskRecord> {
+  return request(`/api/tasks/${taskId}/stop`, { method: 'POST' });
+}
+
+export async function cancelTask(taskId: string): Promise<TaskRecord> {
+  return request(`/api/tasks/${taskId}/cancel`, { method: 'POST' });
+}
 
 export async function getBatchStats(): Promise<BatchStats> {
   return request('/api/batch/stats');

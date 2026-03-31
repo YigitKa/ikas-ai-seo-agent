@@ -181,11 +181,33 @@ class AgentResult(BaseModel):
     suggestion_saved: dict[str, Any] | None = None
 
 
+class TaskError(BaseModel):
+    code: str = ""
+    message: str = ""
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class TaskRecord(BaseModel):
+    id: str
+    type: str
+    status: str
+    progress: int = Field(default=0, ge=0, le=100)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    result: dict[str, Any] = Field(default_factory=dict)
+    error: TaskError | None = None
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    heartbeat_at: datetime | None = None
+
+
 # ── llms.txt generation models ─────────────────────────────────────────────────
 
 
 class LlmsJob(BaseModel):
     id: str
+    task_id: str | None = None
     status: str
     total_count: int
     processed_count: int = 0
