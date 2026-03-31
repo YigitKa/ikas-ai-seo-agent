@@ -419,6 +419,11 @@ Skor geçmişini izleyen ve iyileşmeleri görselleştiren **analitik dashboard*
 - **Skor değişikliği günlüğü** — her uygulama, batch ve chat operasyonunun ürün × alan × delta bazında olay kaydı
 - **Anlık görüntü** — karşılaştırma için mevcut durumu elle kaydedin
 
+
+<p align="center">
+  <img src="./assets/reports.png" alt="Raporlama Ekranı" width="1100" />
+</p>
+
 ### Varsayılan Olarak Güvenli
 
 `DRY_RUN=true` varsayılandır. Siz açıkça izin vermeden ikas mağazanıza hiçbir şey yazılmaz. Her öneri, uygulanmadan önce bir insan onay adımından geçer.
