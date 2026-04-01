@@ -107,6 +107,12 @@ def test_set_product_context():
     assert service._score is score
 
 
+def test_build_product_context_includes_selected_product_id():
+    context = _build_product_context(_make_product(id="prod-42"), _make_score(product_id="prod-42"), "seo")
+
+    assert "- ID: prod-42" in context
+
+
 def test_clear_history():
     config = _make_config()
     service = ChatService(config)
@@ -598,6 +604,38 @@ async def test_send_message_local_passes_only_save_suggestion_tool_even_if_mcp_r
         if msg["role"] == "system"
     ]
     assert any("/no_think" in content for content in system_messages)
+
+
+@pytest.mark.anyio
+async def test_translation_request_after_clear_history_uses_selected_product_generate_flow():
+    config = _make_config(ai_provider="lm-studio", ai_thinking_mode_chat=False)
+    service = ChatService(config)
+    product = _make_product(id="prod-77", description="<p>Turkce aciklama</p>")
+    service.set_product_context(product, _make_score(product_id="prod-77"))
+    service._history.append(ChatMessage(role="user", content="eski mesaj"))
+    service.clear_history()
+    _stub_routing(service, False)
+    captured: dict[str, object] = {}
+
+    async def fake_chat_completion(messages, tools):
+        captured["messages"] = messages
+        captured["tools"] = tools
+        return '{"suggested_description_en":"<p>English description</p>"}', "", [], {"model": "lm-studio-test"}
+
+    service._chat_completion = fake_chat_completion  # type: ignore[method-assign]
+
+    response = await service.send_message("urunun aciklamasini ingilizceye cevir")
+
+    assert response.error is False
+    assert response.suggestion_saved is not None
+    assert response.suggestion_saved["product_id"] == "prod-77"
+    tools = captured["tools"]
+    assert isinstance(tools, list)
+    assert [tool["function"]["name"] for tool in tools] == [SAVE_SEO_SUGGESTION_TOOL_NAME]
+    messages = captured["messages"]
+    assert isinstance(messages, list)
+    assert any("Translate Turkish product content into natural English." in msg["content"] for msg in messages if msg["role"] == "system")
+    assert any("Kullanici talebi: urunun aciklamasini ingilizceye cevir" in msg["content"] for msg in messages if msg["role"] == "user")
 
 
 @pytest.mark.anyio

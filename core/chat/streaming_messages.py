@@ -5,10 +5,12 @@ import contextlib
 from collections.abc import AsyncIterator
 from typing import Any
 
+from core.ai.requests import build_en_translation_request
 from core.chat.support import (
     _build_local_no_think_instruction,
     _build_product_context,
     _build_save_seo_suggestion_tool,
+    _is_en_description_translation_request,
     _should_request_structured_suggestion_options,
 )
 from core.models import ChatResponse
@@ -175,10 +177,32 @@ class ChatServiceStreamingMessagesMixin:
             When the user selected a specific field (e.g. "EN Aciklama"),
             the system prompt instructs the AI to fill ONLY that field.
             """
+            if self._product and _is_en_description_translation_request(cleaned_message):
+                translation_request = build_en_translation_request(
+                    self._config,
+                    self._config.ai_provider,
+                    self._product,
+                    extra_system_prompt=self._build_active_skill_system_prompt(),
+                )
+                return (
+                    [
+                        {"role": "system", "content": translation_request["system_prompt"]},
+                        {
+                            "role": "user",
+                            "content": (
+                                f"{translation_request['user_prompt']}\n\n"
+                                f"Kullanici talebi: {cleaned_message}"
+                            ),
+                        },
+                    ],
+                    [_build_save_seo_suggestion_tool()],
+                )
+
             product_lines: list[str] = []
             if self._product:
                 p = self._product
                 product_lines = [
+                    f"Urun ID: {p.id}",
                     f"Urun: {p.name}",
                     f"Kategori: {p.category or '-'}",
                     f"Meta Title: {p.meta_title or '-'}",
@@ -210,4 +234,3 @@ class ChatServiceStreamingMessagesMixin:
             tools: list[dict[str, Any]] = [_build_save_seo_suggestion_tool()]
 
             return messages, tools
-

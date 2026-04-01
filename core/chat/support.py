@@ -130,6 +130,18 @@ SUGGESTION_REQUEST_HINT_PATTERN = re.compile(
     r"\boneri\b|\bsuggestion\b|\balternatif\b|\bsecenek\b|\bopsiyon\b|\bvaryant\b|\bvariant\b|\byeniden yaz\b|\brewrite\b|\bolustur\b|\buret\b|\byaz\b|\bhazirla\b",
     re.IGNORECASE,
 )
+ENGLISH_DESCRIPTION_TARGET_PATTERN = re.compile(
+    r"\bingilizce\w*\b|\benglish\w*\b",
+    re.IGNORECASE,
+)
+DESCRIPTION_FIELD_HINT_PATTERN = re.compile(
+    r"\baciklama\w*\b|\bdescription\w*\b|\bicerik\w*\b",
+    re.IGNORECASE,
+)
+TRANSLATION_OR_GENERATION_HINT_PATTERN = re.compile(
+    r"\bcevir\b|\btranslate\b|\bolustur\b|\buret\b|\bhazirla\b|\byaz\b|\byap\b",
+    re.IGNORECASE,
+)
 SEMANTIC_ROUTING_JSON_PATTERN = re.compile(r"\{.*\}", re.DOTALL)
 
 # Patterns that detect when the LLM falsely claims to have performed actions.
@@ -436,6 +448,7 @@ def _build_product_context(
         if len(desc_source) > 2000:
             desc_preview += "..."
         product_ctx = _get_product_context_template().format(
+            id=product.id,
             name=product.name,
             category=product.category or "-",
             price=f"{product.price:.2f} TL" if product.price else "-",
@@ -531,6 +544,16 @@ def _should_request_structured_suggestion_options(user_message: str) -> bool:
         normalized_text
         and SEO_OPERATION_HINT_PATTERN.search(normalized_text)
         and SUGGESTION_REQUEST_HINT_PATTERN.search(normalized_text)
+    )
+
+
+def _is_en_description_translation_request(user_message: str) -> bool:
+    normalized_text = _normalize_matching_text(user_message)
+    return bool(
+        normalized_text
+        and ENGLISH_DESCRIPTION_TARGET_PATTERN.search(normalized_text)
+        and DESCRIPTION_FIELD_HINT_PATTERN.search(normalized_text)
+        and TRANSLATION_OR_GENERATION_HINT_PATTERN.search(normalized_text)
     )
 
 

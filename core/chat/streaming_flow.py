@@ -15,6 +15,7 @@ from core.chat.support import (
     _append_operation_suggestion,
     _extract_suggestion_fields_from_text,
     _format_chat_error,
+    _is_en_description_translation_request,
     _looks_like_option_selection,
     _message_has_apply_intent,
     _message_has_save_intent,
@@ -62,6 +63,9 @@ class ChatServiceStreamingFlowMixin:
                 resolved = _resolve_typed_option_selection(cleaned_message, self._history)
                 if resolved:
                     cleaned_message = resolved
+
+            if not is_generate_request and self._product and _is_en_description_translation_request(cleaned_message):
+                is_generate_request = True
 
             # Force SEO agent for generate requests â€” always an SEO content task
             if is_generate_request and agent_type != "seo":

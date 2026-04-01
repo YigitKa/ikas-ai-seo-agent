@@ -1,5 +1,6 @@
 
 Şu an seçili ürün:
+- ID: {id}
 - Ad: {name}
 - Kategori: {category}
 - Fiyat: {price}

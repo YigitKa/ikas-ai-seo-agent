@@ -292,6 +292,7 @@ Kurallar:
     "chat_history_prefix_system": """Önceki sohbetlerin özeti: """,
     "chat_product_context_system": """
 Şu an seçili ürün:
+- ID: {id}
 - Ad: {name}
 - Kategori: {category}
 - Fiyat: {price}
@@ -550,9 +551,9 @@ PROMPT_EDITOR_META = {
     },
     "chat_product_context_system": {
         "title": "Urun Baglam Sablonu",
-        "description": "Secili urunun bilgilerini AI'a iletmek icin kullanilan sablon. Runtime'da {name}, {category} vb. enjekte edilir.",
+        "description": "Secili urunun bilgilerini AI'a iletmek icin kullanilan sablon. Runtime'da {id}, {name}, {category} vb. enjekte edilir.",
         "variables": (),
-        "runtime_variables": ("name", "category", "price", "sku", "status", "meta_title", "meta_description", "tags", "description_preview"),
+        "runtime_variables": ("id", "name", "category", "price", "sku", "status", "meta_title", "meta_description", "tags", "description_preview"),
         "height": 180,
     },
     "chat_score_context_system": {
