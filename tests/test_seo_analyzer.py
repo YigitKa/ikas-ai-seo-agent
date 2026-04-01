@@ -121,6 +121,23 @@ def test_analyze_english_description_score():
     assert score.total_score <= 100
 
 
+def test_analyze_english_description_score_with_regional_locale_key():
+    product = Product(
+        id="bilingual-locale",
+        name="Bilingual Locale Product",
+        description="Turkce aciklama " * 40,
+        description_translations={
+            "en": "English product description " * 60,
+            "en-us": "English product description " * 60,
+        },
+        meta_title="Bilingual Product | Brand",
+        meta_description="Discover bilingual product details and shop now.",
+    )
+
+    score = analyze_product(product)
+    assert score.english_description_score > 0
+
+
 def test_content_quality_keyword_stuffing():
     """Repeated non-stop words should reduce content quality score."""
     product = Product(

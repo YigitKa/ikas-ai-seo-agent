@@ -60,6 +60,7 @@ from core.chat.support import (
     _message_has_apply_intent,
     _message_has_save_intent,
     _merge_stream_meta_payload,
+    _MCP_UPDATE_PRODUCT_MUTATION,
     _normalize_matching_text,
     _operation_footer_already_present,
     _parse_agent_type,
@@ -70,7 +71,12 @@ from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore,
 from core.clients.mcp import IkasMCPClient, MCPError
 from core.permissions import build_runtime_allow_rule
 from core.seo.analyzer import analyze_product
-from data.db import save_product as db_save_product, save_score as db_save_score
+from core.utils.presentation import get_en_description_value
+from data.db import (
+    insert_score_change_log as db_insert_score_change_log,
+    save_product as db_save_product,
+    save_score as db_save_score,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -188,71 +194,57 @@ class ChatServiceSuggestionMixin:
 
             if self._mcp and self._mcp_initialized:
                 try:
-                    prefetch_product: dict[str, Any] | None = None
-                    try:
-                        _pf_client = IkasClient()
-                        try:
-                            pf_data = await _pf_client._graphql(
-                                _pf_client._PREFETCH_FOR_UPDATE_QUERY,
-                                {"id": {"eq": product_id}},
-                            )
-                            pf_list = pf_data["listProduct"]["data"]
-                            if pf_list:
-                                prefetch_product = pf_list[0]
-                        finally:
-                            with contextlib.suppress(Exception):
-                                await _pf_client.close()
-                    except Exception:
-                        logger.debug("MCP path: prefetch via IkasClient failed")
-
                     input_data: dict[str, Any] = {"id": product_id}
-                    if prefetch_product:
-                        input_data["name"] = updates.get("name", prefetch_product["name"])
-                        input_data["type"] = prefetch_product["type"]
-                        input_data["salesChannelIds"] = prefetch_product.get("salesChannelIds") or []
-                        input_data["description"] = prefetch_product.get("description") or ""
-                        input_data["variants"] = [
-                            {key: value for key, value in variant.items() if value is not None}
-                            for variant in (prefetch_product.get("variants") or [])
-                        ]
-                        if prefetch_product.get("brandId"):
-                            input_data["brandId"] = prefetch_product["brandId"]
-                        if prefetch_product.get("categoryIds"):
-                            input_data["categoryIds"] = prefetch_product["categoryIds"]
-                        if prefetch_product.get("tagIds"):
-                            input_data["tagIds"] = prefetch_product["tagIds"]
-                        if prefetch_product.get("translations"):
-                            input_data["translations"] = prefetch_product["translations"]
-                        pf_meta = prefetch_product.get("metaData") or {}
-                        input_data["metaData"] = {
-                            "slug": pf_meta.get("slug", ""),
-                            "pageTitle": pf_meta.get("pageTitle", ""),
-                            "description": pf_meta.get("description", ""),
-                        }
-                    elif "name" in updates:
+                    if "name" in updates:
                         input_data["name"] = updates["name"]
-
                     if "description" in updates:
                         input_data["description"] = updates["description"]
                     if "meta_title" in updates or "meta_description" in updates:
-                        if "metaData" not in input_data:
-                            input_data["metaData"] = {}
+                        meta_data: dict[str, Any] = {}
                         if "meta_title" in updates:
-                            input_data["metaData"]["pageTitle"] = updates["meta_title"]
+                            meta_data["pageTitle"] = updates["meta_title"]
                         if "meta_description" in updates:
-                            input_data["metaData"]["description"] = updates["meta_description"]
+                            meta_data["description"] = updates["meta_description"]
+                        if meta_data:
+                            input_data["metaData"] = meta_data
                     if description_translations:
-                        input_data["translations"] = [
+                        translation_items = [
                             {"locale": locale, "description": text}
                             for locale, text in description_translations.items()
                             if isinstance(text, str) and text.strip()
                         ]
+                        if translation_items:
+                            input_data["translations"] = translation_items
+                        tr_description = description_translations.get("tr")
+                        if tr_description and "description" not in input_data:
+                            input_data["description"] = tr_description
+                        elif (
+                            "description" not in input_data
+                            and self._product
+                            and self._product.id == product_id
+                            and isinstance(self._product.description, str)
+                            and self._product.description.strip()
+                        ):
+                            input_data["description"] = self._product.description
+
+                    if list(input_data.keys()) == ["id"]:
+                        return tool_error(
+                            "empty_updates",
+                            "Guncellenecek alan belirtilmedi.",
+                        ), None
 
                     result = await self._mcp.execute_mutation(
-                        "saveProduct",
-                        _MCP_SAVE_PRODUCT_MUTATION,
+                        "updateProduct",
+                        _MCP_UPDATE_PRODUCT_MUTATION,
                         {"input": input_data},
                     )
+                    if description_translations and ikas_client_available:
+                        verify_client = IkasClient()
+                        try:
+                            await verify_client.ensure_translations_persisted(product_id, description_translations)
+                        finally:
+                            with contextlib.suppress(Exception):
+                                await verify_client.close()
                     return tool_success({
                         "method": "mcp",
                         "product_id": product_id,
@@ -725,63 +717,84 @@ class ChatServiceSuggestionMixin:
                 ikas_verify = IkasClient()
                 try:
                     verified_product = await ikas_verify.get_product_by_id(suggestion.product_id)
-                    if verified_product:
-                        # Update local product reference and persist to DB
-                        self._product = verified_product
-                        await db_save_product(verified_product)
+                    if not verified_product:
+                        raise RuntimeError("ikas canli urun verisi okunamadi.")
 
-                        # Re-run SEO analysis on the updated product
-                        keywords = self._config.seo_target_keywords or None
-                        new_score = analyze_product(verified_product, keywords)
-                        self._score = new_score
-                        await db_save_score(new_score)
+                    if description_translations.get("en") and not get_en_description_value(verified_product.description_translations):
+                        raise RuntimeError("Aciklama (EN) ikas canli verisinde gorunmedi.")
 
-                        verification_lines = ["", "**Dogrulama (ikas canli veri):**"]
-                        if "meta_title" in updates and verified_product.meta_title:
-                            verification_lines.append(f"- Meta Title: `{verified_product.meta_title}`")
-                        if "meta_description" in updates and verified_product.meta_description:
-                            verification_lines.append(f"- Meta Desc: `{verified_product.meta_description}`")
-                        if "name" in updates:
-                            verification_lines.append(f"- Urun Adi: `{verified_product.name}`")
-                        if len(verification_lines) > 2:
-                            verification_note = "\n".join(verification_lines)
+                    # Update local product reference and persist to DB
+                    self._product = verified_product
+                    await db_save_product(verified_product)
 
-                        # Show score comparison
-                        if old_score:
-                            delta = new_score.total_score - old_score.total_score
-                            direction = "📈" if delta > 0 else ("📉" if delta < 0 else "➡️")
-                            verification_note += (
-                                f"\n\n**SEO Skor Degisimi:** {direction} "
-                                f"{old_score.total_score}/100 → **{new_score.total_score}/100** "
-                                f"({'+' if delta > 0 else ''}{delta} puan)"
-                            )
-                            # Show per-field score breakdown if score changed
-                            if delta != 0:
-                                breakdown_parts: list[str] = []
-                                field_scores = [
-                                    ("Baslik", old_score.title_score, new_score.title_score, 15),
-                                    ("Aciklama", old_score.description_score, new_score.description_score, 20),
-                                    ("Meta Title", old_score.meta_score, new_score.meta_score, 15),
-                                    ("Meta Desc", old_score.meta_desc_score, new_score.meta_desc_score, 10),
-                                    ("Anahtar Kelime", old_score.keyword_score, new_score.keyword_score, 10),
-                                    ("Icerik Kalitesi", old_score.content_quality_score, new_score.content_quality_score, 10),
-                                ]
-                                for label, old_val, new_val, max_val in field_scores:
-                                    if old_val != new_val:
-                                        d = new_val - old_val
-                                        breakdown_parts.append(
-                                            f"  - {label}: {old_val}/{max_val} → {new_val}/{max_val} ({'+' if d > 0 else ''}{d})"
-                                        )
-                                if breakdown_parts:
-                                    verification_note += "\n" + "\n".join(breakdown_parts)
-                        else:
-                            verification_note += f"\n\n**Yeni SEO Skoru:** {new_score.total_score}/100"
+                    # Re-run SEO analysis on the updated product
+                    keywords = self._config.seo_target_keywords or None
+                    new_score = analyze_product(verified_product, keywords)
+                    self._score = new_score
+                    await db_save_score(new_score)
+                    if not self._config.dry_run:
+                        await db_insert_score_change_log(
+                            product_id=suggestion.product_id,
+                            product_name=verified_product.name or suggestion.original_name or "",
+                            operation="apply",
+                            score_before=old_score.total_score if old_score else None,
+                            score_after=new_score.total_score,
+                        )
+
+                    verification_lines = ["", "**Dogrulama (ikas canli veri):**"]
+                    if "meta_title" in updates and verified_product.meta_title:
+                        verification_lines.append(f"- Meta Title: `{verified_product.meta_title}`")
+                    if "meta_description" in updates and verified_product.meta_description:
+                        verification_lines.append(f"- Meta Desc: `{verified_product.meta_description}`")
+                    if "name" in updates:
+                        verification_lines.append(f"- Urun Adi: `{verified_product.name}`")
+                    if description_translations.get("en"):
+                        verification_lines.append("- Aciklama (EN): dogrulandi")
+                    if len(verification_lines) > 1:
+                        verification_note = "\n".join(verification_lines)
+
+                    # Show score comparison
+                    if old_score:
+                        delta = new_score.total_score - old_score.total_score
+                        direction = "📈" if delta > 0 else ("📉" if delta < 0 else "➡️")
+                        verification_note += (
+                            f"\n\n**SEO Skor Degisimi:** {direction} "
+                            f"{old_score.total_score}/100 → **{new_score.total_score}/100** "
+                            f"({'+' if delta > 0 else ''}{delta} puan)"
+                        )
+                        # Show per-field score breakdown if score changed
+                        if delta != 0:
+                            breakdown_parts: list[str] = []
+                            field_scores = [
+                                ("Baslik", old_score.title_score, new_score.title_score, 15),
+                                ("Aciklama", old_score.description_score, new_score.description_score, 20),
+                                ("Meta Title", old_score.meta_score, new_score.meta_score, 15),
+                                ("Meta Desc", old_score.meta_desc_score, new_score.meta_desc_score, 10),
+                                ("Anahtar Kelime", old_score.keyword_score, new_score.keyword_score, 10),
+                                ("Icerik Kalitesi", old_score.content_quality_score, new_score.content_quality_score, 10),
+                            ]
+                            for label, old_val, new_val, max_val in field_scores:
+                                if old_val != new_val:
+                                    d = new_val - old_val
+                                    breakdown_parts.append(
+                                        f"  - {label}: {old_val}/{max_val} → {new_val}/{max_val} ({'+' if d > 0 else ''}{d})"
+                                    )
+                            if breakdown_parts:
+                                verification_note += "\n" + "\n".join(breakdown_parts)
+                    else:
+                        verification_note += f"\n\n**Yeni SEO Skoru:** {new_score.total_score}/100"
                 finally:
                     with contextlib.suppress(Exception):
                         await ikas_verify.close()
             except Exception as exc:
                 logger.warning("Post-apply verification failed: %s", exc)
-                verification_note = "\n\n⚠️ Dogrulama sirasinda hata olustu, ancak degisiklikler gonderildi."
+                return (
+                    "ikas guncelleme istegi gonderildi ancak canli veride dogrulanamadi. "
+                    f"Hata: {exc}\n\nTaslak alan beklemede birakildi. Tekrar denemeden once ikas urununu kontrol edin.\n\n"
+                    + self._build_single_apply_confirmation_response(suggestion, available_fields),
+                    [],
+                    self._get_session_pending_suggestion(suggestion.product_id),
+                )
 
             for field_name in selected_fields:
                 if field_name == "suggested_name":

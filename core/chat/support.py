@@ -247,12 +247,12 @@ def _build_save_seo_suggestion_tool() -> dict[str, Any]:
     return build_save_seo_suggestion_tool().to_openai_function()
 
 # GraphQL mutation used by the apply_seo_to_ikas tool when routing through MCP
-_MCP_SAVE_PRODUCT_MUTATION = """mutation SaveProduct($input: ProductInput!) {
-  saveProduct(input: $input) {
+_MCP_UPDATE_PRODUCT_MUTATION = """mutation UpdateProduct($input: UpdateProductInput!) {
+  updateProduct(input: $input) {
     id
     name
     description
-    metaData { pageTitle description }
+    updatedAt
   }
 }"""
 

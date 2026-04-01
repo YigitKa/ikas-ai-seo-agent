@@ -49,13 +49,12 @@ class IkasClient:
     }
     """
 
-    UPDATE_PRODUCT_MUTATION = """
+    SAVE_PRODUCT_MUTATION = """
     mutation SaveProduct($input: ProductInput!) {
         saveProduct(input: $input) {
             id
             name
             description
-            metaData { pageTitle description slug }
         }
     }
     """
@@ -67,18 +66,88 @@ class IkasClient:
                 id
                 name
                 description
+                shortDescription
                 type
+                weight
+                releaseDate
                 salesChannelIds
+                hiddenSalesChannelIds
+                dynamicPriceListIds
                 brandId
                 categoryIds
                 tagIds
+                groupVariantsByVariantTypeId
+                googleTaxonomyId
+                productOptionSetId
+                productVolumeDiscountId
+                subscriptionPlanId
+                vendorId
+                maxQuantityPerCart
+                baseUnit { baseAmount type unitId }
+                productVariantTypes { order variantTypeId variantValueIds }
+                attributes { imageIds productAttributeId productAttributeOptionId value }
+                salesChannels {
+                    id
+                    maxQuantityPerCart
+                    minQuantityPerCart
+                    productVolumeDiscountId
+                    quantitySettings
+                    status
+                }
                 translations { locale name description }
-                metaData { slug pageTitle description }
+                metaData {
+                    id
+                    slug
+                    pageTitle
+                    description
+                    disableIndex
+                    canonicals
+                    targetId
+                    targetType
+                    metadataOverrides {
+                        description
+                        language
+                        pageTitle
+                        storefrontId
+                        storefrontRegionId
+                    }
+                    translations {
+                        locale
+                        pageTitle
+                        description
+                        slug
+                    }
+                }
                 variants {
-                    id sku weight
+                    id
+                    sku
+                    weight
+                    isActive
+                    sellIfOutOfStock
+                    hsCode
+                    fileId
+                    subscriptionPlanId
+                    barcodeList
+                    bundleSettings {
+                        maxBundleQuantity
+                        minBundleQuantity
+                        products {
+                            addToBundleBasePrice
+                            discountRatio
+                            filteredVariantIds
+                            id
+                            maxQuantity
+                            minQuantity
+                            order
+                            productId
+                            quantity
+                        }
+                    }
+                    unit { amount type }
+                    attributes { imageIds productAttributeId productAttributeOptionId value }
                     variantValueIds { variantTypeId variantValueId }
-                    prices { sellPrice discountPrice currency }
-                    images { imageId order fileName isMain }
+                    prices { buyPrice sellPrice discountPrice currency priceListId }
+                    images { imageId order fileName isMain isVideo }
                 }
             }
         }
@@ -229,7 +298,14 @@ class IkasClient:
         raw = data.get("translations") or data.get("descriptionTranslations") or {}
 
         if isinstance(raw, dict):
-            return {k: v for k, v in raw.items() if isinstance(v, str) and v.strip()}
+            output: Dict[str, str] = {}
+            for key, value in raw.items():
+                if not isinstance(key, str) or not isinstance(value, str) or not value.strip():
+                    continue
+                normalized_locale = self._normalize_translation_locale(key)
+                output.setdefault(normalized_locale, value)
+                output.setdefault(key.lower(), value)
+            return output
 
         if isinstance(raw, list):
             output: Dict[str, str] = {}
@@ -240,10 +316,251 @@ class IkasClient:
                 # ikas translations use "description" field (not "value")
                 value = item.get("description") or item.get("value")
                 if isinstance(locale, str) and isinstance(value, str) and value.strip():
-                    output[locale.lower()] = value
+                    normalized_locale = self._normalize_translation_locale(locale)
+                    output.setdefault(normalized_locale, value)
+                    output.setdefault(locale.lower(), value)
             return output
 
         return {}
+
+    @staticmethod
+    def _normalize_translation_locale(locale: str) -> str:
+        normalized = locale.strip().lower().replace("_", "-")
+        if not normalized:
+            return normalized
+        if normalized.startswith("en"):
+            return "en"
+        if normalized.startswith("tr"):
+            return "tr"
+        return normalized
+
+    @classmethod
+    def _normalize_translation_updates(cls, translations: Dict[str, Any]) -> Dict[str, str]:
+        normalized_translations: Dict[str, str] = {}
+        for locale, text in (translations or {}).items():
+            if not isinstance(locale, str) or not isinstance(text, str) or not text.strip():
+                continue
+            normalized_translations[cls._normalize_translation_locale(locale)] = text
+        return normalized_translations
+
+    async def _seed_default_description_for_translation_update(
+        self,
+        product_id: str,
+        input_data: Dict[str, Any],
+    ) -> None:
+        if "translations" not in input_data or "description" in input_data:
+            return
+
+        try:
+            existing_product = await self.get_product_by_id(product_id)
+        except Exception as exc:
+            logger.warning(
+                "Could not load existing product %s before translation update: %s",
+                product_id,
+                exc,
+            )
+            return
+
+        if existing_product and isinstance(existing_product.description, str) and existing_product.description.strip():
+            input_data["description"] = existing_product.description
+
+    async def _get_product_for_update_data(self, product_id: str) -> Dict[str, Any]:
+        data = await self._graphql(
+            self._PREFETCH_FOR_UPDATE_QUERY,
+            {"id": {"eq": product_id}},
+        )
+        products = data.get("listProduct", {}).get("data", [])
+        if not products:
+            raise RuntimeError(f"Product not found: {product_id}")
+        return products[0]
+
+    async def ensure_translations_persisted(
+        self,
+        product_id: str,
+        translations: Dict[str, Any],
+        *,
+        attempts: int = 3,
+        base_delay_seconds: float = 0.35,
+    ) -> Product | None:
+        expected_translations = self._normalize_translation_updates(translations)
+        if not expected_translations:
+            return await self.get_product_by_id(product_id)
+
+        last_missing_locales = sorted(expected_translations.keys())
+        last_product: Product | None = None
+
+        for attempt in range(attempts):
+            last_product = await self.get_product_by_id(product_id)
+            if last_product:
+                actual_translations = last_product.description_translations or {}
+                missing_locales: list[str] = []
+                for locale in expected_translations:
+                    normalized_locale = self._normalize_translation_locale(locale)
+                    actual_value = (
+                        actual_translations.get(normalized_locale)
+                        or actual_translations.get(locale.lower())
+                        or actual_translations.get(locale)
+                    )
+                    if isinstance(actual_value, str) and actual_value.strip():
+                        continue
+                    missing_locales.append(normalized_locale)
+
+                if not missing_locales:
+                    return last_product
+                last_missing_locales = sorted(set(missing_locales))
+
+            if attempt + 1 < attempts:
+                await asyncio.sleep(base_delay_seconds * (attempt + 1))
+
+        raise RuntimeError(
+            "Product update succeeded but translations were not persisted for locales: "
+            + ", ".join(last_missing_locales)
+        )
+
+    @staticmethod
+    def _copy_non_null_fields(source: Dict[str, Any], allowed_fields: tuple[str, ...]) -> Dict[str, Any]:
+        return {
+            field: source[field]
+            for field in allowed_fields
+            if field in source and source[field] is not None
+        }
+
+    @classmethod
+    def _clean_product_attribute_for_input(cls, attribute: Dict[str, Any]) -> Dict[str, Any]:
+        return cls._copy_non_null_fields(
+            attribute,
+            ("imageIds", "productAttributeId", "productAttributeOptionId", "value"),
+        )
+
+    @classmethod
+    def _clean_product_variant_type_for_input(cls, variant_type: Dict[str, Any]) -> Dict[str, Any]:
+        cleaned = cls._copy_non_null_fields(
+            variant_type,
+            ("order", "variantTypeId", "variantValueIds"),
+        )
+        variant_value_ids = cleaned.get("variantValueIds")
+        if isinstance(variant_value_ids, list):
+            cleaned["variantValueIds"] = [value for value in variant_value_ids if value is not None]
+        return cleaned
+
+    @classmethod
+    def _clean_product_sales_channel_for_input(cls, sales_channel: Dict[str, Any]) -> Dict[str, Any]:
+        cleaned = cls._copy_non_null_fields(
+            sales_channel,
+            ("id", "maxQuantityPerCart", "minQuantityPerCart", "productVolumeDiscountId", "quantitySettings", "status"),
+        )
+        quantity_settings = cleaned.get("quantitySettings")
+        if isinstance(quantity_settings, list):
+            cleaned["quantitySettings"] = [value for value in quantity_settings if value is not None]
+        return cleaned
+
+    @classmethod
+    def _clean_translation_item_for_input(cls, translation: Dict[str, Any]) -> Dict[str, Any]:
+        return cls._copy_non_null_fields(translation, ("locale", "name", "description"))
+
+    @classmethod
+    def _merge_translation_items(
+        cls,
+        existing_translations: Any,
+        description_updates: Dict[str, str] | None = None,
+    ) -> List[Dict[str, Any]]:
+        merged: dict[str, Dict[str, Any]] = {}
+
+        if isinstance(existing_translations, list):
+            for item in existing_translations:
+                if not isinstance(item, dict):
+                    continue
+                locale = item.get("locale")
+                if not isinstance(locale, str) or not locale.strip():
+                    continue
+                cleaned = cls._clean_translation_item_for_input(item)
+                if cleaned:
+                    merged[cls._normalize_translation_locale(locale)] = cleaned
+
+        for locale, text in cls._normalize_translation_updates(description_updates or {}).items():
+            entry = dict(merged.get(locale, {"locale": locale}))
+            entry["locale"] = locale
+            entry["description"] = text
+            merged[locale] = entry
+
+        return [
+            item for item in merged.values()
+            if isinstance(item.get("locale"), str) and item["locale"].strip()
+            and any(
+                isinstance(item.get(field), str) and item[field].strip()
+                for field in ("name", "description")
+            )
+        ]
+
+    @classmethod
+    def _clean_meta_override_for_input(cls, override: Dict[str, Any]) -> Dict[str, Any]:
+        return cls._copy_non_null_fields(
+            override,
+            ("description", "language", "pageTitle", "storefrontId", "storefrontRegionId"),
+        )
+
+    @classmethod
+    def _clean_meta_translation_for_input(cls, translation: Dict[str, Any]) -> Dict[str, Any]:
+        return cls._copy_non_null_fields(
+            translation,
+            ("locale", "pageTitle", "description", "slug"),
+        )
+
+    @classmethod
+    def _clean_meta_data_for_input(cls, meta_data: Dict[str, Any]) -> Dict[str, Any]:
+        cleaned = cls._copy_non_null_fields(
+            meta_data,
+            ("id", "slug", "pageTitle", "description", "disableIndex", "canonicals", "targetId", "targetType"),
+        )
+        overrides = meta_data.get("metadataOverrides")
+        if isinstance(overrides, list):
+            cleaned["metadataOverrides"] = [
+                item
+                for item in (cls._clean_meta_override_for_input(override) for override in overrides if isinstance(override, dict))
+                if item
+            ]
+        translations = meta_data.get("translations")
+        if isinstance(translations, list):
+            cleaned["translations"] = [
+                item
+                for item in (cls._clean_meta_translation_for_input(translation) for translation in translations if isinstance(translation, dict))
+                if item
+            ]
+        canonicals = cleaned.get("canonicals")
+        if isinstance(canonicals, list):
+            cleaned["canonicals"] = [value for value in canonicals if value is not None]
+        return cleaned
+
+    @classmethod
+    def _clean_base_unit_for_input(cls, base_unit: Dict[str, Any]) -> Dict[str, Any]:
+        return cls._copy_non_null_fields(base_unit, ("baseAmount", "type", "unitId"))
+
+    @classmethod
+    def _clean_bundle_product_for_input(cls, bundle_product: Dict[str, Any]) -> Dict[str, Any]:
+        cleaned = cls._copy_non_null_fields(
+            bundle_product,
+            ("addToBundleBasePrice", "discountRatio", "filteredVariantIds", "id", "maxQuantity", "minQuantity", "order", "productId", "quantity"),
+        )
+        filtered_variant_ids = cleaned.get("filteredVariantIds")
+        if isinstance(filtered_variant_ids, list):
+            cleaned["filteredVariantIds"] = [value for value in filtered_variant_ids if value is not None]
+        return cleaned
+
+    @classmethod
+    def _clean_bundle_settings_for_input(cls, bundle_settings: Dict[str, Any]) -> Dict[str, Any]:
+        cleaned = cls._copy_non_null_fields(bundle_settings, ("maxBundleQuantity", "minBundleQuantity"))
+        products = bundle_settings.get("products")
+        if isinstance(products, list):
+            cleaned["products"] = [
+                item
+                for item in (cls._clean_bundle_product_for_input(product) for product in products if isinstance(product, dict))
+                if item
+            ]
+        return cleaned
+
+    @classmethod
+    def _clean_variant_unit_for_input(cls, unit: Dict[str, Any]) -> Dict[str, Any]:
+        return cls._copy_non_null_fields(unit, ("amount", "type"))
 
     @staticmethod
     def _clean_variant_for_input(variant: Dict[str, Any]) -> Dict[str, Any]:
@@ -258,13 +575,37 @@ class IkasClient:
         variant_id = variant.get("id") or variant.get("_id")
         if variant_id is not None:
             cleaned["id"] = variant_id
-        for key in ("sku", "weight"):
+        for key in ("sku", "weight", "sellIfOutOfStock", "isActive", "hsCode", "fileId", "subscriptionPlanId"):
             if variant.get(key) is not None:
                 cleaned[key] = variant[key]
 
+        barcode_list = variant.get("barcodeList")
+        if isinstance(barcode_list, list):
+            cleaned["barcodeList"] = [value for value in barcode_list if value is not None]
+
+        unit = variant.get("unit")
+        if isinstance(unit, dict):
+            cleaned_unit = IkasClient._clean_variant_unit_for_input(unit)
+            if cleaned_unit:
+                cleaned["unit"] = cleaned_unit
+
+        raw_attributes = variant.get("attributes")
+        if isinstance(raw_attributes, list):
+            cleaned["attributes"] = [
+                item
+                for item in (IkasClient._clean_product_attribute_for_input(attribute) for attribute in raw_attributes if isinstance(attribute, dict))
+                if item
+            ]
+
+        bundle_settings = variant.get("bundleSettings")
+        if isinstance(bundle_settings, dict):
+            cleaned_bundle_settings = IkasClient._clean_bundle_settings_for_input(bundle_settings)
+            if cleaned_bundle_settings:
+                cleaned["bundleSettings"] = cleaned_bundle_settings
+
         # variantValueIds — array of {variantTypeId, variantValueId}
         raw_vvi = variant.get("variantValueIds")
-        if raw_vvi and isinstance(raw_vvi, list):
+        if isinstance(raw_vvi, list):
             cleaned["variantValueIds"] = [
                 {"variantTypeId": v["variantTypeId"], "variantValueId": v["variantValueId"]}
                 for v in raw_vvi
@@ -273,17 +614,20 @@ class IkasClient:
 
         # prices — strip merchantId and other server-side fields
         raw_prices = variant.get("prices")
-        if raw_prices and isinstance(raw_prices, list):
+        if isinstance(raw_prices, list):
             cleaned["prices"] = [
-                {k: v for k, v in p.items() if k in ("sellPrice", "discountPrice", "currency") and v is not None}
+                {
+                    k: v for k, v in p.items()
+                    if k in ("buyPrice", "sellPrice", "discountPrice", "currency", "priceListId") and v is not None
+                }
                 for p in raw_prices if isinstance(p, dict)
             ]
 
         # images — strip merchantId and other server-side fields
         raw_images = variant.get("images")
-        if raw_images and isinstance(raw_images, list):
+        if isinstance(raw_images, list):
             cleaned["images"] = [
-                {k: v for k, v in img.items() if k in ("imageId", "order", "fileName", "isMain") and v is not None}
+                {k: v for k, v in img.items() if k in ("imageId", "order", "fileName", "isMain", "isVideo") and v is not None}
                 for img in raw_images if isinstance(img, dict)
             ]
 
@@ -446,96 +790,144 @@ class IkasClient:
             logger.info(f"[DRY RUN] Would update product {product_id}: {updates}")
             return True
 
-        # Prefetch required fields that ikas saveProduct mutation always expects
-        prefetch = await self._graphql(
-            self._PREFETCH_FOR_UPDATE_QUERY,
-            {"id": {"eq": product_id}},
-        )
-        products = prefetch["listProduct"]["data"]
-        if not products:
-            raise RuntimeError(f"Product {product_id} not found")
-        current = products[0]
-        logger.info(
-            "Prefetched product %s: type=%s, variants=%d, slug=%s",
-            product_id,
-            current.get("type"),
-            len(current.get("variants") or []),
-            (current.get("metaData") or {}).get("slug"),
-        )
-
-        cleaned_variants = [
-            self._clean_variant_for_input(variant)
-            for variant in (current.get("variants") or [])
-        ]
-        logger.info(
-            "Cleaned %d variants for %s: keys=%s",
-            len(cleaned_variants),
-            product_id,
-            [list(v.keys()) for v in cleaned_variants[:2]],
-        )
-
+        existing_product = await self._get_product_for_update_data(product_id)
         input_data: Dict[str, Any] = {
             "id": product_id,
-            "name": updates.get("name", current["name"]),
-            "type": current["type"],
-            "description": current.get("description") or "",
-            "variants": cleaned_variants,
+            "name": updates.get("name") or existing_product.get("name") or "",
+            "type": existing_product.get("type"),
+            "variants": [
+                self._clean_variant_for_input(variant)
+                for variant in (existing_product.get("variants") or [])
+                if isinstance(variant, dict)
+            ],
         }
+        requested_translations: Dict[str, str] = {}
 
-        # salesChannelIds — only include if non-empty (empty triggers "new product" error)
-        sales_channel_ids = current.get("salesChannelIds")
-        if sales_channel_ids:
-            input_data["salesChannelIds"] = sales_channel_ids
+        for key in (
+            "shortDescription",
+            "weight",
+            "releaseDate",
+            "brandId",
+            "categoryIds",
+            "tagIds",
+            "salesChannelIds",
+            "hiddenSalesChannelIds",
+            "dynamicPriceListIds",
+            "groupVariantsByVariantTypeId",
+            "googleTaxonomyId",
+            "productOptionSetId",
+            "productVolumeDiscountId",
+            "subscriptionPlanId",
+            "vendorId",
+            "maxQuantityPerCart",
+        ):
+            if key in existing_product and existing_product.get(key) is not None:
+                input_data[key] = existing_product.get(key)
 
-        # Preserve optional top-level fields
-        if current.get("brandId"):
-            input_data["brandId"] = current["brandId"]
-        if current.get("categoryIds"):
-            input_data["categoryIds"] = current["categoryIds"]
-        if current.get("tagIds"):
-            input_data["tagIds"] = current["tagIds"]
-        if current.get("translations"):
-            input_data["translations"] = current["translations"]
+        base_unit = existing_product.get("baseUnit")
+        if isinstance(base_unit, dict):
+            cleaned_base_unit = self._clean_base_unit_for_input(base_unit)
+            if cleaned_base_unit:
+                input_data["baseUnit"] = cleaned_base_unit
 
-        # Always include full metaData from existing product, then overlay updates
-        current_meta = current.get("metaData") or {}
-        input_data["metaData"] = {
-            "slug": current_meta.get("slug", ""),
-            "pageTitle": current_meta.get("pageTitle", ""),
-            "description": current_meta.get("description", ""),
-        }
+        product_variant_types = existing_product.get("productVariantTypes")
+        if isinstance(product_variant_types, list):
+            input_data["productVariantTypes"] = [
+                item
+                for item in (
+                    self._clean_product_variant_type_for_input(variant_type)
+                    for variant_type in product_variant_types
+                    if isinstance(variant_type, dict)
+                )
+                if item
+            ]
+
+        attributes = existing_product.get("attributes")
+        if isinstance(attributes, list):
+            input_data["attributes"] = [
+                item
+                for item in (
+                    self._clean_product_attribute_for_input(attribute)
+                    for attribute in attributes
+                    if isinstance(attribute, dict)
+                )
+                if item
+            ]
+
+        sales_channels = existing_product.get("salesChannels")
+        if isinstance(sales_channels, list):
+            input_data["salesChannels"] = [
+                item
+                for item in (
+                    self._clean_product_sales_channel_for_input(sales_channel)
+                    for sales_channel in sales_channels
+                    if isinstance(sales_channel, dict)
+                )
+                if item
+            ]
 
         if "description" in updates:
             input_data["description"] = updates["description"]
-        if "description_translations" in updates:
-            translations = updates["description_translations"] or {}
-            tr_description = translations.get("tr")
-            if tr_description:
+        elif isinstance(existing_product.get("description"), str) and existing_product["description"].strip():
+            input_data["description"] = existing_product["description"]
+
+        translation_updates = updates.get("description_translations") or {}
+        translation_items = self._merge_translation_items(
+            existing_product.get("translations"),
+            translation_updates,
+        )
+        if translation_items:
+            input_data["translations"] = translation_items
+        if translation_updates:
+            requested_translations = self._normalize_translation_updates(translation_updates)
+            tr_description = requested_translations.get("tr")
+            if tr_description and "description" not in input_data:
                 input_data["description"] = tr_description
-            # ikas API expects translations as {locale, name?, description}
-            input_data["translations"] = [
-                {"locale": locale, "description": text}
-                for locale, text in translations.items()
-                if isinstance(text, str) and text.strip()
-            ]
-        if "meta_title" in updates:
-            input_data["metaData"]["pageTitle"] = updates["meta_title"]
-        if "meta_description" in updates:
-            input_data["metaData"]["description"] = updates["meta_description"]
+
+        existing_meta = existing_product.get("metaData") or {}
+        cleaned_meta_data = self._clean_meta_data_for_input(existing_meta) if isinstance(existing_meta, dict) else {}
+        if cleaned_meta_data:
+            input_data["metaData"] = cleaned_meta_data
+        if "meta_title" in updates or "meta_description" in updates:
+            meta_slug = existing_meta.get("slug")
+            if not isinstance(meta_slug, str) or not meta_slug.strip():
+                raise RuntimeError("Product meta slug is required for saveProduct updates")
+            meta_data: Dict[str, Any] = dict(input_data.get("metaData") or {})
+            meta_data["slug"] = meta_slug
+            if "meta_title" in updates:
+                meta_data["pageTitle"] = updates["meta_title"]
+            if "meta_description" in updates:
+                meta_data["description"] = updates["meta_description"]
+            if meta_data:
+                input_data["metaData"] = meta_data
+
+        if not input_data.get("name") or not input_data.get("type") or not input_data.get("variants"):
+            raise RuntimeError("Existing product data is incomplete for saveProduct")
+
+        if requested_translations and "description" not in input_data:
+            await self._seed_default_description_for_translation_update(product_id, input_data)
 
         logger.info("Sending saveProduct input keys: %s", list(input_data.keys()))
         if "metaData" in input_data:
-            logger.info("metaData keys: %s", list(input_data["metaData"].keys()))
+            logger.info("saveProduct metaData keys: %s", list(input_data["metaData"].keys()))
 
         try:
-            await self._graphql(self.UPDATE_PRODUCT_MUTATION, {"input": input_data})
+            await self._graphql(self.SAVE_PRODUCT_MUTATION, {"input": input_data})
         except RuntimeError as exc:
-            if "translations" in input_data:
+            error_text = str(exc).lower()
+            translation_error = (
+                "translation" in error_text
+                and ("accept" in error_text or "unknown argument" in error_text or "unknown field" in error_text)
+            )
+            if translation_error and "translations" in input_data and "description" in input_data:
                 logger.warning("translations not accepted by API, retrying with default description only")
                 fallback_input = {k: v for k, v in input_data.items() if k != "translations"}
-                await self._graphql(self.UPDATE_PRODUCT_MUTATION, {"input": fallback_input})
+                await self._graphql(self.SAVE_PRODUCT_MUTATION, {"input": fallback_input})
             else:
                 raise
+
+        if requested_translations:
+            await self.ensure_translations_persisted(product_id, requested_translations)
 
         logger.info(f"Product {product_id} updated successfully")
         return True

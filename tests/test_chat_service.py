@@ -909,6 +909,62 @@ async def test_execute_chat_tool_allows_apply_with_runtime_permission(monkeypatc
 
 
 @pytest.mark.anyio
+async def test_apply_handler_mcp_fallback_uses_update_product_mutation(monkeypatch):
+    service = ChatService(_make_config())
+    service.set_product_context(_make_product(), _make_score())
+    service._mcp_initialized = True
+    captured: dict[str, object] = {}
+
+    class _FakeMcp:
+        async def execute_mutation(self, operation_name, query, variables=None):
+            captured["operation_name"] = operation_name
+            captured["query"] = query
+            captured["variables"] = variables
+            return {
+                "content": [
+                    {"type": "text", "text": '{"data":{"updateProduct":{"id":"prod-1"}}}'},
+                ],
+            }
+
+    async def fake_update_product(self, product_id, updates):
+        raise RuntimeError("GraphQL errors: DUPLICATE_DEFAULT_PRICE")
+
+    async def fake_ensure_translations_persisted(self, product_id, translations, **_kwargs):
+        captured["verified_product_id"] = product_id
+        captured["verified_translations"] = translations
+        return _make_product(description_translations={"en": "<p>English description</p>"})
+
+    async def fake_close(self):
+        return None
+
+    service._mcp = _FakeMcp()
+    monkeypatch.setattr("core.chat.suggestions.IkasClient.update_product", fake_update_product)
+    monkeypatch.setattr("core.chat.suggestions.IkasClient.ensure_translations_persisted", fake_ensure_translations_persisted)
+    monkeypatch.setattr("core.chat.suggestions.IkasClient.close", fake_close)
+
+    result, suggestion_saved = await service._apply_seo_to_ikas_handler({
+        "product_id": "prod-1",
+        "description_en": "<p>English description</p>",
+    })
+
+    assert suggestion_saved is None
+    assert result["ok"] is True
+    assert captured["operation_name"] == "updateProduct"
+    assert "mutation UpdateProduct($input: UpdateProductInput!)" in str(captured["query"])
+    assert captured["variables"] == {
+        "input": {
+            "id": "prod-1",
+            "description": "Bir test aciklamasi",
+            "translations": [
+                {"locale": "en", "description": "<p>English description</p>"},
+            ],
+        }
+    }
+    assert captured["verified_product_id"] == "prod-1"
+    assert captured["verified_translations"] == {"en": "<p>English description</p>"}
+
+
+@pytest.mark.anyio
 async def test_handle_apply_intent_no_history():
     """Tool call path saves suggestions without any secondary extraction request."""
     config = _make_config(ai_provider="openai", ai_base_url="https://example.com/v1")

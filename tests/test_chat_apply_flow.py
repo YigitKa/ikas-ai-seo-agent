@@ -163,3 +163,128 @@ async def test_explicit_ikas_apply_uses_deterministic_parser_when_llm_extractor_
     assert "single_apply_all" in response.content
     assert response.pending_suggestion is not None
     assert response.pending_suggestion.suggested_meta_title == "Airontek 60X Mini-Mikroskop | Tasinabilir Inceleme"
+
+
+@pytest.mark.anyio
+async def test_chat_apply_logs_score_change_for_reports(monkeypatch):
+    service = ChatService(_make_config(ai_thinking_mode_chat=False, dry_run=False))
+    _stub_routing(service)
+    product = _make_product(description_translations={"tr": "Bir test aciklamasi"})
+    old_score = _make_score(total_score=60, english_description_score=0)
+    new_score = _make_score(total_score=65, english_description_score=5)
+    service.set_product_context(product, old_score)
+
+    await service._save_suggestion_from_tool_args(
+        {"suggested_description_en": "<p>English description</p>"}
+    )
+    suggestion = service._get_session_pending_suggestion(product.id)
+    assert suggestion is not None
+    available_fields = service._collect_applicable_suggestion_fields(suggestion)
+
+    async def fake_tool_invoke(tool_name, args, agent_type=None):
+        class _Execution:
+            ok = True
+            content = '{"ok": true}'
+            error = None
+
+        assert tool_name == "apply_seo_to_ikas"
+        assert args["product_id"] == product.id
+        assert args["description_en"] == "<p>English description</p>"
+        return _Execution()
+
+    class _FakeIkasClient:
+        async def get_product_by_id(self, product_id):
+            assert product_id == product.id
+            return product.model_copy(update={
+                "description_translations": {
+                    **product.description_translations,
+                    "en": "<p>English description</p>",
+                },
+            })
+
+        async def close(self):
+            return None
+
+    logged: dict[str, object] = {}
+
+    async def fake_save_product(updated_product):
+        return None
+
+    async def fake_save_score(score):
+        return None
+
+    async def fake_insert_score_change_log(**kwargs):
+        logged.update(kwargs)
+
+    monkeypatch.setattr(service._tool_registry, "invoke", fake_tool_invoke)
+    monkeypatch.setattr("core.chat.suggestions.IkasClient", _FakeIkasClient)
+    monkeypatch.setattr("core.chat.suggestions.analyze_product", lambda _product, _keywords=None: new_score)
+    monkeypatch.setattr("core.chat.suggestions.db_save_product", fake_save_product)
+    monkeypatch.setattr("core.chat.suggestions.db_save_score", fake_save_score)
+    monkeypatch.setattr("core.chat.suggestions.db_insert_score_change_log", fake_insert_score_change_log)
+
+    response_text, tool_results, pending = await service._execute_apply(
+        suggestion,
+        available_fields,
+        selected_fields=["suggested_description_en"],
+    )
+
+    assert "SEO Skor Degisimi" in response_text
+    assert tool_results[0]["tool"] == "chat_single_product_apply"
+    assert pending is None
+    assert logged == {
+        "product_id": product.id,
+        "product_name": product.name,
+        "operation": "apply",
+        "score_before": 60,
+        "score_after": 65,
+    }
+
+
+@pytest.mark.anyio
+async def test_chat_apply_keeps_pending_when_live_en_description_is_missing(monkeypatch):
+    service = ChatService(_make_config(ai_thinking_mode_chat=False, dry_run=False))
+    _stub_routing(service)
+    product = _make_product(description_translations={"tr": "Bir test aciklamasi"})
+    old_score = _make_score(total_score=60, english_description_score=0)
+    service.set_product_context(product, old_score)
+
+    await service._save_suggestion_from_tool_args(
+        {"suggested_description_en": "<p>English description</p>"}
+    )
+    suggestion = service._get_session_pending_suggestion(product.id)
+    assert suggestion is not None
+    available_fields = service._collect_applicable_suggestion_fields(suggestion)
+
+    async def fake_tool_invoke(tool_name, args, agent_type=None):
+        class _Execution:
+            ok = True
+            content = '{"ok": true}'
+            error = None
+
+        assert tool_name == "apply_seo_to_ikas"
+        assert args["description_en"] == "<p>English description</p>"
+        return _Execution()
+
+    class _FakeIkasClient:
+        async def get_product_by_id(self, product_id):
+            assert product_id == product.id
+            return product
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(service._tool_registry, "invoke", fake_tool_invoke)
+    monkeypatch.setattr("core.chat.suggestions.IkasClient", _FakeIkasClient)
+
+    response_text, tool_results, pending = await service._execute_apply(
+        suggestion,
+        available_fields,
+        selected_fields=["suggested_description_en"],
+    )
+
+    assert "canli veride dogrulanamadi" in response_text
+    assert "Aciklama (EN)" in response_text
+    assert tool_results == []
+    assert pending is not None
+    assert pending.suggested_description_en == "<p>English description</p>"
