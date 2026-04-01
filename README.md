@@ -838,29 +838,59 @@ graph TB
 
 ### Skill Runtime ve Skill Studio
 
-Flow ozeti:
+Skill'ler global feature flag degildir. Her skill, secildigi flow icin runtime'da eklenen bir talimat paketidir.
 
-- `Chat`: Dashboard icindeki chat header'inda gorunur bir skill secici vardir. Secilen skill oturum bazinda aktif olur, chat system prompt'una eklenir ve `allowed_tools` ile chat tool yuzeyi daraltilir.
-- `Rewrite`: `POST /api/suggestions/generate/{id}`, `POST /api/suggestions/generate/{id}/stream` ve `POST /api/suggestions/generate-field/{id}` cagrilari `skill_slug` alir. Skill prompt'u rewrite system prompt'una eklenir; agentic rewrite aciksa tool seti de ayni skill ile kisitlanir.
-- `Batch`: Batch Operations ekranindaki konfigurasyonda `skill_slug` secilir. Secilen skill job config'ine yazilir ve tum batch boyunca field rewrite/translation isteklerine enjekte edilir.
+Bugun kodda bir skill su 3 seyi tanimlar:
 
-Prompt katmanlarının üstüne artık diskten yüklenen bir **skill runtime** katmanı eklenir. Her skill `skills/<skill-slug>/` altında yaşar ve iki dosyadan oluşur:
+- `instructions_markdown` + `prompt_layers`: Runtime'da birlestirilip ek system prompt uretilir.
+- `applies_to`: Skill'in hangi akista secilebilecegini belirler (`chat`, `rewrite`, `batch`).
+- `allowed_tools`: Yalnizca tool-calling olan akislarda, o flow'un mevcut tool setiyle kesiserek aktif tool yuzeyini daraltir.
 
-- `meta.json` — metadata, `allowed_tools`, `applies_to`, `prompt_layers`, `priority`, `status`
-- `SKILL.md` — insan okunur talimatlar, örnekler ve ek rehber
+Flow bazinda mevcut durum:
 
-Sistem açılışında varsayılan skill'ler otomatik olarak seed edilir:
+1. `Chat`
+   - Nerede secilir: Dashboard icindeki chat header'i veya `/skill set <slug>`
+   - Ne zaman uygulanir: Chat completion mesaji kurulurken
+   - Neyi degistirir: Chat system prompt'una skill prompt'u eklenir; `allowed_tools` varsa chat tool listesi filtrelenir
+   - Kod: `web/src/components/chat/ChatHeader.tsx`, `core/chat/state.py`, `core/chat/streaming_messages.py`
 
-- `category-audit`
-- `brand-voice-rewrite`
-- `launch-readiness`
+2. `Rewrite`
+   - Nerede secilir: `POST /api/suggestions/generate/{id}`, `POST /api/suggestions/generate/{id}/stream` ve `POST /api/suggestions/generate-field/{id}` cagrilarinda `skill_slug`
+   - Ne zaman uygulanir: Rewrite request'i hazirlanirken
+   - Neyi degistirir: Skill prompt'u rewrite system prompt'una eklenir
+   - Tool etkisi: Sadece tam urun rewrite agentic/tool-calling modda calisiyorsa `allowed_tools` toolkit'i filtreler. Tek alan rewrite ve ceviri akislari sadece prompt enjeksiyonu kullanir
+   - Kod: `api/routers/suggestions.py`, `core/product_manager.py`, `core/ai/requests.py`
 
-Bir skill chat oturumunda aktif edildiğinde iki şey olur:
+3. `Batch`
+   - Nerede secilir: Batch Operations ekranindaki `config.skill_slug`
+   - Ne zaman uygulanir: Job olusturulurken validate edilir; sonra her field rewrite/translation cagrisi oncesi batch runtime prompt'una eklenir
+   - Neyi degistirir: Batch kisitlari ile birlikte her alan uretimine ek talimat verir
+   - Tool etkisi: Bugunku batch akisi field-by-field rewrite calistiriyor; burada `allowed_tools` aktif olarak toolkit filtrelemez, asil etki prompt enjeksiyonudur
+   - Kod: `web/src/components/batch/BatchConfigPanel.tsx`, `api/routers/batch.py`, `core/product_manager.py`
 
-1. Skill'in prompt katmanları mevcut chat system prompt'una eklenir
-2. Skill'in `allowed_tools` listesi gerçek tool yüzeyini daraltır
+Skill Studio ne yapar, ne yapmaz:
 
-Bu sayede skill sadece ek talimat değil, kontrollü bir çalışma modu haline gelir. Chat içinde hızlı kontrol için şu komutlar desteklenir:
+- Yapar: Skill metadata'sini, `SKILL.md` icerigini, prompt layer kompozisyonunu, validation ve preview'i yonetir
+- Yapmaz: Bir skill'i tum uygulamada global olarak aktif etmez. Her flow kendi skill secimini ayri yapar
+- Sonuc: Skill Studio editorudur; runtime aktivasyon chat/rewrite/batch tarafinda ayrica yapilir
+
+Prompt katmanlarinin ustune artik diskten yuklenen bir **skill runtime** katmani eklenir. Her skill `skills/<skill-slug>/` altinda yasar ve iki dosyadan olusur:
+
+- `meta.json` - metadata, `allowed_tools`, `applies_to`, `prompt_layers`, `priority`, `status`
+- `SKILL.md` - insan okunur talimatlar, ornekler ve ek rehber
+
+Sistem acilisinda varsayilan skill'ler otomatik olarak seed edilir:
+
+- `category-audit`: Urunun kategori uyumunu, arama niyetini ve alan bazli SEO bosluklarini inceler. `chat` ve `rewrite` icin kullanilir
+- `brand-voice-rewrite`: Marka tonunu daha kontrollu, sakin ve tutarli hale getiren rewrite lens'i saglar. `chat`, `rewrite` ve `batch` icin kullanilir
+- `launch-readiness`: Yayin oncesi checklist gibi davranir; eksik alanlari ve dusuk skorlu bolgeleri one cikarir. `chat` ve `rewrite` icin kullanilir
+
+Bir skill chat oturumunda aktif edildiginde iki sey olur:
+
+1. Skill'in prompt katmanlari mevcut chat system prompt'una eklenir
+2. Skill'in `allowed_tools` listesi gercek tool yuzeyini daraltir
+
+Bu sayede skill sadece ek talimat degil, kontrollu bir calisma modu haline gelir. Chat icinde hizli kontrol icin su komutlar desteklenir:
 
 ```text
 /skill
@@ -868,13 +898,13 @@ Bu sayede skill sadece ek talimat değil, kontrollü bir çalışma modu haline 
 /skill clear
 ```
 
-Frontend'deki **Skill Studio** ekranı skill metadata'sını, prompt layer kompozisyonunu, validation uyarılarını ve composed prompt preview'ını tek yerden yönetir.
+Frontend'deki **Skill Studio** ekrani skill metadata'sini, prompt layer kompozisyonunu, validation uyarilarini ve composed prompt preview'ini tek yerden yonetir.
 
 <p align="center">
-  <img src="./assets/skillStudio.png" alt="Prompt Studio ekranı" width="900" />
+  <img src="./assets/skillStudio.png" alt="Skill Studio ekrani" width="900" />
 </p>
 
-<p align="center"><i>Skill studio ile mevcut skiller düzenlenebilir.</i></p>
+<p align="center"><i>Skill studio ile mevcut skiller duzenlenebilir.</i></p>
 ---
 
 ## Teknoloji Yığını
