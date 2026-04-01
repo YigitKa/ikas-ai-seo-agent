@@ -126,13 +126,19 @@ async def ws_chat(ws: WebSocket) -> None:
     await ws.send_json(_build_mcp_status_payload(manager))
     await ws.send_json(_build_skill_status_payload(manager))
 
-    # Auto-initialize MCP if token is configured
+    # Auto-initialize MCP if token is configured — retry with backoff on 429
     if manager.chat_has_mcp and not manager.chat_mcp_initialized:
-        try:
-            success, msg = await manager.initialize_mcp()
-            await send_json(_build_mcp_status_payload(manager, message_override=msg))
-        except Exception as e:
-            await send_json(_build_mcp_status_payload(manager, message_override=str(e)))
+        for _attempt in range(3):
+            try:
+                success, msg = await manager.initialize_mcp()
+                await send_json(_build_mcp_status_payload(manager, message_override=msg))
+                break
+            except Exception as e:
+                if _attempt < 2 and "429" in str(e):
+                    await asyncio.sleep(2 ** (_attempt + 1))
+                    continue
+                await send_json(_build_mcp_status_payload(manager, message_override=str(e)))
+                break
 
     try:
         receive_task = asyncio.create_task(ws.receive_text())

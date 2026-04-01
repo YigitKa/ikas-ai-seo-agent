@@ -37,25 +37,10 @@ interface UseChatWebSocketDeps {
 }
 
 export function useChatWebSocket(deps: UseChatWebSocketDeps) {
-  const {
-    productContextRef,
-    pendingSinceRef,
-    startPendingRequest,
-    finishPendingRequest,
-    incrementChunkCount,
-    setMcpState,
-    setPendingSuggestion,
-    setActiveSkill,
-    setMessages,
-    appendAssistantChunk,
-    appendThinkingChunk,
-    finalizeAssistantMessage,
-    clearActiveAutoIntro,
-    clearAutoIntro,
-    sendHiddenAutoIntro,
-    resetToContextIntro,
-    onProductUpdated,
-  } = deps;
+  // Keep all deps in a ref so that WS event handlers always invoke the latest
+  // versions without requiring connect() to change identity.
+  const latestRef = useRef(deps);
+  latestRef.current = deps;
 
   const [isReconnecting, setIsReconnecting] = useState(false);
 
@@ -94,7 +79,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // WebSocket connect
+  // WebSocket connect — stable identity (reads callbacks from latestRef)
   // ---------------------------------------------------------------------------
 
   const connect = useCallback(() => {
@@ -115,7 +100,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
       reconnectAttemptsRef.current = 0;
       setIsReconnecting(false);
 
-      const productId = productContextRef.current?.id;
+      const productId = latestRef.current.productContextRef.current?.id;
       if (productId) {
         ws.send(JSON.stringify({ action: 'set_context', product_id: productId }));
       }
@@ -125,43 +110,44 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
     };
 
     ws.onmessage = (event) => {
+      const h = latestRef.current;
       const data: ChatWsMessage = JSON.parse(event.data);
       if (data.type === 'chunk' || data.type === 'thinking_chunk') {
-        incrementChunkCount();
+        h.incrementChunkCount();
       }
 
       switch (data.type) {
         case 'chunk':
-          appendAssistantChunk(data.content || '');
+          h.appendAssistantChunk(data.content || '');
           break;
 
         case 'thinking_chunk':
-          appendThinkingChunk(data.content || '');
+          h.appendThinkingChunk(data.content || '');
           break;
 
         case 'response':
         case 'response_done': {
-          clearActiveAutoIntro();
-          finalizeAssistantMessage(data);
-          if ((data as unknown as Record<string, unknown>).product_updated && onProductUpdated) {
-            onProductUpdated();
+          h.clearActiveAutoIntro();
+          h.finalizeAssistantMessage(data);
+          if ((data as unknown as Record<string, unknown>).product_updated && h.onProductUpdated) {
+            h.onProductUpdated();
           }
           break;
         }
 
         case 'error':
-          finishPendingRequest();
-          clearActiveAutoIntro();
-          setMessages((prev) => [
+          h.finishPendingRequest();
+          h.clearActiveAutoIntro();
+          h.setMessages((prev) => [
             ...prev,
             { role: 'system', content: data.content || data.message || 'Hata' },
           ]);
           break;
 
         case 'cancelled':
-          finishPendingRequest();
-          clearActiveAutoIntro();
-          setMessages((prev) => [
+          h.finishPendingRequest();
+          h.clearActiveAutoIntro();
+          h.setMessages((prev) => [
             ...prev,
             { role: 'system', content: data.message || 'Istek durduruldu.' },
           ]);
@@ -171,7 +157,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
           break;
 
         case 'mcp_status':
-          setMcpState({
+          h.setMcpState({
             hasToken: data.has_token ?? false,
             initialized: data.initialized ?? false,
             toolCount: data.tool_count ?? 0,
@@ -181,26 +167,26 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
           break;
 
         case 'skill_status':
-          setActiveSkill(data.active_skill ?? null);
+          h.setActiveSkill(data.active_skill ?? null);
           if (data.active_skill?.slug) {
             preferredSkillSlugRef.current = data.active_skill.slug;
           }
           break;
 
         case 'context_set':
-          setPendingSuggestion(data.pending_suggestion ?? null);
+          h.setPendingSuggestion(data.pending_suggestion ?? null);
           if (data.product_id) {
-            sendHiddenAutoIntro(data.product_id);
+            h.sendHiddenAutoIntro(data.product_id);
           }
           break;
 
         case 'cleared':
-          finishPendingRequest();
-          clearActiveAutoIntro();
+          h.finishPendingRequest();
+          h.clearActiveAutoIntro();
           // On product-switch clears the history is restored from localStorage
           // by useChat's switch effect, so we must not wipe it here.
           if (clearReasonRef.current !== 'switch') {
-            resetToContextIntro();
+            h.resetToContextIntro();
           }
           clearReasonRef.current = 'clear';
           break;
@@ -209,31 +195,14 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
 
     ws.onclose = () => {
       wsRef.current = null;
-      finishPendingRequest();
-      clearAutoIntro();
+      latestRef.current.finishPendingRequest();
+      latestRef.current.clearAutoIntro();
 
       if (!intentionalDisconnectRef.current) {
         scheduleReconnect();
       }
     };
-  }, [
-    appendAssistantChunk,
-    appendThinkingChunk,
-    clearActiveAutoIntro,
-    clearAutoIntro,
-    finalizeAssistantMessage,
-    finishPendingRequest,
-    incrementChunkCount,
-    productContextRef,
-    onProductUpdated,
-    resetToContextIntro,
-    scheduleReconnect,
-    sendHiddenAutoIntro,
-    setMessages,
-    setMcpState,
-    setPendingSuggestion,
-    setActiveSkill,
-  ]);
+  }, [scheduleReconnect]);
 
   // Keep the forward-ref up to date after every render so scheduleReconnect
   // always calls the latest version of connect.
@@ -252,7 +221,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
 
   const sendMessage = useCallback(
     (message: string, options?: { hidden?: boolean }) => {
-      const productId = productContextRef.current?.id;
+      const productId = latestRef.current.productContextRef.current?.id;
       if (!productId) return;
 
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -262,15 +231,15 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
       }
 
       if (!options?.hidden) {
-        setMessages((prev) => [...prev, { role: 'user', content: message }]);
+        latestRef.current.setMessages((prev) => [...prev, { role: 'user', content: message }]);
       }
       lastSentPayloadRef.current = { message, productId, hidden: !!options?.hidden };
-      startPendingRequest();
+      latestRef.current.startPendingRequest();
       wsRef.current.send(
         JSON.stringify({ action: 'message', message, product_id: productId }),
       );
     },
-    [connect, startPendingRequest, productContextRef, setMessages],
+    [connect],
   );
 
   const retryLastMessage = useCallback(() => {
@@ -279,35 +248,35 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
     // Remove the failed assistant message (last message if it's from assistant)
-    setMessages((prev) => {
+    latestRef.current.setMessages((prev) => {
       if (prev.length > 0 && prev[prev.length - 1].role === 'assistant') {
         return prev.slice(0, -1);
       }
       return prev;
     });
 
-    startPendingRequest();
+    latestRef.current.startPendingRequest();
     wsRef.current.send(
       JSON.stringify({ action: 'message', message: payload.message, product_id: payload.productId }),
     );
-  }, [startPendingRequest, setMessages]);
+  }, []);
 
   const clearHistory = useCallback(() => {
-    clearAutoIntro();
+    latestRef.current.clearAutoIntro();
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       clearReasonRef.current = 'clear';
       wsRef.current.send(JSON.stringify({ action: 'clear' }));
       return;
     }
-    resetToContextIntro();
-  }, [clearAutoIntro, resetToContextIntro]);
+    latestRef.current.resetToContextIntro();
+  }, []);
 
   const cancelMessage = useCallback(() => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN || pendingSinceRef.current === null) {
+    if (wsRef.current?.readyState !== WebSocket.OPEN || latestRef.current.pendingSinceRef.current === null) {
       return;
     }
     wsRef.current.send(JSON.stringify({ action: 'cancel' }));
-  }, [pendingSinceRef]);
+  }, []);
 
   const syncPreferredSkillSlug = useCallback((skillSlug: string | null) => {
     preferredSkillSlugRef.current = skillSlug?.trim() ? skillSlug.trim() : null;
@@ -319,7 +288,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
       preferredSkillSlugRef.current = normalized || null;
 
       if (!normalized) {
-        setActiveSkill(null);
+        latestRef.current.setActiveSkill(null);
       }
 
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -334,12 +303,12 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
 
       wsRef.current.send(JSON.stringify({ action: 'set_skill', skill_slug: normalized }));
     },
-    [connect, setActiveSkill],
+    [connect],
   );
 
   const clearSelectedSkill = useCallback(() => {
     preferredSkillSlugRef.current = null;
-    setActiveSkill(null);
+    latestRef.current.setActiveSkill(null);
 
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       connect();
@@ -348,7 +317,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
     }
 
     wsRef.current.send(JSON.stringify({ action: 'clear_skill' }));
-  }, [connect, setActiveSkill]);
+  }, [connect]);
 
   const disconnect = useCallback(() => {
     intentionalDisconnectRef.current = true;

@@ -299,7 +299,7 @@ def _extract_chat_completion_content(data: Any) -> str:
         return ""
 
     content = message.get("content")
-    if isinstance(content, str):
+    if isinstance(content, str) and content.strip():
         return content.strip()
     if isinstance(content, list):
         parts: list[str] = []
@@ -309,7 +309,15 @@ def _extract_chat_completion_content(data: Any) -> str:
             text = item.get("text")
             if isinstance(text, str):
                 parts.append(text)
-        return "".join(parts).strip()
+        joined = "".join(parts).strip()
+        if joined:
+            return joined
+
+    # Thinking models (Qwen, DeepSeek) may place the answer in reasoning_content
+    # when content is empty.
+    reasoning = message.get("reasoning_content")
+    if isinstance(reasoning, str) and reasoning.strip():
+        return reasoning.strip()
     return ""
 
 
@@ -350,6 +358,13 @@ def _parse_agent_type(content: str) -> str | None:
     normalized = agent_type.strip().lower()
     if normalized in {"seo", "operator", "general"}:
         return normalized
+
+    # Fallback: scan for agent type keywords anywhere in the response (for
+    # smaller models that return explanatory text instead of pure JSON).
+    lower_text = re.sub(r"<think>.*?</think>", "", (content or ""), flags=re.DOTALL).lower()
+    for keyword in ("operator", "seo", "general"):
+        if re.search(rf"\b{keyword}\b", lower_text):
+            return keyword
     return None
 
 
@@ -417,8 +432,8 @@ def _build_product_context(
 
     if product:
         desc_source = sanitize_html_for_prompt(product.description)
-        desc_preview = desc_source[:200]
-        if len(desc_source) > 200:
+        desc_preview = desc_source[:2000]
+        if len(desc_source) > 2000:
             desc_preview += "..."
         product_ctx = _get_product_context_template().format(
             name=product.name,

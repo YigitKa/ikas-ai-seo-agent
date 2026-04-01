@@ -183,7 +183,7 @@ class ChatServiceStreamingMessagesMixin:
                     f"Kategori: {p.category or '-'}",
                     f"Meta Title: {p.meta_title or '-'}",
                     f"Meta Description: {p.meta_description or '-'}",
-                    f"Aciklama (ozet): {(p.description or '')[:150]}",
+                    f"Aciklama: {(p.description or '')[:2000]}",
                 ]
 
             # Detect which field the user selected from the message content
