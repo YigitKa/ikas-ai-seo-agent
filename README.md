@@ -838,6 +838,12 @@ graph TB
 
 ### Skill Runtime ve Skill Studio
 
+Flow ozeti:
+
+- `Chat`: Dashboard icindeki chat header'inda gorunur bir skill secici vardir. Secilen skill oturum bazinda aktif olur, chat system prompt'una eklenir ve `allowed_tools` ile chat tool yuzeyi daraltilir.
+- `Rewrite`: `POST /api/suggestions/generate/{id}`, `POST /api/suggestions/generate/{id}/stream` ve `POST /api/suggestions/generate-field/{id}` cagrilari `skill_slug` alir. Skill prompt'u rewrite system prompt'una eklenir; agentic rewrite aciksa tool seti de ayni skill ile kisitlanir.
+- `Batch`: Batch Operations ekranindaki konfigurasyonda `skill_slug` secilir. Secilen skill job config'ine yazilir ve tum batch boyunca field rewrite/translation isteklerine enjekte edilir.
+
 Prompt katmanlarının üstüne artık diskten yüklenen bir **skill runtime** katmanı eklenir. Her skill `skills/<skill-slug>/` altında yaşar ve iki dosyadan oluşur:
 
 - `meta.json` — metadata, `allowed_tools`, `applies_to`, `prompt_layers`, `priority`, `status`
@@ -1014,8 +1020,8 @@ ikas-ai-seo-agent/
 ### Öneriler
 | Metod | Endpoint | Açıklama |
 |---|---|---|
-| `POST` | `/api/suggestions/generate/{id}` | AI önerisi oluştur (agentic) |
-| `POST` | `/api/suggestions/generate/{id}/stream` | SSE streaming ile oluştur |
+| `POST` | `/api/suggestions/generate/{id}` | AI onerisi olustur (agentic, opsiyonel `?skill_slug=`) |
+| `POST` | `/api/suggestions/generate/{id}/stream` | SSE streaming ile olustur (opsiyonel `?skill_slug=`) |
 | `PATCH` | `/api/suggestions/{id}/approve` | Öneriyi onayla |
 | `POST` | `/api/suggestions/apply` | Onaylananları ikas'a uygula (permission guard) |
 
@@ -1024,7 +1030,7 @@ ikas-ai-seo-agent/
 |---|---|---|
 | `GET` | `/api/batch/stats` | Batch dashboard istatistikleri |
 | `GET` | `/api/batch/jobs` | Tüm batch işleri listele |
-| `POST` | `/api/batch/jobs` | Yeni batch iş oluştur ve analizi başlat |
+| `POST` | `/api/batch/jobs` | Yeni batch is olustur ve analizi baslat (`config.skill_slug` destekler) |
 | `GET` | `/api/batch/jobs/{id}` | Batch iş detayı (öğelerle birlikte) |
 | `GET` | `/api/batch/jobs/{id}/stream` | SSE ile gerçek zamanlı ilerleme |
 | `POST` | `/api/batch/jobs/{id}/apply` | Onaylı önerileri ikas'a uygula (permission guard) |
