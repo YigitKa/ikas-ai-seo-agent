@@ -165,9 +165,22 @@ export interface SkillValidation {
   resolved_prompt_layers: SkillResolvedPromptLayer[];
 }
 
+export interface SkillPreviewDebug {
+  applies_to: string;
+  tool_scope_mode: string;
+  tool_scope_note: string;
+  prompt_char_count: number;
+  instruction_word_count: number;
+  requested_tools: string[];
+  resolved_tools: string[];
+  flow_tools: string[];
+  resolved_layer_count: number;
+}
+
 export interface SkillPreview {
   validation: SkillValidation;
   composed_prompt: string;
+  debug: SkillPreviewDebug;
 }
 
 export interface ActiveSkillSummary {
@@ -176,8 +189,10 @@ export interface ActiveSkillSummary {
   description: string;
   applies_to: string[];
   allowed_tools: string[];
+  resolved_tools?: string[];
   status: string;
   source: string;
+  selection_mode?: string;
 }
 
 export interface RewriteResponse {

@@ -20,6 +20,7 @@ from api.schemas import (
     PromptTemplatesUpdateRequest,
     SkillImportRequest,
     SkillPreviewResponse,
+    SkillPreviewDebugResponse,
     SkillResolvedPromptLayerResponse,
     SkillResponse,
     SkillsResponse,
@@ -264,6 +265,7 @@ async def preview_skill(
             ],
         ),
         composed_prompt=str(preview.get("composed_prompt") or ""),
+        debug=SkillPreviewDebugResponse(**dict(preview.get("debug") or {})),
     )
 
 

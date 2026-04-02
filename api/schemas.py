@@ -255,9 +255,22 @@ class SkillValidationResponse(BaseModel):
     resolved_prompt_layers: list[SkillResolvedPromptLayerResponse] = Field(default_factory=list)
 
 
+class SkillPreviewDebugResponse(BaseModel):
+    applies_to: str = "chat"
+    tool_scope_mode: str = "prompt_and_tools"
+    tool_scope_note: str = ""
+    prompt_char_count: int = 0
+    instruction_word_count: int = 0
+    requested_tools: list[str] = Field(default_factory=list)
+    resolved_tools: list[str] = Field(default_factory=list)
+    flow_tools: list[str] = Field(default_factory=list)
+    resolved_layer_count: int = 0
+
+
 class SkillPreviewResponse(BaseModel):
     validation: SkillValidationResponse
     composed_prompt: str = ""
+    debug: SkillPreviewDebugResponse = Field(default_factory=SkillPreviewDebugResponse)
 
 
 class SkillImportRequest(BaseModel):

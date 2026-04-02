@@ -27,6 +27,7 @@ interface Props {
   product?: Product | null;
   score?: SeoScore | null;
   productDetailUrl?: string;
+  requestedSkillSlug?: string;
   /** Called whenever the chat loading state changes (e.g. for a parent switch-guard). */
   onLoadingChange?: (isLoading: boolean) => void;
 }
@@ -47,6 +48,7 @@ export default function ChatPanel({
   product,
   score,
   productDetailUrl,
+  requestedSkillSlug,
   onLoadingChange,
 }: Props) {
   const queryClient = useQueryClient();
@@ -105,11 +107,25 @@ export default function ChatPanel({
   const [diffModalSuggestion, setDiffModalSuggestion] = useState<SeoSuggestion | null>(null);
   const [diffModalAction, setDiffModalAction] = useState<string>("");
   const prevPendingSuggestionRef = useRef<SeoSuggestion | null>(null);
+  const requestedSkillRef = useRef<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const promptParamOptions = buildPromptParamOptions(product, score);
 
   // Connect/disconnect WebSocket on mount
   useEffect(() => { connect(); return () => disconnect(); }, [connect, disconnect]);
+
+  useEffect(() => {
+    const normalized = requestedSkillSlug?.trim() || '';
+    if (!normalized) {
+      requestedSkillRef.current = '';
+      return;
+    }
+    if (requestedSkillRef.current === normalized) {
+      return;
+    }
+    requestedSkillRef.current = normalized;
+    setActiveSkill(normalized);
+  }, [requestedSkillSlug, setActiveSkill]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {

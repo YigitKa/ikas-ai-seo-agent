@@ -72,7 +72,13 @@ from core.clients.ikas import IkasClient
 from core.models import AppConfig, ChatMessage, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.clients.mcp import IkasMCPClient, MCPError
 from core.permissions import PermissionRule, create_permission_engine
-from core.skills import SkillDefinition, build_skill_prompt, get_skill_definition, list_skill_definitions
+from core.skills import (
+    SkillDefinition,
+    build_skill_prompt,
+    get_skill_definition,
+    list_skill_definitions,
+    resolve_skill_tool_scope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -168,14 +174,17 @@ class ChatServiceStateMixin:
             skill = self.get_active_skill()
             if skill is None:
                 return None
+            resolved_tools = sorted(resolve_skill_tool_scope(skill, applies_to="chat") or [])
             return {
                 "slug": skill.slug,
                 "name": skill.name,
                 "description": skill.description,
                 "applies_to": list(skill.applies_to),
                 "allowed_tools": list(skill.allowed_tools),
+                "resolved_tools": resolved_tools,
                 "status": skill.status,
                 "source": skill.source,
+                "selection_mode": "explicit",
             }
 
         def set_active_skill(self, slug: str) -> SkillDefinition:
@@ -185,6 +194,12 @@ class ChatServiceStateMixin:
             if "chat" not in skill.applies_to:
                 raise ValueError(f"Skill chat akisi icin uygun degil: {skill.slug}")
             self._active_skill_slug = skill.slug
+            resolved_tools = sorted(resolve_skill_tool_scope(skill, applies_to="chat") or [])
+            logger.info(
+                "Chat skill activated slug=%s resolved_tools=%s",
+                skill.slug,
+                ",".join(resolved_tools) if resolved_tools else "*",
+            )
             return skill
 
         def clear_active_skill(self) -> None:
@@ -203,7 +218,7 @@ class ChatServiceStateMixin:
             skill = self.get_active_skill()
             if skill is None or skill.status != "active" or not skill.allowed_tools:
                 return None
-            return set(skill.allowed_tools)
+            return resolve_skill_tool_scope(skill, applies_to="chat")
 
         @staticmethod
         def _format_skill_status_message(

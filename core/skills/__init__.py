@@ -7,6 +7,7 @@ from .store import (
     delete_skill_definition,
     ensure_skill_files,
     export_skill_definition,
+    get_flow_tool_names,
     get_available_tool_names,
     get_skill_definition,
     get_skills_dir,
@@ -14,6 +15,7 @@ from .store import (
     list_skill_definitions,
     preview_skill_definition,
     reset_skill_definition,
+    resolve_skill_tool_scope,
     save_skill_definition,
     validate_skill_definition,
 )
@@ -27,6 +29,7 @@ __all__ = [
     "delete_skill_definition",
     "ensure_skill_files",
     "export_skill_definition",
+    "get_flow_tool_names",
     "get_available_tool_names",
     "get_skill_definition",
     "get_skills_dir",
@@ -34,6 +37,7 @@ __all__ = [
     "list_skill_definitions",
     "preview_skill_definition",
     "reset_skill_definition",
+    "resolve_skill_tool_scope",
     "save_skill_definition",
     "validate_skill_definition",
 ]

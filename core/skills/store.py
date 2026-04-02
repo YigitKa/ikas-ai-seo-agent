@@ -29,6 +29,8 @@ _VALID_APPLIES_TO = frozenset({"chat", "rewrite", "batch"})
 _VALID_STATUSES = frozenset({"active", "draft", "disabled"})
 _SKILL_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
 _FRONTMATTER_LINE_RE = re.compile(r"^(?P<key>[a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(?P<value>.*)$")
+_ALLOWED_SKILL_FILE_NAMES = frozenset({_META_FILE, _MARKDOWN_FILE})
+_ALLOWED_SKILL_DIR_NAMES = frozenset({"prompts", "assets", "examples"})
 
 
 class SkillPromptLayer(BaseModel):
@@ -281,6 +283,37 @@ def _skill_dir(slug: str) -> Path:
     return get_skills_dir() / normalized
 
 
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def _guard_skill_dir(skill_dir: Path) -> None:
+    skills_root = get_skills_dir().resolve(strict=False)
+    if skill_dir.is_symlink():
+        raise ValueError(f"Skill klasoru symlink olamaz: {skill_dir.name}")
+
+    resolved_skill_dir = skill_dir.resolve(strict=False)
+    if not _is_relative_to(resolved_skill_dir, skills_root):
+        raise ValueError(f"Skill klasoru skills root disina cikiyor: {skill_dir.name}")
+
+    for entry in skill_dir.iterdir():
+        if entry.is_symlink():
+            raise ValueError(f"Skill icinde symlink desteklenmiyor: {entry.name}")
+        if entry.is_file():
+            if entry.name not in _ALLOWED_SKILL_FILE_NAMES:
+                logger.warning("Beklenmeyen skill dosyasi yok sayildi: %s", entry)
+            continue
+        if entry.is_dir():
+            if entry.name not in _ALLOWED_SKILL_DIR_NAMES:
+                logger.warning("Beklenmeyen skill klasoru yok sayildi: %s", entry)
+            continue
+        logger.warning("Beklenmeyen skill girdisi yok sayildi: %s", entry)
+
+
 def _compute_content_hash(meta_text: str, markdown_text: str) -> str:
     digest = hashlib.sha256()
     digest.update(meta_text.encode("utf-8"))
@@ -305,6 +338,30 @@ def get_available_tool_names() -> list[str]:
         *create_batch_toolkit().tool_names,
     }
     return sorted(names)
+
+
+def get_flow_tool_names(applies_to: str) -> list[str]:
+    target = (applies_to or "").strip().lower()
+    if target == "chat":
+        names = {
+            APPLY_SEO_TO_IKAS_TOOL_NAME,
+            SAVE_SEO_SUGGESTION_TOOL_NAME,
+            *create_chat_toolkit().tool_names,
+        }
+        return sorted(names)
+    if target == "rewrite":
+        return sorted(create_seo_rewrite_toolkit().tool_names)
+    if target == "batch":
+        return sorted(create_batch_toolkit().tool_names)
+    return []
+
+
+def resolve_skill_tool_scope(skill: SkillDefinition, *, applies_to: str) -> set[str] | None:
+    requested_tool_names = {name for name in skill.allowed_tools if name}
+    if not requested_tool_names:
+        return None
+    flow_tool_names = set(get_flow_tool_names(applies_to))
+    return requested_tool_names & flow_tool_names
 
 
 def get_skills_dir() -> Path:
@@ -396,6 +453,7 @@ def _load_skill_from_disk(slug: str) -> SkillDefinition:
         raise KeyError(f"Skill bulunamadi: {slug}")
     if not markdown_path.exists() and not meta_path.exists():
         raise KeyError(f"Skill dosyalari eksik: {slug}")
+    _guard_skill_dir(skill_dir)
 
     meta_mtime_ns = meta_path.stat().st_mtime_ns if meta_path.exists() else 0
     markdown_mtime_ns = markdown_path.stat().st_mtime_ns if markdown_path.exists() else 0
@@ -434,6 +492,9 @@ def list_skill_definitions() -> list[SkillDefinition]:
     ensure_skill_files()
     skills: list[SkillDefinition] = []
     for child in sorted(SKILLS_DIR.iterdir(), key=lambda item: item.name.lower()):
+        if child.is_symlink():
+            logger.warning("Skill klasoru symlink oldugu icin atlandi: %s", child)
+            continue
         if not child.is_dir():
             continue
         if not _SKILL_SLUG_RE.fullmatch(child.name):
@@ -546,9 +607,28 @@ def build_skill_prompt(
 
 def preview_skill_definition(skill: SkillDefinition, *, applies_to: str = "chat") -> dict[str, Any]:
     validation = validate_skill_definition(skill)
+    composed_prompt = build_skill_prompt(skill, applies_to=applies_to, include_warnings=True)
+    resolved_tool_scope = sorted(resolve_skill_tool_scope(skill, applies_to=applies_to) or [])
+    flow_tool_names = get_flow_tool_names(applies_to)
+    tool_scope_mode = "prompt_only" if applies_to == "batch" else "prompt_and_tools"
     return {
         "validation": validation.model_dump(mode="json"),
-        "composed_prompt": build_skill_prompt(skill, applies_to=applies_to, include_warnings=True),
+        "composed_prompt": composed_prompt,
+        "debug": {
+            "applies_to": applies_to,
+            "tool_scope_mode": tool_scope_mode,
+            "tool_scope_note": (
+                "Batch akisi field-by-field prompt enjeksiyonu kullanir; tool kisiti su an runtime'da uygulanmaz."
+                if applies_to == "batch"
+                else "Skill tool kisiti bu flow'un gercek tool seti ile kesistirilir."
+            ),
+            "prompt_char_count": len(composed_prompt),
+            "instruction_word_count": len(skill.instructions_markdown.split()),
+            "requested_tools": list(skill.allowed_tools),
+            "resolved_tools": resolved_tool_scope,
+            "flow_tools": flow_tool_names,
+            "resolved_layer_count": len(validation.resolved_prompt_layers),
+        },
     }
 
 
@@ -559,6 +639,7 @@ def save_skill_definition(skill: SkillDefinition) -> SkillDefinition:
 
     skill_dir = _skill_dir(skill.slug)
     skill_dir.mkdir(parents=True, exist_ok=True)
+    _guard_skill_dir(skill_dir)
     meta_path = skill_dir / _META_FILE
     markdown_path = skill_dir / _MARKDOWN_FILE
     meta_path.write_text(
@@ -577,6 +658,7 @@ def delete_skill_definition(slug: str) -> None:
     skill_dir = _skill_dir(normalized)
     if not skill_dir.exists():
         raise KeyError(f"Skill bulunamadi: {normalized}")
+    _guard_skill_dir(skill_dir)
     shutil.rmtree(skill_dir)
     _skill_cache.pop(normalized, None)
 
@@ -592,6 +674,7 @@ def reset_skill_definition(slug: str) -> SkillDefinition:
 
     payload = DEFAULT_SKILLS[normalized]
     skill_dir.mkdir(parents=True, exist_ok=True)
+    _guard_skill_dir(skill_dir)
     (skill_dir / _META_FILE).write_text(payload["meta"], encoding="utf-8")
     (skill_dir / _MARKDOWN_FILE).write_text(payload["markdown"], encoding="utf-8")
     _skill_cache.pop(normalized, None)

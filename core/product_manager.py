@@ -19,7 +19,7 @@ from core.clients.ikas import IkasClient
 from core.models import AgentEvent, AppConfig, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.utils.presentation import format_prompt_display, get_en_description_value, get_tr_description_value
 from core.prompt_store import get_rewrite_agent_system_prompt, get_batch_agent_system_prompt
-from core.skills import SkillDefinition, build_skill_prompt, get_skill_definition
+from core.skills import SkillDefinition, build_skill_prompt, get_skill_definition, resolve_skill_tool_scope
 from core.permissions import (
     PermissionDecisionError,
     PermissionOperation,
@@ -223,7 +223,13 @@ class ProductManager:
             raise ValueError(f"Skill {applies_to} akisi icin uygun degil: {skill.slug}")
 
         prompt = build_skill_prompt(skill, applies_to=applies_to)
-        allowed_tools = set(skill.allowed_tools) if skill.allowed_tools else None
+        allowed_tools = resolve_skill_tool_scope(skill, applies_to=applies_to)
+        logger.info(
+            "Runtime skill resolved flow=%s slug=%s resolved_tools=%s",
+            applies_to,
+            skill.slug,
+            ",".join(sorted(allowed_tools)) if allowed_tools else "*",
+        )
         return skill, prompt, allowed_tools
 
     def validate_skill_for_flow(

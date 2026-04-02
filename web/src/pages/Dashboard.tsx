@@ -1,5 +1,6 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
   fetchProducts,
   getProduct,
@@ -18,6 +19,7 @@ import { EnterpriseButton, EnterpriseSurface } from '../shared/ui/EnterprisePrim
 export default function Dashboard() {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<FilterTab>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -74,6 +76,7 @@ export default function Dashboard() {
 
   const selectedProduct = detailQ.data?.product;
   const selectedScore = detailQ.data?.score ?? null;
+  const requestedSkillSlug = (searchParams.get('skill') || '').trim();
   const productDetailUrl =
     selectedProduct && settingsQ.data?.store_name
       ? buildIkasProductUrl(
@@ -83,6 +86,13 @@ export default function Dashboard() {
           selectedProduct.name,
         )
       : '';
+
+  useEffect(() => {
+    if (!requestedSkillSlug) return;
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('skill');
+    setSearchParams(nextParams, { replace: true });
+  }, [requestedSkillSlug, searchParams, setSearchParams]);
 
   // ── Sidebar selection with switch guard ───────────────────────────────────
   const handleSelectProduct = (id: string) => {
@@ -188,62 +198,62 @@ export default function Dashboard() {
         />
 
         <main className="flex flex-1 overflow-hidden">
-          {selectedId && selectedProduct ? (
-            <section className="min-w-0 flex flex-1 flex-col overflow-hidden p-6">
-              {/* "Analiz bitince gec" banner */}
-              {bannerProductName && (
-                <EnterpriseSurface
-                  className="mb-3 flex items-center gap-2 px-4 py-2.5 text-sm"
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(99,102,241,0.22), rgba(59,130,246,0.14))',
-                    border: '1px solid rgba(99,102,241,0.38)',
-                    color: 'var(--color-primary-light)',
-                  }}
+          <section className="min-w-0 flex flex-1 flex-col overflow-hidden p-6">
+            {bannerProductName && (
+              <EnterpriseSurface
+                className="mb-3 flex items-center gap-2 px-4 py-2.5 text-sm"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(99,102,241,0.22), rgba(59,130,246,0.14))',
+                  border: '1px solid rgba(99,102,241,0.38)',
+                  color: 'var(--color-primary-light)',
+                }}
+              >
+                <svg
+                  className="h-4 w-4 flex-shrink-0 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
                 >
-                  <svg
-                    className="h-4 w-4 flex-shrink-0 animate-spin"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-                  <span>
-                    Analiz tamamlaninca <strong>{bannerProductName}</strong> urününe otomatik
-                    gecilecek.
-                  </span>
-                </EnterpriseSurface>
-              )}
-
-              <div className="min-h-0 flex flex-1 flex-col gap-5 overflow-hidden">
-                <div className="min-h-0 flex-1">
-                  <ChatPanel
-                    productId={selectedId}
-                    productName={selectedProduct.name}
-                    productCategory={selectedProduct.category}
-                    seoScore={selectedScore?.total_score ?? null}
-                    product={selectedProduct}
-                    score={selectedScore}
-                    productDetailUrl={productDetailUrl}
-                    onLoadingChange={handleLoadingChange}
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
                   />
-                </div>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                <span>
+                  Analiz tamamlaninca <strong>{bannerProductName}</strong> urününe otomatik
+                  gecilecek.
+                </span>
+              </EnterpriseSurface>
+            )}
+
+            {!selectedProduct && (
+              <DashboardEmptyState requestedSkillSlug={requestedSkillSlug || undefined} />
+            )}
+
+            <div className="min-h-0 flex flex-1 flex-col gap-5 overflow-hidden">
+              <div className="min-h-0 flex-1">
+                <ChatPanel
+                  productId={selectedId ?? undefined}
+                  productName={selectedProduct?.name}
+                  productCategory={selectedProduct?.category}
+                  seoScore={selectedScore?.total_score ?? null}
+                  product={selectedProduct ?? null}
+                  score={selectedScore}
+                  productDetailUrl={productDetailUrl}
+                  onLoadingChange={handleLoadingChange}
+                  requestedSkillSlug={requestedSkillSlug || undefined}
+                />
               </div>
-            </section>
-          ) : (
-            <DashboardEmptyState />
-          )}
+            </div>
+          </section>
         </main>
       </div>
 

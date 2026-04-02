@@ -290,6 +290,19 @@ def test_build_completion_messages_includes_active_skill_and_filters_tools(monke
     assert APPLY_SEO_TO_IKAS_TOOL_NAME not in tool_names
 
 
+def test_get_active_skill_payload_includes_resolved_tool_scope(monkeypatch, tmp_path):
+    _use_temp_skills(monkeypatch, tmp_path)
+    service = ChatService(_make_config())
+    service.set_active_skill("category-audit")
+
+    payload = service.get_active_skill_payload()
+
+    assert payload is not None
+    assert payload["selection_mode"] == "explicit"
+    assert "save_seo_suggestion" in payload["resolved_tools"]
+    assert "apply_seo_to_ikas" not in payload["resolved_tools"]
+
+
 def test_build_product_context_with_product():
     product = _make_product(name="Akilli Saat", price=599.99)
     ctx = _build_product_context(product, None)

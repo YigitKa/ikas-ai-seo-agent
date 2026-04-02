@@ -6,17 +6,19 @@
 
 Full-stack web uygulaması: **React/TypeScript** frontend, **FastAPI** backend, **async SQLite** depolama.
 
+<p align="center">
+  <img src="./assets/Dashboard.png" alt="ikas AI SEO Agent dashboard ekranı" width="1200" />
+</p>
+
+<p align="center"><i>Dashboard: ürün listesi, SEO/GEO/AEO skorları ve çalışan ajan durumu tek ekranda</i></p>
+
 ---
 
-## Problem
+## Problem → Çözüm
 
-E-ticarette SEO optimizasyonu tekrarlayan, pahalı ve giderek yetersiz kalıyor. Her ürün için iyi bir başlık, zengin açıklama, doğru meta etiketleri, çok dilli içerik ve — AI arama çağında — ChatGPT, Perplexity ve Google AI Overviews'un alıntılayabileceği yapılandırılmış bilgiler gerekiyor.
+E-ticarette SEO optimizasyonu tekrarlayan, pahalı ve giderek yetersiz kalıyor. Her ürün için iyi bir başlık, zengin açıklama, doğru meta etiketleri, çok dilli içerik ve — AI arama çağında — ChatGPT, Perplexity ve Google AI Overviews'un alıntılayabileceği yapılandırılmış bilgiler gerekiyor. Bunu yüzlerce ürün için manuel yapmak pratik değil; tek bir AI prompt'u ile yapmak ise kalite kontrolsüz, sıradan sonuçlar üretiyor.
 
-Bunu yüzlerce ürün için manuel yapmak pratik değil. Tek bir AI prompt'u ile yapmak ise ölçülebilir kalite kontrolü olmayan, sıradan sonuçlar üretiyor.
-
-## Çözüm
-
-Bu ajan sadece içerik üretmiyor — **düşünüyor, skorluyor, yeniden yazıyor, doğruluyor ve iterasyon yapıyor**. Tıpkı bir insan SEO uzmanının yapacağı gibi, ama tüm kataloğunuz genelinde.
+Bu ajan sadece içerik üretmiyor — **düşünüyor, skorluyor, yeniden yazıyor, doğruluyor ve iterasyon yapıyor**:
 
 ```mermaid
 graph TD
@@ -27,7 +29,7 @@ graph TD
     D -->|Hayır| F["🔄 Farklı strateji dene<br/><i>alan başına maks 2 deneme</i>"]
     F --> D
     E -->|Evet| C
-    E -->|Hayır| G["💾 Oneriyi kaydet"]
+    E -->|Hayır| G["💾 Öneriyi kaydet"]
 
     style A fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
     style B fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
@@ -44,11 +46,55 @@ Sonuç: ölçülebilir, doğrulanmış SEO iyileştirmeleri — "AI üretimi met
 
 ---
 
-## Temel Yetenekler
+## Hızlı Başlangıç
 
-### Otonom SEO Optimizasyonu
+### Gereksinimler
 
-AI tek seferlik istek/cevap yapmıyor. **Tool calling** ile otonom olarak skorla → yeniden yaz → doğrula → tekrarla döngüsü çalıştırıyor. Her yeniden yazım, kabul edilmeden önce skorlama rubriğine karşı kontrol ediliyor. İyileşme yoksa ajan farklı bir yaklaşım deniyor — alan başına 2, toplamda 8 iterasyona kadar.
+- Python 3.11+
+- Node.js 20+
+
+### Kurulum
+
+```bash
+git clone https://github.com/YigitKa/ikas-ai-seo-agent.git
+cd ikas-ai-seo-agent
+
+# Python
+python -m venv .venv
+source .venv/bin/activate    # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+# Frontend
+cd web && npm install && cd ..
+
+# Konfigürasyon
+cp .env.example .env
+# .env dosyasını ikas kimlik bilgileri ve AI provider anahtarıyla düzenleyin
+```
+
+### Çalıştırma
+
+```bash
+# Geliştirme (önerilen) — backend :8000 + Vite :5173
+python main.py dev
+
+# Production — frontend build eder, her şeyi :8000'den sunar
+python main.py
+```
+
+### Doğrulama
+
+```bash
+python -m pytest tests/ -v
+```
+
+---
+
+## Yetenekler
+
+### 🤖 Otonom SEO Optimizasyonu
+
+AI tek seferlik istek/cevap yapmıyor. **Tool calling** ile otonom bir döngü çalıştırıyor: skorla → yeniden yaz → doğrula → tekrarla. Her yeniden yazım kabul edilmeden önce rubriğe karşı kontrol ediliyor. İyileşme yoksa farklı bir yaklaşım deneniyor — alan başına 2, toplamda 8 iterasyona kadar.
 
 ```mermaid
 sequenceDiagram
@@ -67,17 +113,17 @@ sequenceDiagram
         AO->>LLM: Mesaj + Tool tanımları
         LLM-->>AO: tool_call: seo_score_product
         AO->>T: execute("seo_score_product")
-        T-->>AO: {ok: true, tool_name: "seo_score_product", data: {total_score: 42, issues: [...]}, meta: {...}}
+        T-->>AO: {ok: true, data: {total_score: 42, issues: [...]}}
         AO->>LLM: Tool sonucu inject et
 
         LLM-->>AO: tool_call: validate_rewrite
         AO->>T: execute("validate_rewrite")
-        T-->>AO: {ok: true, tool_name: "validate_rewrite", data: {original_score: 42, new_score: 68, improved: true}, meta: {...}}
+        T-->>AO: {ok: true, data: {original_score: 42, new_score: 68, improved: true}}
         AO->>LLM: Tool sonucu inject et
 
         LLM-->>AO: tool_call: save_suggestion
         AO->>T: execute("save_suggestion")
-        T-->>AO: {ok: true, tool_name: "save_suggestion", data: {success: true}, meta: {...}}
+        T-->>AO: {ok: true, data: {success: true}}
     end
 
     AO-->>PM: AgentResult
@@ -85,7 +131,17 @@ sequenceDiagram
     API-->>U: SSE stream ile gerçek zamanlı takip
 ```
 
-### 100 Puanlık SEO Skorlama Motoru
+Değişiklikler ikas'a uygulandıktan sonra sistem otomatik olarak ürünü tekrar çeker, yeniden skorlar ve eski/yeni skor farkını alan bazlı gösterir (ör: 📈 65/100 → 74/100, +9 puan).
+
+<p align="center">
+  <img src="./assets/batch1.png" alt="Karar ve uygulama masası ekranı" width="1100" />
+</p>
+
+<p align="center"><i>İnceleme masasında alan bazlı farklar görülür, öneriler tek tek veya toplu olarak onaylanabilir</i></p>
+
+---
+
+### 📊 100 Puanlık SEO Skorlama Motoru
 
 Ahrefs, Semrush, Yoast, Moz ve Screaming Frog'dan ilham alan kural tabanlı rubrik:
 
@@ -118,7 +174,121 @@ pie title SEO Skor Dağılımı (100 Puan)
 
 Son kategori — **AI Alıntılanabilirlik** — bu projeyi geleceğe taşıyan şey. İçeriğinizin AI arama motorları tarafından ne kadar iyi alıntılanabileceğini skorluyor.
 
-### GEO Site Denetimi
+---
+
+### 💬 Multi-Agent Chat
+
+Chat paneli tek bir chatbot değil — **üç uzman ajan** ve otomatik semantik yönlendirme:
+
+```mermaid
+graph TD
+    MSG["💬 Kullanıcı Mesajı"] --> ROUTE{"🧠 Semantik Yönlendirme<br/><i>LLM, temp=0.0, maks 20 token</i>"}
+
+    ROUTE -->|"stok, sipariş, fiyat"| OP["📦 Mağaza Operatörü<br/><i>Canlı mağaza verisi<br/>50+ MCP operasyonu</i>"]
+    ROUTE -->|"SEO, başlık, açıklama"| SEO["✍️ SEO Uzmanı<br/><i>Yeniden yazım, skorlama<br/>kaydet / uygula</i>"]
+    ROUTE -->|"diğer"| GEN["💡 Genel Asistan<br/><i>Ürün, SEO, envanter<br/>mağaza yönetimi</i>"]
+
+    OP --> TOOLS_OP["🔧 Registry + Toolkit + MCP"]
+    SEO --> TOOLS_SEO["🔧 Registry + Toolkit"]
+    GEN --> TOOLS_GEN["🔧 Registry + Toolkit"]
+
+    TOOLS_OP --> RESP["📨 Yapısal Butonlu Yanıt"]
+    TOOLS_SEO --> RESP
+    TOOLS_GEN --> RESP
+
+    style MSG fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style ROUTE fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style OP fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0
+    style SEO fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style GEN fill:#0f172a,stroke:#6366f1,color:#e2e8f0
+    style TOOLS_OP fill:#1e293b,stroke:#64748b,color:#e2e8f0
+    style TOOLS_SEO fill:#1e293b,stroke:#64748b,color:#e2e8f0
+    style TOOLS_GEN fill:#1e293b,stroke:#64748b,color:#e2e8f0
+    style RESP fill:#1e293b,stroke:#10b981,color:#e2e8f0
+```
+
+Her mesaj LLM tarafından semantik olarak sınıflandırılır — etiket veya komut gerekmez. Stok sorguladığınızda Operatör'e, başlık optimize etmek istediğinizde SEO Uzmanı'na yönlendirilirsiniz.
+
+**Ürünsüz chat modu** — Chat'i kullanmak için ürün seçmek zorunlu değil. Ürün seçmeden genel chat modunda başlayabilir, istediğiniz zaman bir ürün seçerek bağlamı zenginleştirebilirsiniz.
+
+**Yapısal seçenek butonları** — AI önerileri chat'te tıklanabilir butonlar olarak gösterilir. Typo, belirsizlik ve niyet ayrıştırma ihtiyacını ortadan kaldırır. `action` anahtarı olan butonlar `[[CHAT_ACTION:action_name]]` gizli mesajı gönderir — serbest metin belirsizliği olmadan deterministik çok adımlı iş akışları (kaydet → incele → uygula) sağlar.
+
+**Ürün başına chat geçmişi** — her ürünün sohbeti tarayıcının `localStorage` alanına ayrı kaydedilir. Farklı ürüne geçip döndüğünüzde kaldığınız yerden devam edersiniz. Son 50 mesaj saklanır. AI analizi sürerken başka ürüne tıklarsanız **ürün-geçiş koruma modali** açılır: analizi durdurup geç, bitmesini bekle veya iptal et.
+
+<p align="center">
+  <video src="./assets/ikasseo1.mp4" controls muted playsinline width="1100"></video>
+</p>
+
+<p align="center"><i>Chat kullanım videosu README önizlemesinde gömülü görünmezse <a href="./assets/ikasseo1.mp4">buradan açabilirsiniz</a></i></p>
+
+---
+
+### ⚡ Toplu SEO Optimizasyonu
+
+Yüzlerce ürünü tek tıklamayla optimize eden **5 aşamalı batch iş akışı**:
+
+```mermaid
+graph LR
+    S1["1. 🎯 Seç<br/><i>Skor eşiği, kategori<br/>stok durumu filtresi</i>"] --> S2["2. 🔍 Analiz<br/><i>AI paralel skorlama<br/>ve öneri üretimi</i>"]
+    S2 --> S3["3. 📋 İncele<br/><i>Alan bazlı onay/ret<br/>Yeniden üretim</i>"]
+    S3 --> S4["4. ⚙️ Uygula<br/><i>Gerçek zamanlı ilerleme<br/>ikas'a yazım</i>"]
+    S4 --> S5["5. ✅ Tamamlandı<br/><i>İş geçmişi + geri alma<br/>Skor karşılaştırması</i>"]
+
+    style S1 fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style S2 fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
+    style S3 fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style S4 fill:#1e293b,stroke:#10b981,color:#e2e8f0
+    style S5 fill:#1e293b,stroke:#10b981,color:#e2e8f0
+```
+
+- **Threshold tabanlı filtreleme** — skor eşiği, kategori ve stok durumuna göre ürün seçimi
+- **Toplu onay/ret** — tüm önerileri tek seferde ya da alan bazında onaylayın
+- **Alan bazlı yeniden üretim** — beğenmediğiniz tek bir alanı yeniden oluşturun
+- **Tam geri alma desteği** — tekil ürün veya tüm batch geri alınabilir
+
+---
+
+### 📄 llms.txt Studio
+
+Tüm ürün kataloğunu ChatGPT, Perplexity ve Claude gibi AI motorlarının alıntılayabileceği **ansiklopedik özetlere** dönüştüren yönetilen iş kuyruğu. Çıktı standart `llms.txt` formatında export edilir.
+
+```mermaid
+graph LR
+    START["▶️ Görevi Başlat"] --> QUEUE["📋 Tüm ürünler\nkuyruğa alındı"]
+    QUEUE --> WORKER["🤖 Arka Plan Worker\nSıradaki ürünü al"]
+    WORKER --> AI["✍️ AI Özeti Üret\nAnsiklopedik format"]
+    AI --> SAVE["💾 Kaydet ve\nilerlemeyi güncelle"]
+    SAVE --> MORE{"Kuyruk\nboş mu?"}
+    MORE -->|Hayır| WORKER
+    MORE -->|Evet| DONE["✅ Tamamlandı\nllms.txt indir"]
+    WORKER -->|Kullanıcı| CTRL["⏸️ Duraklat / ⏹️ Durdur"]
+    CTRL -->|Devam et| WORKER
+
+    style START fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style QUEUE fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
+    style WORKER fill:#1e293b,stroke:#10b981,color:#e2e8f0
+    style AI fill:#1e293b,stroke:#10b981,color:#e2e8f0
+    style SAVE fill:#1e293b,stroke:#64748b,color:#e2e8f0
+    style MORE fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style DONE fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style CTRL fill:#0f172a,stroke:#ef4444,color:#e2e8f0
+```
+
+- **Start / Pause / Resume / Stop** kontrolleriyle async arka plan worker
+- **Gerçek zamanlı sayaçlar** — toplam / işlendi / bekliyor / başarısız canlı takibi; stat kartları listeyi filtreler
+- **Tekil yeniden üretim** — tek bir ürün özetini anında yeniden oluşturma
+- **Kesintiden devam** — backend yeniden başlatılsa bile yarıda kalan iş otomatik sürdürülür
+- **Tek tıkla indirme** — tüm özetler standart `llms.txt` formatında dışa aktarılır
+
+<p align="center">
+  <img src="./assets/llmstxt.png" alt="llms.txt Studio ekranı" width="1100" />
+</p>
+
+<p align="center"><i>Özet kuyrukları, son üretilen bloklar ve indirilebilir llms.txt çıktısı tek ekranda yönetilir</i></p>
+
+---
+
+### 🌐 GEO Site Denetimi
 
 **Herhangi bir web sitesini** Generative Engine Optimization hazırlığı için denetleyen bağımsız tarayıcı:
 
@@ -162,99 +332,99 @@ graph LR
 | Yapılandırılmış Veri | %10 |
 | Platform Optimizasyonu | %10 |
 
-### llms.txt Studio
+---
 
-AI arama motorları ve asistanlar için daha okunabilir içerik blokları üretmek üzere `llms.txt` akışı ayrı bir stüdyo ekranında yönetilir. Sistem yeni veya güncellenen ürünleri kuyruklar, özetleri batch halinde üretir ve indirilebilir bir `llms.txt` çıktısına dönüştürür.
+### 🎯 Skill Runtime & Studio
+
+Skill'ler global bayrak değil — her skill, seçildiği akış için runtime'da eklenen bir **talimat paketidir**. Her skill `skills/<skill-slug>/` altında yaşar ve iki dosyadan oluşur: `meta.json` (metadata, araçlar, uygulanabilirlik) + `SKILL.md` (insan okunur talimatlar).
+
+Bir skill aktif edildiğinde iki şey olur:
+1. Skill'in prompt katmanları mevcut system prompt'a eklenir
+2. `allowed_tools` listesi **flow'un gerçek tool setiyle kesiştirilip** (`resolve_skill_tool_scope`) daraltılır — skill'in tanımlamadığı veya flow'da olmayan araçlar filtrelenir
+
+**Üç akışta kullanılabilir:**
+
+| Akış | Nerede seçilir | Etki |
+|---|---|---|
+| **Chat** | Chat header, `/skill set <slug>` veya **Skill Studio → "Chat'te Uygula"** | System prompt'a eklenir + tool listesi filtrelenir |
+| **Rewrite** | API çağrısında `?skill_slug=` | Rewrite system prompt'una eklenir |
+| **Batch** | Batch config panelinde | Her alan üretimine ek talimat verir (prompt enjeksiyonu) |
+
+**Skill Studio → Chat entegrasyonu** — Skill Studio'da "Chat'te Uygula ve Test Et" butonuna tıklayın; dashboard `?skill=<slug>` parametresiyle açılır ve skill otomatik olarak chat oturumuna bağlanır. Ürün seçmeden de test edebilirsiniz.
+
+**Varsayılan skill'ler** sistem açılışında otomatik seed edilir:
+- `category-audit` — kategori uyumu ve alan bazlı SEO boşlukları
+- `brand-voice-rewrite` — marka tonunu kontrollü ve tutarlı hale getiren lens
+- `launch-readiness` — yayın öncesi checklist, eksik alan tespiti
+
+**Preview debug paneli** — Preview çalıştırıldığında tool scope mode, prompt boyutu (char/word), requested vs resolved tool listesi ve katman sayısı görsel olarak gösterilir.
+
+**Güvenlik** — Skill dizinlerinde symlink koruması ve dosya allowlist'i uygulanır; `meta.json` ve `SKILL.md` dışındaki beklenmeyen dosyalar yok sayılır.
 
 <p align="center">
-  <img src="./assets/llmstxt.png" alt="llms.txt Studio ekranı" width="1100" />
+  <img src="./assets/skillStudio.png" alt="Skill Studio ekranı" width="900" />
 </p>
 
-<p align="center"><i>Özet kuyrukları, son üretilen bloklar ve indirilebilir `llms.txt` çıktısı tek ekranda yönetilir</i></p>
+<p align="center"><i>Skill Studio ile skill metadata, debug preview, prompt layer kompozisyonu ve chat testi tek yerden yönetilir</i></p>
 
-### Semantik Yönlendirmeli Multi-Agent Chat
+---
 
-Chat paneli tek bir chatbot değil — **üç uzman ajan** ve otomatik yönlendirme:
+### 📝 Prompts Studio
+
+Sistemdeki **tüm AI prompt şablonlarını** düzenleyip yönetebileceğiniz tam özellikli editör. Python dosyasına dokunmadan, Settings sayfasından canlı olarak her prompt'u güncelleyebilirsiniz.
 
 ```mermaid
 graph TD
-    MSG["💬 Kullanıcı Mesajı"] --> ROUTE{"🧠 Semantik Yönlendirme<br/><i>LLM, temp=0.0, maks 20 token</i>"}
+    EDITOR["📝 Prompts Studio"] --> G1["📄 Açıklama Yeniden Yazım\nsystem + user"]
+    EDITOR --> G2["🌐 İngilizce Çeviri\nsystem + user"]
+    EDITOR --> G3["🤖 GEO Yeniden Yazım\nsystem + user"]
+    EDITOR --> G4["📋 llms.txt Özet\nsystem + user"]
+    EDITOR --> G5["🎭 Chat Ajanları\nSEO · Operatör · Genel"]
+    EDITOR --> G6["💬 Chat Akışı + Bağlam\nrouting · buttons · context"]
+    EDITOR --> G7["⚙️ Otonom Ajanlar\nrewrite · batch · GEO"]
 
-    ROUTE -->|"stok, sipariş, fiyat"| OP["📦 Mağaza Operatörü<br/><i>Canlı mağaza verisi<br/>50+ MCP operasyonu</i>"]
-    ROUTE -->|"SEO, başlık, açıklama"| SEO["✍️ SEO Uzmanı<br/><i>Yeniden yazım, skorlama<br/>kaydet / uygula</i>"]
-    ROUTE -->|"diğer"| GEN["💡 Genel Asistan<br/><i>Ürün, SEO, envanter<br/>mağaza yönetimi</i>"]
-
-    OP --> TOOLS_OP["🔧 Registry + Toolkit + MCP"]
-    SEO --> TOOLS_SEO["🔧 Registry + Toolkit"]
-    GEN --> TOOLS_GEN["🔧 Registry + Toolkit"]
-
-    TOOLS_OP --> RESP["📨 Yapısal Butonlu Yanıt"]
-    TOOLS_SEO --> RESP
-    TOOLS_GEN --> RESP
-
-    style MSG fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
-    style ROUTE fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
-    style OP fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0
-    style SEO fill:#0f172a,stroke:#10b981,color:#e2e8f0
-    style GEN fill:#0f172a,stroke:#6366f1,color:#e2e8f0
-    style TOOLS_OP fill:#1e293b,stroke:#64748b,color:#e2e8f0
-    style TOOLS_SEO fill:#1e293b,stroke:#64748b,color:#e2e8f0
-    style TOOLS_GEN fill:#1e293b,stroke:#64748b,color:#e2e8f0
-    style RESP fill:#1e293b,stroke:#10b981,color:#e2e8f0
+    style EDITOR fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style G1 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style G2 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style G3 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style G4 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style G5 fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0
+    style G6 fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0
+    style G7 fill:#0f172a,stroke:#f59e0b,color:#e2e8f0
 ```
 
-Her kullanıcı mesajı LLM tarafından semantik olarak sınıflandırılır — etiket veya komut gerekmez. Stok sorguladığınızda Operatör'e, başlık optimize etmek istediğinizde SEO Uzmanı'na yönlendirilirsiniz.
+- **7 grup, 20+ şablon** — ürün yeniden yazımı, çeviri, GEO, llms.txt özeti, chat personaları, akış bağlamı ve otonom ajan prompt'ları
+- **`{{değişken}}` doğrulama** — tanımsız placeholder'da kayıt öncesi uyarı
+- **Değişiklik takibi** — kaydedilmemiş prompt'lar görsel olarak işaretlenir; toplu kayıt
+- **Varsayılana sıfırlama** — tekil veya tüm grubu tek tıkla varsayılana döndürme
+- **Prompt katman görselleştirmesi** — hangi prompt'un hangi pipeline'da nasıl birleştiğini gösteren diyagram
 
 <p align="center">
-  <video src="./assets/ikasseo1.mp4" controls muted playsinline width="1100"></video>
+  <img src="./assets/promptsstudio.png" alt="Prompt Studio ekranı" width="900" />
 </p>
 
-<p align="center"><i>Chat kullanım videosu README önizlemesinde gömülü görünmezse <a href="./assets/ikasseo1.mp4">buradan açabilirsiniz</a></i></p>
+<p align="center"><i>Prompt Studio ile tüm sistem ve kullanıcı prompt'ları tek yerden düzenlenir</i></p>
 
-### Uygulama Sonrası Doğrulama ve Skor Karşılaştırması
+---
 
-Değişiklikler ikas'a uygulandıktan sonra sistem otomatik olarak:
-1. Ürünü ikas'tan tekrar çeker (güncel veriyi doğrular)
-2. Lokal ürün verisini ve veritabanını günceller
-3. SEO analizini yeniden çalıştırır
-4. Eski/yeni skor farkını alan bazlı gösterir (ör: 📈 65/100 → 74/100, +9 puan)
+### 📈 SEO/GEO Raporlama
+
+Skor geçmişini izleyen ve iyileşmeleri görselleştiren analitik dashboard:
+
+- **Trend grafikleri** — 7/30/90/365 günlük dönemlerde mağaza geneli skor eğrisi
+- **Alt-skor karşılaştırması** — ilk ve son anlık görüntü arasında 10+ boyutta bar grafiği
+- **En çok gelişenler** — skor artışına göre sıralı ürün listesi
+- **Ürün bazlı drilldown** — her ürünün kendi trend grafiği
+- **Skor değişikliği günlüğü** — her operasyonun ürün × alan × delta bazında olay kaydı
+- **Anlık görüntü** — karşılaştırma için mevcut durumu elle kaydedin
 
 <p align="center">
-  <img src="./assets/batch1.png" alt="Karar ve uygulama masası ekranı" width="1100" />
+  <img src="./assets/reports.png" alt="Raporlama Ekranı" width="1100" />
 </p>
 
-<p align="center"><i>İnceleme masasında alan bazlı farklar görülür, öneriler tek tek veya toplu olarak onaylanabilir</i></p>
+---
 
-### Yapısal Seçenek Butonları
-
-AI önerileri chat'te **tıklanabilir butonlar** olarak gösterilir — kullanıcının serbest metin yazıp cevap vermesi gerekmez. Typo, belirsizlik ve niyet ayrıştırma ihtiyacını ortadan kaldırır.
-
-```mermaid
-graph LR
-    AI["🤖 AI Yanıtı"] --> JSON["JSON bloku ekle<br/><code>[{tone, value, action}]</code>"]
-    JSON --> FE["⚛️ Frontend parse"]
-    FE --> CARDS["🎴 Mesaj içi kartlar"]
-    FE --> PANEL["📋 Input üstü<br/>etkileşim paneli"]
-
-    CARDS --> CLICK{"Kullanıcı tıklar"}
-    PANEL --> CLICK
-
-    CLICK -->|action var| HIDDEN["[[CHAT_ACTION:x]]<br/>gizli mesaj"]
-    CLICK -->|action yok| TEXT["Seçenek metni<br/>olarak gönder"]
-
-    style AI fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
-    style JSON fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
-    style FE fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
-    style CARDS fill:#0f172a,stroke:#10b981,color:#e2e8f0
-    style PANEL fill:#0f172a,stroke:#10b981,color:#e2e8f0
-    style CLICK fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
-    style HIDDEN fill:#0f172a,stroke:#ef4444,color:#e2e8f0
-    style TEXT fill:#0f172a,stroke:#6366f1,color:#e2e8f0
-```
-
-`action` anahtarı olan butonlar `[[CHAT_ACTION:action_name]]` gizli mesajı gönderir — serbest metin belirsizliği olmadan deterministik çok adımlı iş akışları (kaydet → incele → uygula) sağlar.
-
-### Provider Agnostik
+### 🔌 Provider Agnostik
 
 Tek kod tabanı, **8 AI sağlayıcı**:
 
@@ -291,181 +461,30 @@ graph TD
     style O2 fill:#1e293b,stroke:#475569,color:#e2e8f0
 ```
 
-**Anthropic Claude**, native Messages API ile tam entegre: extended thinking (derin akıl yürütme), streaming yanıtlar, istek iptali ve model bazlı maliyet takibi. Diğer sağlayıcılar birleşik OpenAI-compatible arayüz üzerinden tool calling destekler. Bir ortam değişkeni değiştirin — tüm agentic pipeline, chat sistemi ve streaming aynı şekilde çalışır.
+Bir ortam değişkeni değiştirin — tüm agentic pipeline, chat sistemi ve streaming aynı şekilde çalışır.
 
-### Ürün Başına Chat Geçmişi
+**Anthropic Claude özel entegrasyonu:** Native Anthropic SDK ile tam entegre — extended thinking (derin akıl yürütme), streaming yanıtlar, istek iptali ve model bazlı maliyet takibi. Diğer sağlayıcılar birleşik OpenAI-compatible arayüz üzerinden tool calling destekler.
 
-Her ürünün sohbet geçmişi tarayıcının `localStorage` alanına ayrı ayrı kaydedilir. Farklı bir ürüne geçip geri döndüğünüzde konuşmadan kaldığınız yerden devam edersiniz. Sayfa yenilemelerinde geçmiş korunur; son 50 mesaj saklanır.
+| Model | Kullanım | Maliyet (1M token) |
+|---|---|---|
+| `claude-haiku-4-5-20251001` | Varsayılan — hızlı ve ekonomik | $0.80 input / $4.0 output |
+| `claude-sonnet-4-20250514` | Dengeli performans | $3.0 input / $15.0 output |
+| `claude-opus-4-20250514` | Maksimum kalite | $15.0 input / $75.0 output |
 
-```mermaid
-graph LR
-    PROD_A["Ürün A"] -->|seç| LOAD_A["localStorage'dan yükle<br/><i>chatHistory.ts</i>"]
-    LOAD_A --> CHAT_A["Chat paneliyle devam et"]
+---
 
-    PROD_B["Ürün B"] -->|seç| GUARD{"AI analiz<br/>devam ediyor mu?"}
-    GUARD -->|Hayır| LOAD_B["localStorage'dan yükle"]
-    GUARD -->|Evet| MODAL["Modal: ne yapmak istersiniz?"]
-    MODAL -->|"Durdur ve Geç"| LOAD_B
-    MODAL -->|"Analiz Bitince Geç"| WAIT["Analiz tamamlansın<br/>sonra geç"]
-    MODAL -->|İptal| STAY["Mevcut üründe kal"]
+### 🔒 Güvenlik & İzinler
 
-    style PROD_A fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
-    style PROD_B fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
-    style GUARD fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
-    style MODAL fill:#1e293b,stroke:#ef4444,color:#e2e8f0
-    style LOAD_A fill:#0f172a,stroke:#10b981,color:#e2e8f0
-    style LOAD_B fill:#0f172a,stroke:#10b981,color:#e2e8f0
-    style WAIT fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0
-    style STAY fill:#0f172a,stroke:#64748b,color:#e2e8f0
-```
+**`DRY_RUN=true` varsayılandır** — siz açıkça izin vermeden ikas mağazanıza hiçbir şey yazılmaz. Her öneri, uygulanmadan önce bir insan onay adımından geçer.
 
-Bir AI analizi devam ederken başka bir ürüne tıklanırsa **ürün-geçiş koruma modali** açılır: analizi durdurup geç, bitmesini bekle veya iptal et seçenekleri sunulur.
-
-### Toplu SEO Optimizasyonu
-
-Yüzlerce ürünü tek tıklamayla optimize eden **5 aşamalı batch iş akışı**:
-
-```mermaid
-graph LR
-    S1["1. 🎯 Seç<br/><i>Skor eşiği, kategori<br/>stok durumu filtresi</i>"] --> S2["2. 🔍 Analiz<br/><i>AI paralel skorlama<br/>ve öneri üretimi</i>"]
-    S2 --> S3["3. 📋 İncele<br/><i>Alan bazlı onay/ret<br/>Yeniden üretim</i>"]
-    S3 --> S4["4. ⚙️ Uygula<br/><i>Gerçek zamanlı ilerleme<br/>ikas'a yazım</i>"]
-    S4 --> S5["5. ✅ Tamamlandı<br/><i>İş geçmişi + geri alma<br/>Skor karşılaştırması</i>"]
-
-    style S1 fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
-    style S2 fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
-    style S3 fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
-    style S4 fill:#1e293b,stroke:#10b981,color:#e2e8f0
-    style S5 fill:#1e293b,stroke:#10b981,color:#e2e8f0
-```
-
-- **Threshold tabanlı filtreleme** — skor eşiği, kategori ve stok durumuna göre ürün seçimi
-- **Toplu onay/ret** — tüm önerileri tek seferde ya da alan bazında onaylayın
-- **Alan bazlı yeniden üretim** — beğenmediğiniz tek bir alanı yeniden oluşturun
-- **Tam geri alma desteği** — tekil ürün veya tüm batch geri alınabilir
-
-### Permission ve Approval Engine
-
-Yazma etkisi olan tüm kritik akışlar artık **merkezi bir permission engine** üzerinden geçer. Sistem `allow`, `ask`, `deny` karar modeliyle çalışır; kural çözümleme sırası **global → project → session → runtime override** olarak uygulanır.
+Yazma etkisi olan tüm kritik akışlar **merkezi permission engine** üzerinden geçer:
 
 - **Risk sınıfları** — `apply`, `rollback`, `bulk_apply`, `db_reset`, `external_write`
-- **Zorunlu preflight kontrolü** — tool handler veya servis işlemi çalışmadan önce izin kararı verilir
-- **Tek tip audit kaydı** — onay gerektiren tüm kararlar audit log'a yazılır
-- **Açık kullanıcı onayı** — chat'te uygulama onayı, toplu apply, rollback ve reset endpoint çağrıları runtime override ile explicit onay üretir
-- **Tutarlı hata modeli** — izin yoksa tool runtime `permission_approval_required` veya `permission_denied` döner; REST tarafı bunu `409` / `403` olarak taşır
-
-Bu sayede `apply_seo_to_ikas`, chat içi tekil uygulama, `/api/suggestions/apply`, batch apply, rollback ve local reset akışları aynı guard katmanıyla korunur.
-
-### llms.txt Studio
-
-**Tüm ürün kataloğunu** `ChatGPT`, `Perplexity` ve `Claude` gibi AI motorlarının alıntılayabileceği ansiklopedik özetlere dönüştüren, yönetilen iş kuyruğu. Çıktı, standart `llms.txt` formatında export edilir.
-
-```mermaid
-graph LR
-    START["▶️ Görevi Başlat"] --> QUEUE["📋 Tüm ürünler\nkuyruğa alındı"]
-    QUEUE --> WORKER["🤖 Arka Plan Worker\nSıradaki ürünü al"]
-    WORKER --> AI["✍️ AI Özeti Üret\nAnsiklopedik format"]
-    AI --> SAVE["💾 Kaydet ve\nilerlemeyi güncelle"]
-    SAVE --> MORE{"Kuyruk\nboş mu?"}
-    MORE -->|Hayır| WORKER
-    MORE -->|Evet| DONE["✅ Tamamlandı\nllms.txt indir"]
-    WORKER -->|Kullanıcı| CTRL["⏸️ Duraklat / ⏹️ Durdur"]
-    CTRL -->|Devam et| WORKER
-
-    style START fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
-    style QUEUE fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
-    style WORKER fill:#1e293b,stroke:#10b981,color:#e2e8f0
-    style AI fill:#1e293b,stroke:#10b981,color:#e2e8f0
-    style SAVE fill:#1e293b,stroke:#64748b,color:#e2e8f0
-    style MORE fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
-    style DONE fill:#0f172a,stroke:#10b981,color:#e2e8f0
-    style CTRL fill:#0f172a,stroke:#ef4444,color:#e2e8f0
-```
-
-- **Yönetilen iş kuyruğu** — Start / Pause / Resume / Stop kontrolleriyle çalışan async arka plan worker
-- **Gerçek zamanlı sayaçlar** — toplam / işlendi / bekliyor / başarısız canlı takibi; tıklanabilir stat kartları listeyi filtreler
-- **Tekil yeniden üretim** — beğenmediğiniz tek bir ürün özetini anında yeniden oluşturma
-- **Kesintiden devam** — backend yeniden başlatılsa bile yarıda kalan iş otomatik sürdürülür
-- **Tek tıkla indirme** — tüm özetler standart `llms.txt` formatında dışa aktarılır
-
-### Unified Task Runtime
-
-Uzun süren `llms` ve `batch` operasyonları artık ortak bir task lifecycle modeliyle izlenir. Bu katman, farklı domain akışlarının tek tip `status`, `progress`, `result`, `error` ve `heartbeat` semantiği kullanmasını sağlar.
-
-```mermaid
-graph LR
-    UI["React UI"] --> API["/api/tasks/*"]
-    API --> TASKS["tasks tablosu"]
-    TASKS --> LLMS["llms job sync"]
-    TASKS --> BATCH["batch job sync"]
-    LLMS --> WORKER1["llms worker"]
-    BATCH --> WORKER2["analysis/apply worker"]
-
-    style UI fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
-    style API fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
-    style TASKS fill:#1e293b,stroke:#10b981,color:#e2e8f0
-    style LLMS fill:#0f172a,stroke:#f59e0b,color:#e2e8f0
-    style BATCH fill:#0f172a,stroke:#f59e0b,color:#e2e8f0
-    style WORKER1 fill:#0f172a,stroke:#64748b,color:#e2e8f0
-    style WORKER2 fill:#0f172a,stroke:#64748b,color:#e2e8f0
-```
-
-- **Tek tip lifecycle** — `queued`, `running`, `paused`, `failed`, `completed`, `cancelled`, `stopped`
-- **Ortak kontrol yüzeyi** — `resume`, `retry`, `stop`, `cancel`, `get status`
-- **Heartbeat ve progress standardı** — frontend canlı durum kartları aynı veri modeliyle beslenir
-- **Geriye dönük uyumluluk** — `llms_jobs` ve `batch_jobs` korunur, ama ortak task kaydıyla senkronize çalışır
-
-### Prompts Studio
-
-Sistemdeki **tüm AI prompt şablonlarını** düzenleyip yönetebileceğiniz tam özellikli editör. Hiçbir Python dosyasına dokunmadan, Settings sayfasından canlı olarak her prompt'u güncelleyebilirsiniz.
-
-```mermaid
-graph TD
-    EDITOR["📝 Prompts Studio"] --> G1["📄 Açıklama Yeniden Yazım\nsystem + user"]
-    EDITOR --> G2["🌐 İngilizce Çeviri\nsystem + user"]
-    EDITOR --> G3["🤖 GEO Yeniden Yazım\nsystem + user"]
-    EDITOR --> G4["📋 llms.txt Özet\nsystem + user"]
-    EDITOR --> G5["🎭 Chat Ajanları\nSEO · Operatör · Genel"]
-    EDITOR --> G6["💬 Chat Akışı + Bağlam\nrouting · buttons · context"]
-    EDITOR --> G7["⚙️ Otonom Ajanlar\nrewrite · batch · GEO"]
-
-    style EDITOR fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
-    style G1 fill:#0f172a,stroke:#10b981,color:#e2e8f0
-    style G2 fill:#0f172a,stroke:#10b981,color:#e2e8f0
-    style G3 fill:#0f172a,stroke:#10b981,color:#e2e8f0
-    style G4 fill:#0f172a,stroke:#10b981,color:#e2e8f0
-    style G5 fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0
-    style G6 fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0
-    style G7 fill:#0f172a,stroke:#f59e0b,color:#e2e8f0
-```
-
-- **7 grup, 20+ şablon** — ürün yeniden yazımı, çeviri, GEO, llms.txt özeti, chat ajanı personaları, akış bağlamı ve otonom ajan prompt'ları
-- **`{{değişken}}` doğrulama** — tanımsız placeholder kullanımında kayıt öncesi uyarı; her prompt için kullanılabilir değişkenler listelidir
-- **Değişiklik takibi** — kaydedilmemiş prompt'lar görsel olarak işaretlenir; tek seferde toplu kayıt
-- **Varsayılana sıfırlama** — tekil prompt veya tüm grubu tek tıkla kod içi varsayılana döndürme
-- **Anlık arama** — tüm prompt başlık ve içeriklerinde canlı filtreleme
-- **Prompt katman görselleştirmesi** — hangi prompt'un hangi pipeline'da nasıl birleştiğini gösteren diyagram; akışı anlamak için Settings sayfasında "Katmanlama" sekmesi
-
-### SEO/GEO Raporlama
-
-Skor geçmişini izleyen ve iyileşmeleri görselleştiren **analitik dashboard**:
-
-- **Trend grafikleri** — 7/30/90/365 günlük dönemlerde mağaza geneli skor eğrisi
-- **Alt-skor karşılaştırması** — ilk ve son anlık görüntü arasında 10+ boyutta bar grafiği (başlık, açıklama, meta alanlar, içerik kalitesi, okunabilirlik vb.)
-- **En çok gelişenler** — skor artışına göre sıralı ürün listesi
-- **Ürün bazlı drilldown** — her ürünün kendi trend grafiği
-- **Sorun trendi** — zaman içinde ortalama sorun sayısı takibi
-- **Skor değişikliği günlüğü** — her uygulama, batch ve chat operasyonunun ürün × alan × delta bazında olay kaydı
-- **Anlık görüntü** — karşılaştırma için mevcut durumu elle kaydedin
-
-
-<p align="center">
-  <img src="./assets/reports.png" alt="Raporlama Ekranı" width="1100" />
-</p>
-
-### Varsayılan Olarak Güvenli
-
-`DRY_RUN=true` varsayılandır. Siz açıkça izin vermeden ikas mağazanıza hiçbir şey yazılmaz. Her öneri, uygulanmadan önce bir insan onay adımından geçer.
+- **Karar modeli** — `allow`, `ask`, `deny` ile kural çözümleme: global → project → session → runtime override
+- **Zorunlu preflight kontrolü** — tool handler veya servis çalışmadan önce izin kararı verilir
+- **Audit kaydı** — onay gerektiren tüm kararlar `permission_audit_log` tablosuna yazılır
+- **REST çevirisi** — izin yoksa `409 approval required` veya `403 denied` döner
+- **Sahte-eylem güvenliği** — LLM tool çağırmadan "uyguladım" derse sistem tespit edip uyarı ekler
 
 ---
 
@@ -516,7 +535,7 @@ graph TB
     style ROW3 fill:transparent,stroke:transparent
 ```
 
-### Dikkat Çeken Tasarım Kararları
+### Tasarım Kararları
 
 ```mermaid
 mindmap
@@ -545,12 +564,9 @@ mindmap
     ("🔁 IkasClient Retry + Rate-Limit")
       ("429 / 5xx otomatik yeniden deneme")
       ("Yapılandırılabilir bekleme + geri sayım")
-      ("ProductManager ilerleme sayaçlarını sıfırlar")
 ```
 
----
-
-## Chat Mesaj İşleme Akışı
+### Chat Mesaj İşleme Akışı
 
 ```mermaid
 graph TD
@@ -603,11 +619,11 @@ graph TD
     style RETURN fill:#1e293b,stroke:#10b981,color:#e2e8f0
 ```
 
-> **Compact Mode:** LM Studio ve Ollama gibi yerel modeller için sistem prompt'u otomatik olarak sadeleştirilir — verbose örnekler, operasyon rehberi ve routing talimatları kaldırılır. `[[GENERATE_SUGGESTION]]` isteklerinde ise yalnızca ürün alanları ve `save_seo_suggestion` tool'u gönderilir (~500 token vs ~10K).
+> **Compact Mode:** LM Studio ve Ollama gibi yerel modeller için sistem prompt'u otomatik sadeleştirilir — verbose örnekler, operasyon rehberi ve routing talimatları kaldırılır. `[[GENERATE_SUGGESTION]]` isteklerinde ise yalnızca ürün alanları ve `save_seo_suggestion` tool'u gönderilir (~500 token vs ~10K).
 
----
+### Tool Çözümleme Hiyerarşisi
 
-## Tool Çözümleme Hiyerarşisi
+Tool runtime ortak bir `ToolDefinition` modeli üzerinden çalışır. Hem agent hem chat-local tool'ları merkezi registry tarafından expose edilir; görünürlük allowlist ile filtrelenir ve tüm tool sonuçları tek tip `{ok, tool_name, data, error, meta}` envelope'u ile döner.
 
 ```mermaid
 graph TD
@@ -642,9 +658,7 @@ graph TD
     style M1 fill:#0f172a,stroke:#f59e0b,color:#e2e8f0
 ```
 
----
-
-## Çift Yollu Uygulama Stratejisi
+### Çift Yollu Uygulama Stratejisi
 
 ```mermaid
 graph TD
@@ -673,136 +687,7 @@ graph TD
     style DELTA fill:#0f172a,stroke:#10b981,color:#e2e8f0
 ```
 
----
-
-## Konfigürasyon Çözümleme
-
-```mermaid
-graph TD
-    REQ["Ayar değeri istendi"] --> L1{"1. .cache/user_settings.json<br/><i>UI'dan kaydedilen overrides</i>"}
-
-    L1 -->|Bulundu| USE1["✅ Bu değeri kullan"]
-    L1 -->|Bulunamadı| L2{{"2. .env dosyası<br/><i>İlk kurulum varsayılanları</i>"}}
-
-    L2 -->|Bulundu| USE2["✅ Bu değeri kullan"]
-    L2 -->|Bulunamadı| L3{{"3. AppConfig varsayılanları<br/><i>Kod içi sabit değerler</i>"}}
-
-    L3 --> USE3["✅ Varsayılan değeri kullan"]
-
-    style REQ fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
-    style L1 fill:#1e293b,stroke:#10b981,color:#e2e8f0
-    style L2 fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
-    style L3 fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
-    style USE1 fill:#0f172a,stroke:#10b981,color:#e2e8f0
-    style USE2 fill:#0f172a,stroke:#10b981,color:#e2e8f0
-    style USE3 fill:#0f172a,stroke:#10b981,color:#e2e8f0
-```
-
----
-
-## Hızlı Başlangıç
-
-### Gereksinimler
-- Python 3.11+
-- Node.js 20+
-
-### Kurulum
-
-```bash
-git clone https://github.com/YigitKa/ikas-ai-seo-agent.git
-cd ikas-ai-seo-agent
-
-# Python
-python -m venv .venv
-source .venv/bin/activate    # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-
-# Frontend
-cd web && npm install && cd ..
-
-# Konfigürasyon
-cp .env.example .env
-# .env dosyasını ikas kimlik bilgileri ve AI provider anahtarıyla düzenleyin
-```
-
-### Çalıştırma
-
-```bash
-# Geliştirme (önerilen) — backend :8000 + Vite :5173
-python main.py dev
-
-# Production — frontend build eder, her şeyi :8000'den sunar
-python main.py
-```
-
-### Doğrulama
-
-```bash
-python -m pytest tests/ -v
-```
-
----
-
-## Konfigürasyon
-
-### Zorunlu
-
-| Değişken | Açıklama |
-|---|---|
-| `IKAS_STORE_NAME` | ikas mağaza alt alan adı |
-| `IKAS_CLIENT_ID` | ikas admin panelinden OAuth2 client ID |
-| `IKAS_CLIENT_SECRET` | OAuth2 client secret |
-| `AI_PROVIDER` | `anthropic`, `openai`, `gemini`, `openrouter`, `ollama`, `lm-studio`, `custom` veya `none` |
-| `AI_API_KEY` | Bulut sağlayıcılar için API anahtarı |
-
-### Opsiyonel
-
-| Değişken | Varsayılan | Açıklama |
-|---|---|---|
-| `AI_MODEL_NAME` | Provider varsayılanı | Model seçimini geçersiz kıl |
-| `AI_TEMPERATURE` | `0.7` | Üretim yaratıcılığı |
-| `AI_MAX_TOKENS` | `2000` | Maks çıktı token |
-| `AI_THINKING_MODE_CHAT` | `false` | Native extended thinking for chat (Anthropic Claude — `temperature=1` zorunlu, budget otomatik ayarlanır) |
-| `AI_THINKING_MODE_BATCH` | `false` | Native extended thinking for batch/agentic rewrites (Anthropic Claude — `temperature=1` zorunlu, budget otomatik ayarlanır) |
-| `IKAS_MCP_TOKEN` | — | Chat'te canlı mağaza sorgularını etkinleştirir |
-| `STORE_LANGUAGES` | `tr,en` | Desteklenen içerik dilleri |
-| `SEO_TARGET_KEYWORDS` | — | Virgülle ayrılmış hedef anahtar kelimeler |
-| `SEO_LOW_SCORE_THRESHOLD` | `70` | Ürünlerin dikkat gerektirdiği skor eşiği |
-| `DRY_RUN` | `true` | ikas'a yazmak için `false` yapın |
-
----
-
-## Nasıl Çalışır
-
-### Dashboard Akışı
-
-```mermaid
-graph LR
-    SYNC["1. 🔄 Senkronize Et<br/><i>ikas'tan ürünleri çek</i>"] --> BROWSE["2. 📋 Listele<br/><i>Skor rozetleri ile</i>"]
-    BROWSE --> SELECT["3. 🎯 Seç<br/><i>Skor kırılımı + chat</i>"]
-    SELECT --> HIST["3b. 📂 Geçmiş Yükle<br/><i>localStorage — ürün başına</i>"]
-    HIST --> CHAT["4. 💬 Chat / AI Öner<br/><i>Otonom yeniden yazım</i>"]
-    CHAT --> REVIEW["5. 🔍 İncele<br/><i>Önce/sonra diff</i>"]
-    REVIEW --> APPLY["6. ✅ Onayla<br/><i>ikas'a uygula</i>"]
-    APPLY --> VERIFY["7. 📊 Doğrula<br/><i>Skor karşılaştırması</i>"]
-
-    style SYNC fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
-    style BROWSE fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
-    style SELECT fill:#1e293b,stroke:#6366f1,color:#e2e8f0
-    style HIST fill:#1e293b,stroke:#64748b,color:#e2e8f0
-    style CHAT fill:#1e293b,stroke:#10b981,color:#e2e8f0
-    style REVIEW fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
-    style APPLY fill:#1e293b,stroke:#10b981,color:#e2e8f0
-    style VERIFY fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
-```
-
-<p align="center">
-  <img src="./assets/dashboard.png" alt="ikas AI SEO Agent dashboard ekranı" width="1200" />
-</p>
-
-<p align="center"><i>Ürün listesi, SEO/GEO/AEO skorları ve çalışan ajan durumu aynı dashboard üzerinde izlenir</i></p>
-
-### Katmanlı Prompt Mimarisi
+### Prompt Katmanları
 
 Tüm katmanlar **tek bir `system` mesajında** birleştirilir (qwen, llama gibi modellerin jinja template'leri birden fazla system mesajını desteklemez).
 
@@ -828,83 +713,87 @@ graph TB
     style MERGE fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
 ```
 
-> **Compact Mode (Yerel Modeller):** LM Studio ve Ollama kullanılırken 3. katman (Operasyon Rehberi), 5. katman (Yönlendirme Talimatı) ve verbose tool talimatları otomatik olarak atlanır. Bunların yerine kısa bir JSON buton formatı talimatı eklenir. Bu sayede ~10K token'lık tam prompt yerine ~2-3K token'lık minimal prompt gönderilir.
+> **Compact Mode (Yerel Modeller):** LM Studio ve Ollama'da 3. ve 5. katman atlanır, verbose tool talimatları kaldırılır. ~10K token yerine ~2-3K token'lık minimal prompt gönderilir.
 
-<p align="center">
-  <img src="./assets/promptsstudio.png" alt="Prompt Studio ekranı" width="900" />
-</p>
+### Unified Task Runtime
 
-<p align="center"><i>Prompt Studio ile sistem ve kullanıcı prompt'ları tek yerden düzenlenip katmanlı yapı korunur</i></p>
+Uzun süren `llms` ve `batch` operasyonları ortak bir task lifecycle modeliyle izlenir:
 
-### Skill Runtime ve Skill Studio
+```mermaid
+graph LR
+    UI["React UI"] --> API["/api/tasks/*"]
+    API --> TASKS["tasks tablosu"]
+    TASKS --> LLMS["llms job sync"]
+    TASKS --> BATCH["batch job sync"]
+    LLMS --> WORKER1["llms worker"]
+    BATCH --> WORKER2["analysis/apply worker"]
 
-Skill'ler global feature flag degildir. Her skill, secildigi flow icin runtime'da eklenen bir talimat paketidir.
-
-Bugun kodda bir skill su 3 seyi tanimlar:
-
-- `instructions_markdown` + `prompt_layers`: Runtime'da birlestirilip ek system prompt uretilir.
-- `applies_to`: Skill'in hangi akista secilebilecegini belirler (`chat`, `rewrite`, `batch`).
-- `allowed_tools`: Yalnizca tool-calling olan akislarda, o flow'un mevcut tool setiyle kesiserek aktif tool yuzeyini daraltir.
-
-Flow bazinda mevcut durum:
-
-1. `Chat`
-   - Nerede secilir: Dashboard icindeki chat header'i veya `/skill set <slug>`
-   - Ne zaman uygulanir: Chat completion mesaji kurulurken
-   - Neyi degistirir: Chat system prompt'una skill prompt'u eklenir; `allowed_tools` varsa chat tool listesi filtrelenir
-   - Kod: `web/src/components/chat/ChatHeader.tsx`, `core/chat/state.py`, `core/chat/streaming_messages.py`
-
-2. `Rewrite`
-   - Nerede secilir: `POST /api/suggestions/generate/{id}`, `POST /api/suggestions/generate/{id}/stream` ve `POST /api/suggestions/generate-field/{id}` cagrilarinda `skill_slug`
-   - Ne zaman uygulanir: Rewrite request'i hazirlanirken
-   - Neyi degistirir: Skill prompt'u rewrite system prompt'una eklenir
-   - Tool etkisi: Sadece tam urun rewrite agentic/tool-calling modda calisiyorsa `allowed_tools` toolkit'i filtreler. Tek alan rewrite ve ceviri akislari sadece prompt enjeksiyonu kullanir
-   - Kod: `api/routers/suggestions.py`, `core/product_manager.py`, `core/ai/requests.py`
-
-3. `Batch`
-   - Nerede secilir: Batch Operations ekranindaki `config.skill_slug`
-   - Ne zaman uygulanir: Job olusturulurken validate edilir; sonra her field rewrite/translation cagrisi oncesi batch runtime prompt'una eklenir
-   - Neyi degistirir: Batch kisitlari ile birlikte her alan uretimine ek talimat verir
-   - Tool etkisi: Bugunku batch akisi field-by-field rewrite calistiriyor; burada `allowed_tools` aktif olarak toolkit filtrelemez, asil etki prompt enjeksiyonudur
-   - Kod: `web/src/components/batch/BatchConfigPanel.tsx`, `api/routers/batch.py`, `core/product_manager.py`
-
-Skill Studio ne yapar, ne yapmaz:
-
-- Yapar: Skill metadata'sini, `SKILL.md` icerigini, prompt layer kompozisyonunu, validation ve preview'i yonetir
-- Yapmaz: Bir skill'i tum uygulamada global olarak aktif etmez. Her flow kendi skill secimini ayri yapar
-- Sonuc: Skill Studio editorudur; runtime aktivasyon chat/rewrite/batch tarafinda ayrica yapilir
-
-Prompt katmanlarinin ustune artik diskten yuklenen bir **skill runtime** katmani eklenir. Her skill `skills/<skill-slug>/` altinda yasar ve iki dosyadan olusur:
-
-- `meta.json` - metadata, `allowed_tools`, `applies_to`, `prompt_layers`, `priority`, `status`
-- `SKILL.md` - insan okunur talimatlar, ornekler ve ek rehber
-
-Sistem acilisinda varsayilan skill'ler otomatik olarak seed edilir:
-
-- `category-audit`: Urunun kategori uyumunu, arama niyetini ve alan bazli SEO bosluklarini inceler. `chat` ve `rewrite` icin kullanilir
-- `brand-voice-rewrite`: Marka tonunu daha kontrollu, sakin ve tutarli hale getiren rewrite lens'i saglar. `chat`, `rewrite` ve `batch` icin kullanilir
-- `launch-readiness`: Yayin oncesi checklist gibi davranir; eksik alanlari ve dusuk skorlu bolgeleri one cikarir. `chat` ve `rewrite` icin kullanilir
-
-Bir skill chat oturumunda aktif edildiginde iki sey olur:
-
-1. Skill'in prompt katmanlari mevcut chat system prompt'una eklenir
-2. Skill'in `allowed_tools` listesi gercek tool yuzeyini daraltir
-
-Bu sayede skill sadece ek talimat degil, kontrollu bir calisma modu haline gelir. Chat icinde hizli kontrol icin su komutlar desteklenir:
-
-```text
-/skill
-/skill set category-audit
-/skill clear
+    style UI fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style API fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
+    style TASKS fill:#1e293b,stroke:#10b981,color:#e2e8f0
+    style LLMS fill:#0f172a,stroke:#f59e0b,color:#e2e8f0
+    style BATCH fill:#0f172a,stroke:#f59e0b,color:#e2e8f0
+    style WORKER1 fill:#0f172a,stroke:#64748b,color:#e2e8f0
+    style WORKER2 fill:#0f172a,stroke:#64748b,color:#e2e8f0
 ```
 
-Frontend'deki **Skill Studio** ekrani skill metadata'sini, prompt layer kompozisyonunu, validation uyarilarini ve composed prompt preview'ini tek yerden yonetir.
+- **Tek tip lifecycle** — `queued`, `running`, `paused`, `failed`, `completed`, `cancelled`, `stopped`
+- **Ortak kontrol yüzeyi** — `resume`, `retry`, `stop`, `cancel`, `get status`
+- **Heartbeat ve progress standardı** — frontend canlı durum kartları aynı veri modeliyle beslenir
+- **Geriye dönük uyumluluk** — `llms_jobs` ve `batch_jobs` korunur, ama ortak task kaydıyla senkronize çalışır
 
-<p align="center">
-  <img src="./assets/skillStudio.png" alt="Skill Studio ekrani" width="900" />
-</p>
+### Konfigürasyon Çözümleme
 
-<p align="center"><i>Skill studio ile mevcut skiller duzenlenebilir.</i></p>
+```mermaid
+graph TD
+    REQ["Ayar değeri istendi"] --> L1{"1. .cache/user_settings.json<br/><i>UI'dan kaydedilen overrides</i>"}
+
+    L1 -->|Bulundu| USE1["✅ Bu değeri kullan"]
+    L1 -->|Bulunamadı| L2{{"2. .env dosyası<br/><i>İlk kurulum varsayılanları</i>"}}
+
+    L2 -->|Bulundu| USE2["✅ Bu değeri kullan"]
+    L2 -->|Bulunamadı| L3{{"3. AppConfig varsayılanları<br/><i>Kod içi sabit değerler</i>"}}
+
+    L3 --> USE3["✅ Varsayılan değeri kullan"]
+
+    style REQ fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style L1 fill:#1e293b,stroke:#10b981,color:#e2e8f0
+    style L2 fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
+    style L3 fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style USE1 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style USE2 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style USE3 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+```
+
+---
+
+## Konfigürasyon
+
+### Zorunlu
+
+| Değişken | Açıklama |
+|---|---|
+| `IKAS_STORE_NAME` | ikas mağaza alt alan adı |
+| `IKAS_CLIENT_ID` | ikas admin panelinden OAuth2 client ID |
+| `IKAS_CLIENT_SECRET` | OAuth2 client secret |
+| `AI_PROVIDER` | `anthropic`, `openai`, `gemini`, `openrouter`, `ollama`, `lm-studio`, `custom` veya `none` |
+| `AI_API_KEY` | Bulut sağlayıcılar için API anahtarı |
+
+### Opsiyonel
+
+| Değişken | Varsayılan | Açıklama |
+|---|---|---|
+| `AI_MODEL_NAME` | Provider varsayılanı | Model seçimini geçersiz kıl |
+| `AI_TEMPERATURE` | `0.7` | Üretim yaratıcılığı |
+| `AI_MAX_TOKENS` | `2000` | Maks çıktı token |
+| `AI_THINKING_MODE_CHAT` | `false` | Chat için extended thinking (Anthropic — `temperature=1` zorunlu, budget otomatik) |
+| `AI_THINKING_MODE_BATCH` | `false` | Batch/agentic rewrite için extended thinking |
+| `IKAS_MCP_TOKEN` | — | Chat'te canlı mağaza sorgularını etkinleştirir |
+| `STORE_LANGUAGES` | `tr,en` | Desteklenen içerik dilleri |
+| `SEO_TARGET_KEYWORDS` | — | Virgülle ayrılmış hedef anahtar kelimeler |
+| `SEO_LOW_SCORE_THRESHOLD` | `70` | Ürünlerin dikkat gerektirdiği skor eşiği |
+| `DRY_RUN` | `true` | ikas'a yazmak için `false` yapın |
+
 ---
 
 ## Teknoloji Yığını
@@ -940,186 +829,150 @@ Frontend'deki **Skill Studio** ekrani skill metadata'sini, prompt layer kompozis
 ikas-ai-seo-agent/
 ├── main.py                     # Giriş noktası
 ├── start.py                    # Backend/frontend koordinatörü
-│
 ├── config/settings.py          # 3 katmanlı konfigürasyon çözümleme
 │
 ├── core/                       # İş mantığı — UI bağımlılığı yok
 │   ├── models.py               # Pydantic modeller (Product, SeoScore, AgentEvent, vb.)
 │   ├── product_manager.py      # Merkezi orkestratör + permission guard'ları
-│   ├── permissions/            # Permission / approval engine + rule modeli
-│   ├── tasks/                  # Unified task runtime + ortak resume/retry/stop servisleri
 │   ├── prompt_store.py         # Template yükleme + multi-agent prompt'lar
-│   ├── skills/                 # Disk tabanlı skill loader, validation, preview ve seed skill'ler
-│   │
+│   ├── permissions/            # Permission / approval engine + rule modeli
+│   ├── tasks/                  # Unified task runtime + resume/retry/stop servisleri
+│   ├── skills/                 # Disk tabanlı skill loader, validation, preview, seed
 │   ├── ai/client.py            # Multi-provider AI soyutlaması (fabrika + adaptörler)
-│   ├── agent/orchestrator.py   # Jenerik agent döngüsü (run + stream)
-│   ├── agent/tools.py          # Tool tanımları + toolkit fabrikaları
-│   │
-│   ├── chat/                   # Çok turlu chat (mixin composition)
-│   │   ├── state.py            # Konuşma geçmişi + ürün bağlamı + runtime permission override'ları
-│   │   ├── streaming.py        # SSE streaming + multi-agent routing
-│   │   ├── suggestions.py      # Taslak → inceleme → uygulama akışları + apply izin kontrolü
-│   │   ├── support.py          # ToolRegistry + yardımcılar
-│   │   └── guidance.py         # Operasyon önerileri + sahte-eylem güvenliği
-│   │
-│   ├── seo/analyzer.py         # 100 puanlık skorlama motoru
-│   ├── seo/geo_audit.py        # Tam site GEO denetim pipeline'ı
-│   │
-│   ├── clients/ikas.py         # Async GraphQL istemcisi (OAuth2)
-│   ├── clients/mcp.py          # ikas MCP JSON-RPC istemcisi
-│   │
-│   ├── services/provider.py    # Sağlayıcı sağlık + model keşfi
-│   ├── services/settings.py    # Ayar yönetimi
-│   ├── services/suggestion.py  # Öneri alan operasyonları
-│   └── services/daily_tracker.py # Günlük skor anlık görüntüsü + değişiklik logu (idempotent)
+│   ├── agent/                  # AgentOrchestrator (run + stream) + tool tanımları
+│   ├── chat/                   # Çok turlu chat (state, streaming, suggestions, guidance)
+│   ├── seo/                    # Skorlama motoru + GEO denetim pipeline'ı
+│   ├── clients/                # IkasClient (OAuth+GraphQL) + IkasMCPClient (JSON-RPC)
+│   ├── services/               # Provider sağlık, ayarlar, öneriler, günlük tracker
+│   └── utils/                  # HTML işleme, sunum yardımcıları
 │
 ├── api/                        # FastAPI REST + WebSocket
 │   ├── main.py                 # Uygulama kurulumu, CORS, SPA sunumu
 │   ├── dependencies.py         # Singleton ProductManager (REST) + per-connection (Chat)
-│   ├── permissions.py          # PermissionDecisionError -> HTTPException çevirici
+│   ├── permissions.py          # PermissionDecisionError → HTTPException çevirici
 │   └── routers/                # products, seo, suggestions, settings, chat, batch, llms, tasks, reports
 │
 ├── web/src/                    # React/TypeScript SPA
-│   ├── pages/                  # Dashboard, LlmsLab, BatchOperations, Reports, PromptEditor, SkillStudio
-│   │   └── settings/           # SettingsPage (modüler): ControlSidebar, ProviderSection, StoreSettingsSection, LiveStatusCard, LmStudioStatusCard
-│   ├── components/             # ChatPanel, ProductTable, ScoreCard (Quick Wins)
-│   │   ├── chat/messages/      # MessageBubble, ToolResultCard (SEO agent + MCP), ThinkingBlock, CostCard
-│   │   ├── tasks/              # TaskStatusCard ve ortak progress UI parçaları
-│   │   └── dashboard/          # DashboardHeader (sync butonu), DashboardSidebar (boş arama durumu)
-│   ├── shared/
-│   │   ├── score/scoreUtils.ts # SCORE_FIELDS, getScoreColor, explainIssue
-│   │   └── ui/                 # Toast (bildirim sistemi), ConfirmDialog
+│   ├── pages/                  # Dashboard, LlmsLab, BatchOperations, Reports, PromptEditor, SkillStudio, Settings
+│   ├── components/             # ChatPanel, ProductTable, ScoreCard, chat/messages/, dashboard/, tasks/
+│   ├── shared/                 # score/scoreUtils, ui/ (Toast, ConfirmDialog, Modal, ProgressBar)
 │   ├── api/client.ts           # API istemci fonksiyonları
-│   └── hooks/
-│       ├── useChat.ts          # Chat durum yönetimi
-│       └── chat/chatHistory.ts # localStorage chat geçmişi (ürün başına, son 50 mesaj)
+│   └── hooks/                  # useChat + chat alt hook'ları (stream, ws, status, history, auto-intro)
 │
-├── data/
-│   └── db.py                   # Async SQLite + bağlantı havuzu + unified task storage + batch sorgular + permission audit log
-│
+├── data/db.py                  # Async SQLite + bağlantı havuzu + unified task storage
 ├── prompts/                    # Düzenlenebilir AI prompt şablonları
-├── skills/                     # Diskten yüklenen skill klasörleri (`meta.json` + `SKILL.md`)
+├── skills/                     # Disk tabanlı skill klasörleri (meta.json + SKILL.md)
 └── tests/                      # 20+ test dosyası, canlı API çağrısı yok
 ```
 
 ---
 
-## API Yüzeyi
+## API Referansı
 
-### Ürünler
+### Ürünler & SEO
+
 | Metod | Endpoint | Açıklama |
 |---|---|---|
-| `GET` | `/api/products` | Cache'deki ürünleri listele (filtrelenebilir) |
+| `GET` | `/api/products` | Cache'deki ürünleri listele |
 | `POST` | `/api/products/fetch` | ikas'tan çek |
 | `POST` | `/api/products/sync` | Tam katalog senkronizasyonu |
-| `POST` | `/api/products/reset` | Lokal ürün/cache verisini temizle (permission guard) |
+| `POST` | `/api/products/reset` | Lokal cache temizle (permission guard) |
 | `GET` | `/api/products/{id}` | Tekil ürün detayı |
-
-### SEO
-| Metod | Endpoint | Açıklama |
-|---|---|---|
 | `POST` | `/api/seo/analyze` | Tüm ürünleri skorla |
 | `POST` | `/api/seo/analyze/{id}` | Tekil ürün skorla |
-| `GET` | `/api/seo/generate-llms-txt` | AI tarayıcılar için `llms.txt` üret ve indir |
 | `POST` | `/api/seo/geo-audit` | Tam GEO site denetimi |
 
-### llms.txt Studio
-| Metod | Endpoint | Açıklama |
-|---|---|---|
-| `GET` | `/api/llms/status` | İş durumu, sayaçlar, aktif ürün, son özetler |
-| `POST` | `/api/llms/start` | Yeni özetleme işi oluştur ve başlat |
-| `POST` | `/api/llms/pause` | Aktif işi duraklat (kuyruk konumu korunur) |
-| `POST` | `/api/llms/resume` | Duraklatılmış işi kaldığı yerden sürdür |
-| `POST` | `/api/llms/stop` | İşi tamamen durdur |
-| `GET` | `/api/llms/processed` | İşlenmiş özetleri listele (sayfalandırılmış) |
-| `GET` | `/api/llms/pending` | İşlenmemiş ürünleri listele |
-| `POST` | `/api/llms/regenerate/{productId}` | Tek ürün özetini yeniden üret |
-
-### Unified Tasks
-| Metod | Endpoint | Açıklama |
-|---|---|---|
-| `GET` | `/api/tasks` | Tüm birleşik task kayıtlarını filtrelenebilir biçimde listele |
-| `GET` | `/api/tasks/{id}` | Tekil task durumu, payload, result, error ve heartbeat bilgisi |
-| `POST` | `/api/tasks/{id}/resume` | Desteklenen task tipleri için devam ettir |
-| `POST` | `/api/tasks/{id}/retry` | Desteklenen task tipleri için retry çalıştır |
-| `POST` | `/api/tasks/{id}/stop` | Çalışan task'i durdur |
-| `POST` | `/api/tasks/{id}/cancel` | Stop ile aynı lifecycle üzerinden task'i iptal et |
-
-`/api/llms/status` ve `/api/batch/jobs/{id}` cevaplarında dönen `task_id`, bu ortak endpoint yüzeyine bağlanmak için kullanılır.
-
 ### Öneriler
+
 | Metod | Endpoint | Açıklama |
 |---|---|---|
-| `POST` | `/api/suggestions/generate/{id}` | AI onerisi olustur (agentic, opsiyonel `?skill_slug=`) |
-| `POST` | `/api/suggestions/generate/{id}/stream` | SSE streaming ile olustur (opsiyonel `?skill_slug=`) |
+| `POST` | `/api/suggestions/generate/{id}` | AI önerisi oluştur (`?skill_slug=` destekler) |
+| `POST` | `/api/suggestions/generate/{id}/stream` | SSE streaming ile oluştur |
+| `POST` | `/api/suggestions/generate-field/{id}` | Tek alan için öneri |
 | `PATCH` | `/api/suggestions/{id}/approve` | Öneriyi onayla |
+| `PATCH` | `/api/suggestions/{id}/reject` | Öneriyi reddet |
+| `PATCH` | `/api/suggestions/{id}/update` | Öneri içeriğini güncelle |
 | `POST` | `/api/suggestions/apply` | Onaylananları ikas'a uygula (permission guard) |
 
 ### Toplu İşlemler
+
 | Metod | Endpoint | Açıklama |
 |---|---|---|
 | `GET` | `/api/batch/stats` | Batch dashboard istatistikleri |
 | `GET` | `/api/batch/jobs` | Tüm batch işleri listele |
-| `POST` | `/api/batch/jobs` | Yeni batch is olustur ve analizi baslat (`config.skill_slug` destekler) |
-| `GET` | `/api/batch/jobs/{id}` | Batch iş detayı (öğelerle birlikte) |
+| `POST` | `/api/batch/jobs` | Yeni batch iş oluştur (`config.skill_slug` destekler) |
+| `GET` | `/api/batch/jobs/{id}` | Batch iş detayı |
 | `GET` | `/api/batch/jobs/{id}/stream` | SSE ile gerçek zamanlı ilerleme |
 | `POST` | `/api/batch/jobs/{id}/apply` | Onaylı önerileri ikas'a uygula (permission guard) |
 | `POST` | `/api/batch/jobs/{id}/stop` | Çalışan işi durdur |
 | `DELETE` | `/api/batch/jobs/{id}` | Batch işi sil |
 | `POST` | `/api/batch/jobs/{id}/rollback` | Tüm batch'i geri al (permission guard) |
-| `POST` | `/api/batch/items/{id}/rollback` | Tekil öğeyi geri al (permission guard) |
+| `POST` | `/api/batch/items/{id}/rollback` | Tekil öğeyi geri al |
 | `POST` | `/api/batch/items/{id}/regenerate` | Öğeyi yeniden üret |
 | `POST` | `/api/batch/items/{id}/fields/{field}/regenerate` | Tek alanı yeniden üret |
 | `PATCH` | `/api/batch/items/{id}` | Öğeyi onayla / reddet |
 | `POST` | `/api/batch/items/bulk-decision` | Toplu onayla / reddet |
 
+### llms.txt Studio
+
+| Metod | Endpoint | Açıklama |
+|---|---|---|
+| `GET` | `/api/llms/status` | İş durumu ve sayaçlar |
+| `POST` | `/api/llms/start` | Özetleme işi başlat |
+| `POST` | `/api/llms/pause` | Duraklat |
+| `POST` | `/api/llms/resume` | Kaldığı yerden sürdür |
+| `POST` | `/api/llms/stop` | Tamamen durdur |
+| `GET` | `/api/llms/processed` | İşlenmiş özetleri listele |
+| `GET` | `/api/llms/pending` | Bekleyen ürünleri listele |
+| `POST` | `/api/llms/regenerate/{productId}` | Tek ürün özetini yeniden üret |
+| `GET` | `/api/seo/generate-llms-txt` | llms.txt indir |
+
+### Unified Tasks
+
+| Metod | Endpoint | Açıklama |
+|---|---|---|
+| `GET` | `/api/tasks` | Tüm task kayıtlarını listele |
+| `GET` | `/api/tasks/{id}` | Tekil task durumu |
+| `POST` | `/api/tasks/{id}/resume` | Devam ettir |
+| `POST` | `/api/tasks/{id}/retry` | Retry çalıştır |
+| `POST` | `/api/tasks/{id}/stop` | Durdur |
+| `POST` | `/api/tasks/{id}/cancel` | İptal et |
+
 ### Raporlar
+
 | Metod | Endpoint | Açıklama |
 |---|---|---|
 | `GET` | `/api/reports/store-trends` | Mağaza geneli günlük skor ortalamaları |
 | `GET` | `/api/reports/product-trends/{id}` | Ürün bazlı skor geçmişi |
 | `GET` | `/api/reports/summary` | İlk / son anlık görüntü karşılaştırması |
 | `GET` | `/api/reports/top-improvers` | En çok gelişen ürünler |
-| `GET` | `/api/reports/snapshot-dates` | Tüm anlık görüntü tarihleri |
-| `GET` | `/api/reports/snapshot/{date}` | Belirli bir tarihin tüm skor verileri |
-| `POST` | `/api/reports/take-snapshot` | Anlık görüntü al (idempotent) |
-| `GET` | `/api/reports/score-change-log` | Tüm skor değişikliği olaylarını listele (operasyon, ürün, delta, zaman) |
+| `POST` | `/api/reports/take-snapshot` | Anlık görüntü al |
+| `GET` | `/api/reports/score-change-log` | Skor değişikliği olayları |
 
-### Gerçek Zamanlı
+### Ayarlar, Prompts & Skills
+
+| Metod | Endpoint | Açıklama |
+|---|---|---|
+| `GET/PUT` | `/api/settings` | Konfigürasyon oku / kaydet |
+| `GET/PUT` | `/api/settings/prompts` | Prompt şablonları oku / kaydet |
+| `POST` | `/api/settings/prompts/reset` | Prompt'ları varsayılana sıfırla |
+| `GET` | `/api/settings/providers` | AI sağlayıcılarını listele |
+| `GET` | `/api/settings/health` | Sağlayıcı sağlık kontrolü |
+| `POST` | `/api/settings/test-connection` | Bağlantı testi |
+| `GET` | `/api/settings/skills` | Tüm skill'leri listele |
+| `GET/PUT` | `/api/settings/skills/item/{slug}` | Tekil skill oku / güncelle |
+| `DELETE` | `/api/settings/skills/item/{slug}` | Custom skill sil |
+| `POST` | `/api/settings/skills/validate` | Skill doğrula |
+| `POST` | `/api/settings/skills/preview` | Skill prompt preview |
+| `GET` | `/api/settings/skills/item/{slug}/export` | Skill export |
+| `POST` | `/api/settings/skills/import` | Skill import |
+
+### Gerçek Zamanlı & MCP
+
 | Protokol | Endpoint | Açıklama |
 |---|---|---|
 | WebSocket | `/ws/chat` | Multi-agent AI chat |
 | WebSocket | `/ws/progress` | Operasyon ilerleme durumu |
-
-### Ayarlar & Prompts
-| Metod | Endpoint | Açıklama |
-|---|---|---|
-| `GET` | `/api/settings` | Mevcut konfigürasyonu getir |
-| `PUT` | `/api/settings` | Ayarları kaydet (`.cache/user_settings.json`'a yazar) |
-| `GET` | `/api/settings/prompts` | Tüm prompt şablonlarını grup metadata'sıyla getir |
-| `PUT` | `/api/settings/prompts` | Prompt şablonlarını kaydet (diske yazar) |
-| `POST` | `/api/settings/prompts/reset` | Seçili veya tüm prompt'ları hardcoded varsayılana sıfırla |
-| `GET` | `/api/settings/providers` | AI sağlayıcılarını etiket + model bilgisiyle listele |
-| `GET` | `/api/settings/health` | Seçili sağlayıcı sağlık kontrolü |
-| `GET` | `/api/settings/models/{provider}` | Sağlayıcıya ait kullanılabilir modelleri getir |
-| `POST` | `/api/settings/test-connection` | Sağlayıcı bağlantısını test et |
-
-### Skills
-| Metod | Endpoint | Açıklama |
-|---|---|---|
-| `GET` | `/api/settings/skills` | Tüm skill'leri ve kullanılabilir tool isimlerini getir |
-| `GET` | `/api/settings/skills/item/{slug}` | Tekil skill tanımını getir |
-| `PUT` | `/api/settings/skills/item/{slug}` | Skill oluştur veya güncelle |
-| `POST` | `/api/settings/skills/item/{slug}/reset` | Varsayılan skill'i seed haline döndür |
-| `DELETE` | `/api/settings/skills/item/{slug}` | Custom skill sil |
-| `POST` | `/api/settings/skills/validate` | Skill payload'ını kaydetmeden doğrula |
-| `POST` | `/api/settings/skills/preview` | Skill'in resolved prompt preview'ını üret |
-| `GET` | `/api/settings/skills/item/{slug}/export` | Import edilebilir skill payload'ı döndür |
-| `POST` | `/api/settings/skills/import` | Export edilmiş bir skill payload'ını içe al |
-
-### MCP
-| Metod | Endpoint | Açıklama |
-|---|---|---|
 | `GET` | `/api/mcp/status` | MCP bağlantı durumu |
 | `POST` | `/api/mcp/initialize` | MCP oturumu başlat |
 | `POST` | `/api/chat/clear` | Sohbet geçmişini temizle |
@@ -1139,75 +992,6 @@ python -m pytest tests/test_seo_analyzer.py -v
 Testler mock ve fixture kullanır — canlı API çağrısı yapılmaz. Örnek ürünler: `tests/fixtures/sample_products.json`.
 
 ---
-
-## Anthropic Claude Entegrasyonu
-
-Bu proje **Anthropic Claude** ile en iyi deneyim icin optimize edilmistir. `AI_PROVIDER=anthropic` sectigenizde:
-
-### Native Messages API
-Diger saglayicilar OpenAI-compatible endpoint kullanirken, Claude **native Anthropic SDK** (`anthropic` Python paketi) ile entegre olur. Bu sayede:
-- **Extended Thinking**: `AI_THINKING_MODE=true` ile Claude'un derin akil yurutme yetenegi aktive olur. Otomatik olarak `temperature=1` ayarlanir ve thinking budget hesaplanir
-- **Streaming**: Gercek zamanli yanitlar — hem dusunme bloklari hem metin parcalari anlik iletilir
-- **Istek Iptali**: Uzun suren istekler `cancel_active_request()` ile aninda iptal edilebilir
-- **Token Takibi**: Her API cagrisi icin input/output token sayimi ve model bazli maliyet tahmini
-
-### Desteklenen Modeller
-| Model | Kullanim | Maliyet (1M token) |
-|---|---|---|
-| `claude-haiku-4-5-20251001` | Varsayilan — hizli ve ekonomik | $0.80 input / $4.0 output |
-| `claude-sonnet-4-20250514` | Dengeli performans | $3.0 input / $15.0 output |
-| `claude-opus-4-20250514` | Maksimum kalite | $15.0 input / $75.0 output |
-
-### Hizli Baslangic
-```bash
-# .env dosyaniza ekleyin:
-AI_PROVIDER=anthropic
-AI_API_KEY=sk-ant-api03-...  # Anthropic Console'dan alin
-AI_MODEL_NAME=claude-haiku-4-5-20251001  # Opsiyonel, varsayilan zaten bu
-AI_THINKING_MODE_CHAT=false   # Chat icin derin dusunme, true yapin
-AI_THINKING_MODE_BATCH=false  # Batch/agentic rewrite icin derin dusunme, true yapin
-```
-
-### Agentic Pipeline ile Claude
-Claude'un tool calling yetenegi sayesinde **otonom SEO optimizasyonu** calisir:
-1. `seo_score_product` — urunu skorlar
-2. `validate_rewrite` — yeniden yazimlari dogrular
-3. `save_suggestion` — oneriyi kaydeder
-4. Maks 8 iterasyon ile iyilestirme dongusu
-
-Chat modunda uc uzman ajan (SEO Uzmani, Magaza Operatoru, Genel Asistan) Claude uzerinden calisir ve semantik yonlendirme ile otomatik secilir.
-
----
-
-## Tool Runtime v2 Notu
-
-Tool runtime artik ortak bir `ToolDefinition` modeli uzerinden calisir. Hem agent tool'lari hem chat-local tool'lari merkezi registry tarafindan expose edilir; agent gorunurlugu allowlist ile filtrelenir ve tool sonuclari tek tip `{ok, tool_name, data, error, meta}` envelope'u ile doner.
-
-Bu degisiklik pratikte su anlama gelir:
-- `core/agent/tools.py` sadece toolkit fabrikasi degil, runtime registry ve normalized response katmanidir.
-- Chat'teki `save_seo_suggestion` ve `apply_seo_to_ikas` tool'lari da ayni kontrati kullanir.
-- Frontend tool kartlari envelope'u unwrap ederek eski semantik kartlari korur.
-
-## Permission Engine Notu
-
-Permission engine `core/permissions/` altinda merkezi olarak tanimlanir ve riskli operasyonlar icin ortak karar verir:
-
-- Varsayilan politika: `apply`, `rollback`, `bulk_apply`, `db_reset`, `external_write` islemleri `ask`
-- Explicit kullanici eylemleri: chat apply onayi, batch apply, rollback ve reset endpoint'leri runtime override ile `allow`
-- REST cevirisi: permission hatalari `409 approval required` veya `403 denied` olarak doner
-- Audit: onay gerektiren tum kararlar `permission_audit_log` tablosuna yazilir
-
-Bu katman hem `ToolRegistry.invoke()` seviyesinde hem de `ProductManager` servis akislarinda devrededir; yani handler calismadan once izin kontrolu zorunludur.
-
-## Unified Task Runtime Notu
-
-Uzun süren `llms` ve `batch` akışları artık ortak `tasks` kaydıyla izlenir. Her task için `type`, `status`, `progress`, `payload`, `result`, `error`, `started_at`, `finished_at` ve `heartbeat_at` tutulur.
-
-- `llms_jobs` ve `batch_jobs` tabloları mevcut UI ve domain verisi için korunur, ama lifecycle bilgisi `tasks` tablosuna da senkronize edilir
-- Ortak endpoint yüzeyi `/api/tasks/*` üzerinden stop, cancel, resume, retry ve status okumaları yapılabilir
-- Frontend tarafında `TaskStatusCard` ile llms ve batch ekranları aynı task semantiğini kullanır
-
-Tam task-native migration için kalan işler [docs/unified-task-system-follow-up.md](./docs/unified-task-system-follow-up.md) içinde izlenir.
 
 ## Lisans
 

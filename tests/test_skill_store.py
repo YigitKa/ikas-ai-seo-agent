@@ -7,6 +7,8 @@ from core.skills.store import (
     SkillDefinition,
     ensure_skill_files,
     list_skill_definitions,
+    preview_skill_definition,
+    resolve_skill_tool_scope,
     save_skill_definition,
     validate_skill_definition,
 )
@@ -71,3 +73,32 @@ def test_save_skill_definition_persists_custom_skill(monkeypatch, tmp_path):
     payload = json.loads(meta_path.read_text(encoding="utf-8"))
     assert payload["slug"] == "custom-audit"
     assert payload["tags"] == ["custom", "audit"]
+
+
+def test_resolve_skill_tool_scope_intersects_flow_tools(monkeypatch, tmp_path):
+    monkeypatch.setattr(skill_store, "SKILLS_DIR", tmp_path / "skills")
+    skill_store._skill_cache.clear()
+    ensure_skill_files()
+
+    skill = skill_store.get_skill_definition("launch-readiness")
+
+    resolved = resolve_skill_tool_scope(skill, applies_to="chat")
+
+    assert resolved is not None
+    assert "apply_seo_to_ikas" in resolved
+    assert "save_suggestion" not in resolved
+
+
+def test_preview_skill_definition_returns_runtime_debug(monkeypatch, tmp_path):
+    monkeypatch.setattr(skill_store, "SKILLS_DIR", tmp_path / "skills")
+    skill_store._skill_cache.clear()
+    ensure_skill_files()
+
+    skill = skill_store.get_skill_definition("brand-voice-rewrite")
+
+    preview = preview_skill_definition(skill, applies_to="batch")
+
+    assert preview["debug"]["applies_to"] == "batch"
+    assert preview["debug"]["tool_scope_mode"] == "prompt_only"
+    assert "Batch akisi" in preview["debug"]["tool_scope_note"]
+    assert preview["debug"]["requested_tools"]

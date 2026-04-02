@@ -49,7 +49,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intentionalDisconnectRef = useRef(false);
-  const lastSentPayloadRef = useRef<{ message: string; productId: string; hidden: boolean } | null>(null);
+  const lastSentPayloadRef = useRef<{ message: string; productId?: string; hidden: boolean } | null>(null);
   const preferredSkillSlugRef = useRef<string | null>(null);
 
   // Forward-ref so scheduleReconnect can call connect without a circular dep
@@ -170,6 +170,8 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
           h.setActiveSkill(data.active_skill ?? null);
           if (data.active_skill?.slug) {
             preferredSkillSlugRef.current = data.active_skill.slug;
+          } else {
+            preferredSkillSlugRef.current = null;
           }
           break;
 
@@ -222,7 +224,6 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
   const sendMessage = useCallback(
     (message: string, options?: { hidden?: boolean }) => {
       const productId = latestRef.current.productContextRef.current?.id;
-      if (!productId) return;
 
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         connect();
@@ -235,9 +236,11 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
       }
       lastSentPayloadRef.current = { message, productId, hidden: !!options?.hidden };
       latestRef.current.startPendingRequest();
-      wsRef.current.send(
-        JSON.stringify({ action: 'message', message, product_id: productId }),
-      );
+      const payload: Record<string, unknown> = { action: 'message', message };
+      if (productId) {
+        payload.product_id = productId;
+      }
+      wsRef.current.send(JSON.stringify(payload));
     },
     [connect],
   );
@@ -256,9 +259,11 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
     });
 
     latestRef.current.startPendingRequest();
-    wsRef.current.send(
-      JSON.stringify({ action: 'message', message: payload.message, product_id: payload.productId }),
-    );
+    const nextPayload: Record<string, unknown> = { action: 'message', message: payload.message };
+    if (payload.productId) {
+      nextPayload.product_id = payload.productId;
+    }
+    wsRef.current.send(JSON.stringify(nextPayload));
   }, []);
 
   const clearHistory = useCallback(() => {

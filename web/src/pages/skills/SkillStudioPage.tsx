@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import AppHeader from '../../shared/ui/AppHeader';
 import ConfirmDialog from '../../shared/ui/ConfirmDialog';
 import { useToast } from '../../shared/ui/Toast';
@@ -252,6 +253,7 @@ function layerLabel(layer: SkillPromptLayer, promptLookup: Map<string, PromptTem
 export default function SkillStudioPage() {
   const qc = useQueryClient();
   const toast = useToast();
+  const navigate = useNavigate();
 
   const skillsQ = useQuery({
     queryKey: ['skills'],
@@ -513,6 +515,11 @@ export default function SkillStudioPage() {
     setPreviewAttemptKey('');
     toast.info(isCreatingNew ? 'Yeni skill taslagi sifirlandi.' : 'Degisiklikler geri alindi.');
   }, [isCreatingNew, originalSnapshot, toast]);
+
+  const openSkillInChat = useCallback(() => {
+    if (!selectedExistingSkill) return;
+    navigate(`/?skill=${encodeURIComponent(selectedExistingSkill.slug)}`);
+  }, [navigate, selectedExistingSkill]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -890,6 +897,14 @@ export default function SkillStudioPage() {
               activeValidation={activeValidation}
               resolvedLayers={resolvedLayers}
               selectedExistingSkill={selectedExistingSkill}
+              canOpenInChat={
+                !!selectedExistingSkill
+                && !isCreatingNew
+                && !hasDirty
+                && draft.status === 'active'
+                && draft.applies_to.includes('chat')
+              }
+              openSkillInChat={openSkillInChat}
               setConfirmReset={setConfirmReset}
               setConfirmDelete={setConfirmDelete}
               runValidate={runValidate}
@@ -1776,19 +1791,53 @@ function SkillPreviewPanel({
             </div>
           </div>
         ) : preview ? (
-          <pre
-            className="whitespace-pre-wrap break-words rounded-2xl p-4"
-            style={{
-              background: 'rgba(11,17,32,0.68)',
-              border: '1px solid rgba(148,163,184,0.14)',
-              color: 'var(--color-text-secondary)',
-              fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
-              fontSize: '12px',
-              lineHeight: '1.75',
-            }}
-          >
-            {preview.composed_prompt || 'Bu akis icin prompt cikisi bos.'}
-          </pre>
+          <div className="space-y-4">
+            <div
+              className="rounded-2xl border p-4"
+              style={{
+                background: 'rgba(11,17,32,0.68)',
+                borderColor: 'rgba(148,163,184,0.14)',
+              }}
+            >
+              <div className="mb-3 grid grid-cols-2 gap-2">
+                <StatRow label="Flow" value={preview.debug.applies_to || '-'} />
+                <StatRow label="Prompt Size" value={`${preview.debug.prompt_char_count} char`} />
+                <StatRow label="Layers" value={String(preview.debug.resolved_layer_count)} />
+                <StatRow label="Tool Mode" value={preview.debug.tool_scope_mode} />
+              </div>
+              <div className="text-[11px] leading-5" style={{ color: 'var(--color-text-secondary)' }}>
+                {preview.debug.tool_scope_note}
+              </div>
+              <div className="mt-3 grid gap-3">
+                <DebugListCard
+                  title="Resolved Tool Scope"
+                  items={preview.debug.resolved_tools}
+                  emptyLabel="Bu flow icin runtime tool kisiti yok."
+                  tone="success"
+                />
+                <DebugListCard
+                  title="Requested Tools"
+                  items={preview.debug.requested_tools}
+                  emptyLabel="Skill allowed_tools tanimlamiyor."
+                  tone="neutral"
+                />
+              </div>
+            </div>
+
+            <pre
+              className="whitespace-pre-wrap break-words rounded-2xl p-4"
+              style={{
+                background: 'rgba(11,17,32,0.68)',
+                border: '1px solid rgba(148,163,184,0.14)',
+                color: 'var(--color-text-secondary)',
+                fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
+                fontSize: '12px',
+                lineHeight: '1.75',
+              }}
+            >
+              {preview.composed_prompt || 'Bu akis icin prompt cikisi bos.'}
+            </pre>
+          </div>
         ) : (
           <div
             className="rounded-2xl border p-4 text-sm"
@@ -1806,6 +1855,53 @@ function SkillPreviewPanel({
   );
 }
 
+function DebugListCard({
+  title,
+  items,
+  emptyLabel,
+  tone,
+}: {
+  title: string;
+  items: string[];
+  emptyLabel: string;
+  tone: 'success' | 'neutral';
+}) {
+  return (
+    <div
+      className="rounded-xl border px-3 py-3"
+      style={{
+        background: tone === 'success' ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.03)',
+        borderColor: tone === 'success' ? 'rgba(16,185,129,0.16)' : 'rgba(148,163,184,0.14)',
+      }}
+    >
+      <div className="text-[10px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-muted)' }}>
+        {title}
+      </div>
+      {items.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {items.map((item) => (
+            <span
+              key={item}
+              className="rounded-full px-2 py-1 text-[10px] font-medium"
+              style={{
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(148,163,184,0.18)',
+                color: 'var(--color-text-secondary)',
+              }}
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-2 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+          {emptyLabel}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SkillInspectorPanel({
   draft,
   tagList,
@@ -1813,6 +1909,8 @@ function SkillInspectorPanel({
   activeValidation,
   resolvedLayers,
   selectedExistingSkill,
+  canOpenInChat,
+  openSkillInChat,
   setConfirmReset,
   setConfirmDelete,
   runValidate,
@@ -1828,6 +1926,8 @@ function SkillInspectorPanel({
   activeValidation: SkillValidation | null;
   resolvedLayers: SkillValidation['resolved_prompt_layers'];
   selectedExistingSkill: SkillDefinition | null;
+  canOpenInChat: boolean;
+  openSkillInChat: () => void;
   setConfirmReset: (open: boolean) => void;
   setConfirmDelete: (open: boolean) => void;
   runValidate: () => void;
@@ -2006,6 +2106,23 @@ function SkillInspectorPanel({
 
         <button
           type="button"
+          onClick={openSkillInChat}
+          disabled={!canOpenInChat}
+          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[11px] transition-all duration-200 disabled:opacity-40"
+          style={{
+            background: 'rgba(16,185,129,0.10)',
+            border: '1px solid rgba(16,185,129,0.20)',
+            color: '#a7f3d0',
+          }}
+        >
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-7.5 0L21 0m0 0v6.75M21 0h-6.75" />
+          </svg>
+          Chat'te Uygula ve Test Et
+        </button>
+
+        <button
+          type="button"
           onClick={runPreview}
           disabled={previewPending}
           className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[11px] transition-all duration-200 disabled:opacity-40"
@@ -2038,6 +2155,19 @@ function SkillInspectorPanel({
           </svg>
           Validation Calistir
         </button>
+
+        {!canOpenInChat && (
+          <div
+            className="rounded-lg border px-3 py-2 text-[10px] leading-5"
+            style={{
+              background: 'rgba(255,255,255,0.03)',
+              borderColor: 'rgba(148,163,184,0.16)',
+              color: 'var(--color-text-muted)',
+            }}
+          >
+            Chat testi icin skill'in kaydedilmis, `active` durumda ve `chat` akisi icin uygun olmasi gerekir.
+          </div>
+        )}
 
         {selectedExistingSkill?.is_default && (
           <button
