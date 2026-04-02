@@ -272,6 +272,7 @@ export default function ChatPanel({
 
       <ChatMessages
         score={score}
+        product={product}
         productId={productId}
         showStarterState={showStarterState}
         isLoading={isLoading}

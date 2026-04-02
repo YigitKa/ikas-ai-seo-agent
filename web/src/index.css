@@ -191,6 +191,19 @@ body {
   animation: score-section-enter 600ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+@keyframes score-glow-drift {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(10px, -8px, 0) scale(1.06);
+  }
+}
+
+.score-glow-drift {
+  animation: score-glow-drift 9s ease-in-out infinite;
+}
+
 /* ── HTML content styling inside diff viewer ─────────────────────────────── */
 .html-content {
   overflow-wrap: anywhere;

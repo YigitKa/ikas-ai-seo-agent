@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
-import type { SeoScore } from '../../types';
+import type { Product, SeoScore } from '../../types';
 import type { ChatMessage as ChatMessageType } from '../../hooks/useChat';
 import { MessageBubble, type SuggestionOption } from './ChatMessage';
 import SeoScoreChatMessage from './SeoScoreChatMessage';
@@ -33,6 +33,7 @@ type ChatListItem =
 
 interface ChatMessagesProps {
   score?: SeoScore | null;
+  product?: Product | null;
   productId?: string;
   showStarterState: boolean;
   isLoading: boolean;
@@ -110,6 +111,7 @@ function LoadingBubble({
 
 export function ChatMessages({
   score,
+  product,
   productId,
   showStarterState,
   isLoading,
@@ -216,7 +218,7 @@ export function ChatMessages({
         itemContent={(_, item) => (
           <div className="px-3 pb-3 last:pb-0">
             {item.kind === 'score' ? (
-              <SeoScoreChatMessage score={item.score} />
+              <SeoScoreChatMessage score={item.score} product={product} />
             ) : null}
 
             {item.kind === 'starter' ? (
