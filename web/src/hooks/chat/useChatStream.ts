@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import type { ActiveSkillSummary, ChatResponseMeta, ChatWsMessage, SeoSuggestion } from '../../types';
 import type { ChatMessage } from '../useChat';
+import { createChatMessage } from './chatMessageModel';
 
 type BufferedChunk = { type: 'content' | 'thinking'; text: string };
 
@@ -59,7 +60,7 @@ export function useChatStream(deps: UseChatStreamDeps) {
             };
             next[next.length - 1] = lastMessage;
           } else {
-            lastMessage = { role: 'assistant', content: chunk.text };
+            lastMessage = createChatMessage({ role: 'assistant', content: chunk.text });
             next.push(lastMessage);
           }
         } else {
@@ -71,7 +72,7 @@ export function useChatStream(deps: UseChatStreamDeps) {
             };
             next[next.length - 1] = lastMessage;
           } else {
-            lastMessage = { role: 'assistant', content: '', thinking: chunk.text };
+            lastMessage = createChatMessage({ role: 'assistant', content: '', thinking: chunk.text });
             next.push(lastMessage);
           }
         }
@@ -126,7 +127,8 @@ export function useChatStream(deps: UseChatStreamDeps) {
 
     setMessages((prev) => {
       const next = [...prev];
-      const finalizedMessage: ChatMessage = {
+      const finalizedMessage: ChatMessage = createChatMessage({
+        id: prev[prev.length - 1]?.role === 'assistant' ? prev[prev.length - 1].id : undefined,
         role: 'assistant',
         content: typeof data.content === 'string' ? data.content : '',
         thinking: data.thinking,
@@ -134,7 +136,7 @@ export function useChatStream(deps: UseChatStreamDeps) {
         meta,
         suggestionSaved: data.suggestion_saved,
         pendingSuggestion: data.pending_suggestion,
-      };
+      });
       const lastMessage = next[next.length - 1];
 
       if (lastMessage?.role === 'assistant') {

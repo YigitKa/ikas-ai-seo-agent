@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ActiveSkillSummary, ChatWsMessage, SeoSuggestion } from '../../types';
 import type { ChatMessage } from '../useChat';
 import type { MCPState } from './useChatStatus';
+import { createChatMessage } from './chatMessageModel';
 
 const MAX_RECONNECT_ATTEMPTS = 8;
 const BASE_RECONNECT_DELAY_MS = 1000;
@@ -140,7 +141,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
           h.clearActiveAutoIntro();
           h.setMessages((prev) => [
             ...prev,
-            { role: 'system', content: data.content || data.message || 'Hata' },
+            createChatMessage({ role: 'system', content: data.content || data.message || 'Hata' }),
           ]);
           break;
 
@@ -149,7 +150,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
           h.clearActiveAutoIntro();
           h.setMessages((prev) => [
             ...prev,
-            { role: 'system', content: data.message || 'Istek durduruldu.' },
+            createChatMessage({ role: 'system', content: data.message || 'Istek durduruldu.' }),
           ]);
           break;
 
@@ -232,7 +233,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
       }
 
       if (!options?.hidden) {
-        latestRef.current.setMessages((prev) => [...prev, { role: 'user', content: message }]);
+        latestRef.current.setMessages((prev) => [...prev, createChatMessage({ role: 'user', content: message })]);
       }
       lastSentPayloadRef.current = { message, productId, hidden: !!options?.hidden };
       latestRef.current.startPendingRequest();

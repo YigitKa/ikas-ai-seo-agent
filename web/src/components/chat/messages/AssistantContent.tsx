@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { extractSuggestionOptions, type SuggestionOption } from '../suggestionUtils';
 import MarkdownMessage from './MarkdownMessage';
 import SuggestionCards from './SuggestionCards';
@@ -11,7 +12,7 @@ export default function AssistantMessageContent({
   onApplyOption?: (option: SuggestionOption, index: number) => void;
   applyDisabled?: boolean;
 }) {
-  const { markdownContent, options } = extractSuggestionOptions(content);
+  const { markdownContent, options } = useMemo(() => extractSuggestionOptions(content), [content]);
 
   return (
     <div className="space-y-4">

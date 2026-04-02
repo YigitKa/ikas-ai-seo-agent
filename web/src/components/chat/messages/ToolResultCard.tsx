@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ToolResult, ToolResultEnvelope } from '../../../types';
 
 const SEO_AGENT_TOOLS: Record<string, { label: string; icon: string }> = {
@@ -103,6 +103,28 @@ function isSavedResult(resultJson: string): boolean {
   return 'success' in envelope.data || 'suggestion_saved' in envelope.data;
 }
 
+function LazyToolPayload({ expanded, resultJson, tone }: { expanded: boolean; resultJson: string; tone: string }) {
+  const parsed = useMemo(() => {
+    if (!expanded) {
+      return '';
+    }
+    return formatToolPayload(resultJson);
+  }, [expanded, resultJson]);
+
+  if (!expanded) {
+    return null;
+  }
+
+  return (
+    <pre
+      className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md p-2 text-[11px]"
+      style={{ background: 'rgba(0,0,0,0.2)', color: tone }}
+    >
+      {parsed}
+    </pre>
+  );
+}
+
 function SeoAgentToolCard({ result, toolMeta }: { result: ToolResult; toolMeta: { label: string; icon: string } }) {
   const [expanded, setExpanded] = useState(false);
   const scoreResult = result.tool === 'seo_score_product' ? extractSeoScoreResult(result.result) : null;
@@ -143,7 +165,6 @@ function SeoAgentToolCard({ result, toolMeta }: { result: ToolResult; toolMeta: 
   };
 
   const colors = colorMap[result.tool] ?? colorMap.default;
-  const parsed = formatToolPayload(result.result);
 
   return (
     <div
@@ -211,21 +232,17 @@ function SeoAgentToolCard({ result, toolMeta }: { result: ToolResult; toolMeta: 
         )}
       </div>
 
-      {expanded && (
-        <pre
-          className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md p-2 text-[11px]"
-          style={{ background: 'rgba(0,0,0,0.2)', color: 'rgba(255,255,255,0.5)' }}
-        >
-          {parsed}
-        </pre>
-      )}
+      <LazyToolPayload
+        expanded={expanded}
+        resultJson={result.result}
+        tone="rgba(255,255,255,0.5)"
+      />
     </div>
   );
 }
 
 function McpToolCard({ result }: { result: ToolResult }) {
   const [expanded, setExpanded] = useState(false);
-  const parsed = formatToolPayload(result.result);
 
   return (
     <div
@@ -255,14 +272,11 @@ function McpToolCard({ result }: { result: ToolResult }) {
           {expanded ? 'Gizle' : 'Goster'}
         </span>
       </button>
-      {expanded && (
-        <pre
-          className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md p-2 text-[11px]"
-          style={{ background: 'rgba(0,0,0,0.2)', color: 'rgba(245, 158, 11, 0.7)' }}
-        >
-          {parsed}
-        </pre>
-      )}
+      <LazyToolPayload
+        expanded={expanded}
+        resultJson={result.result}
+        tone="rgba(245, 158, 11, 0.7)"
+      />
     </div>
   );
 }

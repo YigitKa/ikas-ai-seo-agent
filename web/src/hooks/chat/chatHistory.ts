@@ -1,7 +1,7 @@
-import type { ChatMessage } from '../useChat';
+import type { ChatMessage } from './chatMessageModel';
 
 const KEY_PREFIX = 'ikas_chat_';
-const MAX_MESSAGES = 50;
+const MAX_MESSAGES = 200;
 
 function historyKey(productId: string): string {
   return `${KEY_PREFIX}${productId}`;
@@ -28,7 +28,11 @@ export function saveHistory(productId: string, messages: ChatMessage[]): void {
   if (!messages.length) return;
   try {
     // Strip transient pendingSuggestion to avoid storing stale suggestion objects
-    const serializable = messages.map(({ pendingSuggestion: _ps, ...rest }) => rest);
+    const serializable = messages.map((message) => {
+      const next = { ...message };
+      delete next.pendingSuggestion;
+      return next;
+    });
     const slice = serializable.slice(-MAX_MESSAGES);
     localStorage.setItem(historyKey(productId), JSON.stringify(slice));
   } catch {

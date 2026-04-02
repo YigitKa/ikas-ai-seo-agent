@@ -154,10 +154,10 @@ function MessageBubble({
 }
 
 export default memo(MessageBubble, (prev, next) =>
-  prev.msg.content === next.msg.content &&
-  prev.msg.role === next.msg.role &&
-  (prev.msg.thinking?.length ?? 0) === (next.msg.thinking?.length ?? 0) &&
+  prev.msg === next.msg &&
   prev.assistantLabel === next.assistantLabel &&
+  prev.fallbackContextLength === next.fallbackContextLength &&
+  prev.onApplyOption === next.onApplyOption &&
   prev.applyDisabled === next.applyDisabled &&
   prev.onRetry === next.onRetry,
 );

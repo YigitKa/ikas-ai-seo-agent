@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChatResponseMeta, SeoSuggestion, SuggestionSavedInfo, ToolResult } from '../types';
 import { useChatStatus } from './chat/useChatStatus';
 import { useChatStream } from './chat/useChatStream';
 import { useChatAutoIntro } from './chat/useChatAutoIntro';
 import { useChatWebSocket } from './chat/useChatWebSocket';
+import {
+  createChatMessage,
+  normalizeChatMessages,
+  type ChatMessage,
+  type ChatMessageDraft,
+} from './chat/chatMessageModel';
 import {
   loadHistory,
   saveHistory,
@@ -12,16 +17,7 @@ import {
 } from './chat/chatHistory';
 
 export type { MCPState } from './chat/useChatStatus';
-
-export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system' | 'tool';
-  content: string;
-  thinking?: string;
-  toolResults?: ToolResult[];
-  meta?: ChatResponseMeta;
-  suggestionSaved?: SuggestionSavedInfo;
-  pendingSuggestion?: SeoSuggestion | null;
-}
+export type { ChatMessage, ChatMessageDraft } from './chat/chatMessageModel';
 
 export interface ChatProductContext {
   id?: string;
@@ -168,7 +164,7 @@ export function useChat(productContext?: ChatProductContext, onProductUpdated?: 
     // Restore stored history OR start with a clean slate + auto-intro
     const stored = loadHistory(nextProductId);
     if (stored.length > 0) {
-      setMessages(stored);
+      setMessages(normalizeChatMessages(stored));
       status.setPendingSuggestion(null);
       // Don't queue auto-intro — the user already has a conversation for this product.
       // (sendHiddenAutoIntro will be a no-op because nothing is queued.)
@@ -209,8 +205,8 @@ export function useChat(productContext?: ChatProductContext, onProductUpdated?: 
   }, [ws.clearHistory]);
 
   const addLocalMessage = useCallback(
-    (msg: ChatMessage) => {
-      setMessages((prev) => [...prev, msg]);
+    (msg: ChatMessageDraft) => {
+      setMessages((prev) => [...prev, createChatMessage(msg)]);
     },
     [],
   );

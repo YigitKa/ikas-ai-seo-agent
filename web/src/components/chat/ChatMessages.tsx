@@ -1,15 +1,37 @@
-import type { RefObject } from "react";
-import type { SeoScore } from "../../types";
-import type { ChatMessage as ChatMessageType } from "../../hooks/useChat";
-import { MessageBubble, type SuggestionOption } from "./ChatMessage";
-import SeoScoreChatMessage from "./SeoScoreChatMessage";
-import { StarterStateCard } from "./StarterStateCard";
-import { STARTER_PROMPTS } from "./chatPanelConstants";
-import type { StarterPrompt } from "./promptParams";
-import { formatDuration } from "./chatUtils";
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
+import type { SeoScore } from '../../types';
+import type { ChatMessage as ChatMessageType } from '../../hooks/useChat';
+import { MessageBubble, type SuggestionOption } from './ChatMessage';
+import SeoScoreChatMessage from './SeoScoreChatMessage';
+import { StarterStateCard } from './StarterStateCard';
+import { STARTER_PROMPTS } from './chatPanelConstants';
+import type { StarterPrompt } from './promptParams';
+import { formatDuration } from './chatUtils';
+
+type ChatListItem =
+  | {
+    key: string;
+    kind: 'score';
+    score: SeoScore;
+    productId: string;
+  }
+  | {
+    key: string;
+    kind: 'starter';
+  }
+  | {
+    key: string;
+    kind: 'message';
+    message: ChatMessageType;
+    messageIndex: number;
+  }
+  | {
+    key: string;
+    kind: 'loading';
+  };
 
 interface ChatMessagesProps {
-  scrollRef: RefObject<HTMLDivElement | null>;
   score?: SeoScore | null;
   productId?: string;
   showStarterState: boolean;
@@ -25,8 +47,68 @@ interface ChatMessagesProps {
   onRetry: () => void;
 }
 
+function LoadingBubble({
+  isLoading,
+  isInspectingProduct,
+  isAutoIntroActive,
+  assistantLabel,
+  liveElapsedSeconds,
+}: {
+  isLoading: boolean;
+  isInspectingProduct: boolean;
+  isAutoIntroActive: boolean;
+  assistantLabel: string;
+  liveElapsedSeconds: number;
+}) {
+  if (!isLoading && !isInspectingProduct) {
+    return null;
+  }
+
+  return (
+    <div
+      className="mr-6 rounded-2xl px-4 py-3"
+      style={{
+        background: 'linear-gradient(180deg, rgba(30,41,59,0.75), rgba(15,23,42,0.8))',
+        border: '1px solid rgba(148,163,184,0.2)',
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <div className="flex gap-1">
+          <span
+            className="typing-dot h-1.5 w-1.5 rounded-full"
+            style={{ background: 'var(--color-primary-light)' }}
+          />
+          <span
+            className="typing-dot h-1.5 w-1.5 rounded-full"
+            style={{ background: 'var(--color-primary-light)' }}
+          />
+          <span
+            className="typing-dot h-1.5 w-1.5 rounded-full"
+            style={{ background: 'var(--color-primary-light)' }}
+          />
+        </div>
+        <span
+          className="text-xs"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          {isAutoIntroActive
+            ? 'Asistan urunu inceliyor...'
+            : `${assistantLabel} dusunuyor...`}
+        </span>
+      </div>
+      {isLoading && (
+        <div
+          className="mt-2 text-[11px]"
+          style={{ color: 'var(--color-text-secondary)' }}
+        >
+          Sure: {formatDuration(liveElapsedSeconds)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ChatMessages({
-  scrollRef,
   score,
   productId,
   showStarterState,
@@ -41,75 +123,133 @@ export function ChatMessages({
   onApplyOption,
   onRetry,
 }: ChatMessagesProps) {
+  const virtuosoRef = useRef<VirtuosoHandle | null>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
+  const listItems = useMemo<ChatListItem[]>(() => {
+    const nextItems: ChatListItem[] = [];
+
+    if (score && productId) {
+      nextItems.push({
+        key: `score-${productId}`,
+        kind: 'score',
+        score,
+        productId,
+      });
+    }
+
+    if (showStarterState) {
+      nextItems.push({
+        key: 'starter-state',
+        kind: 'starter',
+      });
+    }
+
+    messages.forEach((message, index) => {
+      nextItems.push({
+        key: message.id,
+        kind: 'message',
+        message,
+        messageIndex: index,
+      });
+    });
+
+    if (isLoading || isInspectingProduct) {
+      nextItems.push({
+        key: 'loading-indicator',
+        kind: 'loading',
+      });
+    }
+
+    return nextItems;
+  }, [isInspectingProduct, isLoading, messages, productId, score, showStarterState]);
+
+  const lastLiveMessageSignature = useMemo(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage) {
+      return 'empty';
+    }
+
+    return [
+      lastMessage.id,
+      lastMessage.content.length,
+      lastMessage.thinking?.length ?? 0,
+      lastMessage.toolResults?.length ?? 0,
+      lastMessage.suggestionSaved ? 'saved' : 'plain',
+    ].join(':');
+  }, [messages]);
+
+  useEffect(() => {
+    if ((!isLoading && !isInspectingProduct) || !isAtBottom) {
+      return;
+    }
+
+    const rafId = window.requestAnimationFrame(() => {
+      virtuosoRef.current?.autoscrollToBottom();
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [isAtBottom, isInspectingProduct, isLoading, lastLiveMessageSignature]);
+
   return (
-    <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-4">
-      {/* Score analysis -- shown as the app's first message before LLM */}
-      {score && productId && (
-        <SeoScoreChatMessage key={`score-${productId}`} score={score} />
-      )}
+    <div className="flex-1 overflow-hidden">
+      <Virtuoso
+        ref={virtuosoRef}
+        data={listItems}
+        className="h-full"
+        followOutput={(atBottom) => {
+          if (!atBottom) {
+            return false;
+          }
+          return isLoading || isInspectingProduct ? 'auto' : 'smooth';
+        }}
+        atBottomThreshold={32}
+        atBottomStateChange={setIsAtBottom}
+        computeItemKey={(_, item) => item.key}
+        defaultItemHeight={148}
+        overscan={{ main: 480, reverse: 240 }}
+        increaseViewportBy={{ top: 240, bottom: 360 }}
+        components={{
+          Header: () => <div className="h-4" />,
+          Footer: () => <div className="h-4" />,
+        }}
+        itemContent={(_, item) => (
+          <div className="px-3 pb-3 last:pb-0">
+            {item.kind === 'score' ? (
+              <SeoScoreChatMessage score={item.score} />
+            ) : null}
 
-      {showStarterState && (
-        <StarterStateCard
-          prompts={STARTER_PROMPTS}
-          onPromptClick={onStarterPrompt}
-          disabled={isLoading}
-        />
-      )}
+            {item.kind === 'starter' ? (
+              <StarterStateCard
+                prompts={STARTER_PROMPTS}
+                onPromptClick={onStarterPrompt}
+                disabled={isLoading}
+              />
+            ) : null}
 
-      {messages.map((msg, i) => (
-        <MessageBubble
-          key={i}
-          msg={msg}
-          assistantLabel={assistantLabel}
-          fallbackContextLength={liveContextLength}
-          onApplyOption={onApplyOption}
-          onRetry={i === messages.length - 1 ? onRetry : undefined}
-          applyDisabled={isLoading}
-        />
-      ))}
+            {item.kind === 'message' ? (
+              <MessageBubble
+                msg={item.message}
+                assistantLabel={assistantLabel}
+                fallbackContextLength={liveContextLength}
+                onApplyOption={onApplyOption}
+                onRetry={item.messageIndex === messages.length - 1 ? onRetry : undefined}
+                applyDisabled={isLoading}
+              />
+            ) : null}
 
-      {(isLoading || isInspectingProduct) && (
-        <div
-          className="mr-6 rounded-2xl px-4 py-3"
-          style={{
-            background: "linear-gradient(180deg, rgba(30,41,59,0.75), rgba(15,23,42,0.8))",
-            border: "1px solid rgba(148,163,184,0.2)",
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1">
-              <span
-                className="typing-dot h-1.5 w-1.5 rounded-full"
-                style={{ background: "var(--color-primary-light)" }}
+            {item.kind === 'loading' ? (
+              <LoadingBubble
+                isLoading={isLoading}
+                isInspectingProduct={isInspectingProduct}
+                isAutoIntroActive={isAutoIntroActive}
+                assistantLabel={assistantLabel}
+                liveElapsedSeconds={liveElapsedSeconds}
               />
-              <span
-                className="typing-dot h-1.5 w-1.5 rounded-full"
-                style={{ background: "var(--color-primary-light)" }}
-              />
-              <span
-                className="typing-dot h-1.5 w-1.5 rounded-full"
-                style={{ background: "var(--color-primary-light)" }}
-              />
-            </div>
-            <span
-              className="text-xs"
-              style={{ color: "var(--color-text-muted)" }}
-            >
-              {isAutoIntroActive
-                ? "Asistan urunu inceliyor..."
-                : `${assistantLabel} dusunuyor...`}
-            </span>
+            ) : null}
           </div>
-          {isLoading && (
-            <div
-              className="mt-2 text-[11px]"
-              style={{ color: "var(--color-text-secondary)" }}
-            >
-              Sure: {formatDuration(liveElapsedSeconds)}
-            </div>
-          )}
-        </div>
-      )}
+        )}
+      />
     </div>
   );
 }

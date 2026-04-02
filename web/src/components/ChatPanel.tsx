@@ -108,7 +108,6 @@ export default function ChatPanel({
   const [diffModalAction, setDiffModalAction] = useState<string>("");
   const prevPendingSuggestionRef = useRef<SeoSuggestion | null>(null);
   const requestedSkillRef = useRef<string>('');
-  const scrollRef = useRef<HTMLDivElement>(null);
   const promptParamOptions = buildPromptParamOptions(product, score);
 
   // Connect/disconnect WebSocket on mount
@@ -126,11 +125,6 @@ export default function ChatPanel({
     requestedSkillRef.current = normalized;
     setActiveSkill(normalized);
   }, [requestedSkillSlug, setActiveSkill]);
-
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
 
   // Live elapsed timer while request is pending
   useEffect(() => {
@@ -182,19 +176,19 @@ export default function ChatPanel({
   if (isLoading && liveElapsedSeconds > 0 && liveRateBase > 0) sessionStatusItems.push({ label: "Canli Hiz", value: `${formattedLiveTokensPerSecond} tok/sn`, tone: "success" });
 
   // Handlers
-  const handleSend = (text: string) => {
+  const handleSend = useCallback((text: string) => {
     const value = resolvePromptTemplate(text, promptParamOptions).trim();
     if (!value) return;
     sendMessage(value);
-  };
+  }, [promptParamOptions, sendMessage]);
 
-  const handleStarterPrompt = (prompt: typeof STARTER_PROMPTS[number]) => {
+  const handleStarterPrompt = useCallback((prompt: typeof STARTER_PROMPTS[number]) => {
     const value = resolvePromptTemplate(prompt.template, promptParamOptions).trim();
     if (!value) return;
     sendMessage(value);
-  };
+  }, [promptParamOptions, sendMessage]);
 
-  const handleApplySuggestionOption = (option: SuggestionOption, index: number) => {
+  const handleApplySuggestionOption = useCallback((option: SuggestionOption, index: number) => {
     if (option.action) {
       const label = ACTION_LABELS[option.action] || option.value;
       addLocalMessage({ role: "user", content: label });
@@ -207,7 +201,7 @@ export default function ChatPanel({
       `[[GENERATE_SUGGESTION]]${index + 1}. secenegi sectim.\nTon: ${option.tone}\nIcerik: ${option.value}\nBu secenek dogrultusunda urun icin somut SEO degerleri olustur ve save_seo_suggestion araci ile kaydet.`,
       { hidden: true },
     );
-  };
+  }, [addLocalMessage, sendMessage]);
 
   const openDiffModalForAction = useCallback(
     (suggestion: SeoSuggestion, action: string) => {
@@ -224,7 +218,7 @@ export default function ChatPanel({
     prevPendingSuggestionRef.current = pendingSuggestion;
   }, [pendingSuggestion, openDiffModalForAction, diffModalAction]);
 
-  const handleDiffApprove = (editedSuggestion: SeoSuggestion) => {
+  const handleDiffApprove = useCallback((editedSuggestion: SeoSuggestion) => {
     setDiffModalSuggestion(null);
     const payload = JSON.stringify({
       action: diffModalAction,
@@ -238,13 +232,13 @@ export default function ChatPanel({
     });
     addLocalMessage({ role: "user", content: "\u{2705} Degisiklikleri onayliyorum" });
     sendMessage(`[[CHAT_ACTION:single_apply_execute:${payload}]]`, { hidden: true });
-  };
+  }, [addLocalMessage, diffModalAction, sendMessage]);
 
-  const handleDiffReject = () => {
+  const handleDiffReject = useCallback(() => {
     setDiffModalSuggestion(null);
     addLocalMessage({ role: "user", content: "\u{274C} Iptal ettim" });
     sendMessage("[[CHAT_ACTION:single_apply_cancel]]", { hidden: true });
-  };
+  }, [addLocalMessage, sendMessage]);
 
   const handleExport = useCallback(() => {
     exportChatAsText(messages, displayProductName);
@@ -277,7 +271,6 @@ export default function ChatPanel({
       {isReconnecting && <ReconnectingBanner />}
 
       <ChatMessages
-        scrollRef={scrollRef}
         score={score}
         productId={productId}
         showStarterState={showStarterState}

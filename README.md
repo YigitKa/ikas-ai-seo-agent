@@ -546,7 +546,11 @@ Skor geçmişini izleyen ve iyileşmeleri görselleştiren analitik dashboard:
 - **Alt-skor karşılaştırması** — ilk ve son anlık görüntü arasında 10+ boyutta bar grafiği
 - **En çok gelişenler** — skor artışına göre sıralı ürün listesi
 - **Ürün bazlı drilldown** — her ürünün kendi trend grafiği
-- **Skor değişikliği günlüğü** — her operasyonun ürün × alan × delta bazında olay kaydı
+- **Skor dağılımı** — ürünlerin skor aralıklarına göre dağılımını gösteren pie chart
+- **Operasyon metrikleri** — operasyon türü bazlı aktivite ve etki analizi
+- **Saatlik / günlük aktivite** — zaman bazlı operasyon yoğunluğu grafikleri
+- **Skor değişikliği günlüğü** — her operasyonun ürün × alan × delta bazında olay kaydı (tarih, ürün, operasyon, iş kimliği ile filtrelenebilir)
+- **Anlık görüntü takvimi** — mevcut anlık görüntü tarihlerini listeleyin, herhangi bir tarihteki tüm ürün skorlarını inceleyin
 - **Anlık görüntü** — karşılaştırma için mevcut durumu elle kaydedin
 
 <p align="center">
@@ -977,9 +981,10 @@ ikas-ai-seo-agent/
 │   ├── permissions/            # Permission / approval engine + rule modeli
 │   ├── tasks/                  # Unified task runtime + resume/retry/stop servisleri
 │   ├── skills/                 # 3 katmanlı skill runtime: system/project/custom + routing + merging
+│   ├── llms/                   # llms.txt arka plan servis katmanı (LlmsService singleton)
 │   ├── ai/client.py            # Multi-provider AI soyutlaması (fabrika + adaptörler)
 │   ├── agent/                  # AgentOrchestrator (run + stream) + tool tanımları
-│   ├── chat/                   # Çok turlu chat (state, streaming, suggestions, guidance)
+│   ├── chat/                   # Çok turlu chat (state, streaming, streaming_flow, streaming_provider, streaming_lm_studio, suggestions, guidance)
 │   ├── seo/                    # Skorlama motoru + GEO denetim pipeline'ı
 │   ├── clients/                # IkasClient (OAuth+GraphQL) + IkasMCPClient (JSON-RPC)
 │   ├── services/               # Provider sağlık, ayarlar, öneriler, günlük tracker, mağaza hafızası
@@ -993,7 +998,7 @@ ikas-ai-seo-agent/
 │
 ├── web/src/                    # React/TypeScript SPA
 │   ├── pages/                  # Dashboard, LlmsLab, BatchOperations, Reports, PromptEditor, SkillStudio, Settings
-│   ├── components/             # ChatPanel, ProductTable, ScoreCard, chat/messages/, dashboard/, tasks/
+│   ├── components/             # ChatPanel, ProductTable, ScoreCard, chat/messages/, dashboard/, batch/, tasks/, seo-score/, settings/
 │   ├── shared/                 # score/scoreUtils, ui/ (Toast, ConfirmDialog, Modal, ProgressBar)
 │   ├── api/client.ts           # API istemci fonksiyonları
 │   └── hooks/                  # useChat + chat alt hook'ları (stream, ws, status, history, auto-intro)
@@ -1087,19 +1092,34 @@ ikas-ai-seo-agent/
 | `GET` | `/api/reports/top-improvers` | En çok gelişen ürünler |
 | `POST` | `/api/reports/take-snapshot` | Anlık görüntü al |
 | `GET` | `/api/reports/score-change-log` | Skor değişikliği olayları |
+| `GET` | `/api/reports/score-change-summary` | Skor değişikliği özeti |
+| `GET` | `/api/reports/snapshot-dates` | Mevcut anlık görüntü tarihlerini listele |
+| `GET` | `/api/reports/snapshot/{snapshot_date}` | Belirli tarihteki tüm ürün skorları |
+| `GET` | `/api/reports/hourly-activity` | Saatlik operasyon aktivitesi |
+| `GET` | `/api/reports/daily-activity` | Günlük operasyon aktivitesi |
+| `GET` | `/api/reports/score-distribution` | Skor dağılımı istatistikleri |
+| `GET` | `/api/reports/operation-metrics` | Operasyon türü bazlı metrikler |
 
 ### Ayarlar, Prompts & Skills
 
 | Metod | Endpoint | Açıklama |
 |---|---|---|
 | `GET/PUT` | `/api/settings` | Konfigürasyon oku / kaydet |
+| `GET` | `/api/settings/memory` | Mağaza hafızalarını listele |
+| `GET` | `/api/settings/memory/{id}` | Tekil hafıza kaydı |
+| `PUT` | `/api/settings/memory/{id}` | Hafıza güncelle |
+| `DELETE` | `/api/settings/memory/{id}` | Hafıza sil |
 | `GET/PUT` | `/api/settings/prompts` | Prompt şablonları oku / kaydet |
+| `GET` | `/api/settings/prompts/layering` | Prompt katmanlama sırası ve akış bilgisi |
 | `POST` | `/api/settings/prompts/reset` | Prompt'ları varsayılana sıfırla |
 | `GET` | `/api/settings/providers` | AI sağlayıcılarını listele |
 | `GET` | `/api/settings/health` | Sağlayıcı sağlık kontrolü |
+| `GET` | `/api/settings/models/{provider}` | Provider'a ait modelleri listele |
+| `GET` | `/api/settings/lm-studio/status` | LM Studio bağlantı durumu |
 | `POST` | `/api/settings/test-connection` | Bağlantı testi |
 | `GET` | `/api/settings/skills` | Tüm skill'leri listele |
 | `GET/PUT` | `/api/settings/skills/item/{slug}` | Tekil skill oku / güncelle |
+| `POST` | `/api/settings/skills/item/{slug}/reset` | Skill'i varsayılana sıfırla |
 | `DELETE` | `/api/settings/skills/item/{slug}` | Custom skill sil |
 | `POST` | `/api/settings/skills/validate` | Skill doğrula |
 | `POST` | `/api/settings/skills/preview` | Skill prompt preview |
