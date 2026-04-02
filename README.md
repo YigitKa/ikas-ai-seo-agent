@@ -468,6 +468,76 @@ graph TD
 
 ---
 
+### 🧠 Kalıcı Mağaza Hafızası
+
+AI her seferinde sıfırdan başlamaz — mağazanızın **marka tonu, yasaklı iddialar, kategori sözlüğü ve onaylanmış tercihleri** kalıcı hafızada saklanır ve her AI isteğine otomatik enjekte edilir.
+
+```mermaid
+graph TD
+    MANUAL["✏️ Manuel Ekleme<br/><i>Settings → Mağaza Hafızası</i>"] --> DB["💾 store_memories<br/><i>async SQLite</i>"]
+    APPROVE["✅ Öneri Onayı<br/><i>Uygulanan alanlardan<br/>otomatik çıkarım</i>"] --> DB
+
+    DB --> BUILD["🧮 build_prompt_context()<br/><i>Skorlama algoritması</i>"]
+
+    BUILD --> SCORE{"Bağlamsal Skorlama"}
+    SCORE --> S1["Kategori eşleşme: +5"]
+    SCORE --> S2["Agent tipi eşleşme: +5"]
+    SCORE --> S3["Marka tonu / yasak: +2"]
+    SCORE --> S4["Kategori uyumsuzluk: -2"]
+
+    SCORE --> SELECT["📋 En alakalı 8 kayıt<br/><i>~1400 karakter bütçesi</i>"]
+    SELECT --> INJECT["📨 System prompt'a<br/>enjekte et"]
+
+    INJECT --> CHAT["💬 Chat"]
+    INJECT --> REWRITE["✍️ Rewrite"]
+    INJECT --> BATCH["⚡ Batch"]
+
+    style MANUAL fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style APPROVE fill:#1e293b,stroke:#10b981,color:#e2e8f0
+    style DB fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style BUILD fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
+    style SCORE fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style S1 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style S2 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style S3 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style S4 fill:#0f172a,stroke:#ef4444,color:#e2e8f0
+    style SELECT fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
+    style INJECT fill:#1e293b,stroke:#10b981,color:#e2e8f0
+    style CHAT fill:#0f172a,stroke:#3b82f6,color:#e2e8f0
+    style REWRITE fill:#0f172a,stroke:#3b82f6,color:#e2e8f0
+    style BATCH fill:#0f172a,stroke:#3b82f6,color:#e2e8f0
+```
+
+#### 5 Hafıza Tipi
+
+| Tip | Açıklama | Örnek |
+|---|---|---|
+| **brand_tone** | Marka ses tonu kuralları | "Premium ama sakin ton, ünlem kullanma" |
+| **forbidden_claim** | Kaçınılması gereken ifadeler | "FDA onayı olmadan tıbbi iddia yapma" |
+| **category_glossary** | Kategori bazlı terminoloji | "Ayakkabı kategorisinde 'koleksiyon' kullan" |
+| **approved_preference** | Onaylanmış alan değerleri (otomatik) | "Meta başlık formatı: Ürün Adı \| Marka" |
+| **operation_note** | Ajan operasyon talimatları | "Stok 0 olan ürünlerde fiyat güncelleme" |
+
+#### Otomatik Hafıza Çıkarımı
+
+Bir öneriyi onaylayıp ikas'a uyguladığınızda sistem otomatik olarak:
+1. Uygulanan her alan için `approved_preference` kaydı oluşturur
+2. Kategori kapsamında saklar — benzer ürünlerde referans olarak kullanılır
+3. Hash tabanlı tekilleştirme yapar — aynı alan/kategori/değer tekrarlanmaz
+
+#### Akıllı Seçim Algoritması
+
+Her AI isteğinde tüm hafıza değil, **bağlamsal olarak en alakalı kayıtlar** seçilir:
+- Ürünün kategorisiyle eşleşen kayıtlar önceliklidir (+5 skor)
+- Agent tipine uygun kayıtlar öne çıkar (operatör ise `operation_note` +5)
+- Marka tonu ve yasaklı iddialar her zaman dahil edilir (+2)
+- Farklı kategorideki `approved_preference` kayıtları geri planda kalır (-2)
+- Maks 8 kayıt, ~1400 karakter bütçesiyle truncate edilir
+
+Sonuç: AI her üründe **mağazanızı tanıyan, tutarlı ve markanıza uygun** içerik üretir.
+
+---
+
 ### 📈 SEO/GEO Raporlama
 
 Skor geçmişini izleyen ve iyileşmeleri görselleştiren analitik dashboard:
@@ -912,7 +982,7 @@ ikas-ai-seo-agent/
 │   ├── chat/                   # Çok turlu chat (state, streaming, suggestions, guidance)
 │   ├── seo/                    # Skorlama motoru + GEO denetim pipeline'ı
 │   ├── clients/                # IkasClient (OAuth+GraphQL) + IkasMCPClient (JSON-RPC)
-│   ├── services/               # Provider sağlık, ayarlar, öneriler, günlük tracker
+│   ├── services/               # Provider sağlık, ayarlar, öneriler, günlük tracker, mağaza hafızası
 │   └── utils/                  # HTML işleme, sunum yardımcıları
 │
 ├── api/                        # FastAPI REST + WebSocket

@@ -24,6 +24,7 @@ import {
   formatError,
 } from './constants';
 import StoreSettingsSection from './StoreSettingsSection';
+import StoreMemorySection from './StoreMemorySection';
 import ProviderSection from './ProviderSection';
 import ControlSidebar from './ControlSidebar';
 import LmStudioStatusCard from './LmStudioStatusCard';
@@ -238,6 +239,7 @@ export default function SettingsPage() {
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-6">
             <StoreSettingsSection form={form} setValue={setValue} />
+            <StoreMemorySection />
             <ProviderSection
               form={form}
               setValue={setValue}

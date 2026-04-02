@@ -29,6 +29,7 @@ import type {
   RewriteResponse,
   SeoSuggestion,
   SeoScore,
+  StoreMemoryEntry,
   MCPStatus,
   LlmsStatus,
   LlmsJob,
@@ -200,6 +201,30 @@ export async function updateSettings(values: Record<string, unknown>): Promise<{
   return request('/api/settings', {
     method: 'PUT',
     body: JSON.stringify({ values }),
+  });
+}
+
+export async function getStoreMemories(): Promise<{ items: StoreMemoryEntry[] }> {
+  return request('/api/settings/memory');
+}
+
+export async function getStoreMemory(memoryId: string): Promise<StoreMemoryEntry> {
+  return request(`/api/settings/memory/${encodeURIComponent(memoryId)}`);
+}
+
+export async function saveStoreMemory(
+  memoryId: string,
+  memory: StoreMemoryEntry,
+): Promise<StoreMemoryEntry> {
+  return request(`/api/settings/memory/${encodeURIComponent(memoryId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ memory }),
+  });
+}
+
+export async function deleteStoreMemory(memoryId: string): Promise<{ message: string; ok: boolean }> {
+  return request(`/api/settings/memory/${encodeURIComponent(memoryId)}`, {
+    method: 'DELETE',
   });
 }
 

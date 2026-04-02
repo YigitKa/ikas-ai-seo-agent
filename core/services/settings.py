@@ -13,6 +13,7 @@ from core.prompt_store import (
     reset_prompt_template,
     save_prompt_template,
 )
+from core.models import StoreMemoryEntry
 from core.skills import (
     SkillDefinition,
     delete_skill_definition,
@@ -34,9 +35,13 @@ from core.services.provider import (
     provider_label_from_key,
     test_settings_connection,
 )
+from core.services.store_memory import StoreMemoryService
 
 
 class SettingsService:
+    def __init__(self) -> None:
+        self._store_memory_service = StoreMemoryService()
+
     def get_provider_label(self, provider: str) -> str:
         return provider_label_from_key(provider)
 
@@ -108,6 +113,21 @@ class SettingsService:
 
     def get_available_tool_names(self) -> list[str]:
         return get_available_tool_names()
+
+    async def list_store_memories(self) -> list[StoreMemoryEntry]:
+        return await self._store_memory_service.list_memories()
+
+    async def get_store_memory(self, memory_id: str) -> StoreMemoryEntry:
+        memory = await self._store_memory_service.get_memory(memory_id)
+        if memory is None:
+            raise KeyError(f"Store memory bulunamadi: {memory_id}")
+        return memory
+
+    async def save_store_memory(self, memory: StoreMemoryEntry) -> StoreMemoryEntry:
+        return await self._store_memory_service.save_memory(memory)
+
+    async def delete_store_memory(self, memory_id: str) -> None:
+        await self._store_memory_service.delete_memory(memory_id)
 
     def save_settings(self, values: dict[str, Any]) -> None:
         asyncio.run(save_config_to_db(values))

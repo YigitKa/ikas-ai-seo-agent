@@ -796,6 +796,17 @@ class ChatServiceSuggestionMixin:
                     self._get_session_pending_suggestion(suggestion.product_id),
                 )
 
+            try:
+                if self._product is not None:
+                    await self._store_memory_service.sync_approved_suggestion_memory(
+                        self._product,
+                        suggestion,
+                        selected_fields=selected_fields,
+                        source="chat_apply",
+                    )
+            except Exception:
+                logger.warning("Chat apply memory extraction failed", exc_info=True)
+
             for field_name in selected_fields:
                 if field_name == "suggested_name":
                     setattr(suggestion, field_name, None)

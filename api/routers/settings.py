@@ -30,8 +30,12 @@ from api.schemas import (
     ProviderModelsResponse,
     SettingsResponse,
     SettingsUpdateRequest,
+    StoreMemoriesResponse,
+    StoreMemoryResponse,
+    StoreMemoryUpsertRequest,
     TestConnectionResponse,
 )
+from core.models import StoreMemoryEntry
 from core.product_manager import ProductManager
 from core.skills import SkillDefinition
 from core.services.provider import PROVIDERS, PROVIDER_LABELS
@@ -68,6 +72,14 @@ def _build_skills_response() -> SkillsResponse:
         items=items,
         available_tools=settings_service.get_available_tool_names(),
     )
+
+
+async def _build_store_memories_response() -> StoreMemoriesResponse:
+    items = [
+        StoreMemoryResponse.from_model(memory)
+        for memory in await settings_service.list_store_memories()
+    ]
+    return StoreMemoriesResponse(items=items)
 
 
 def _raise_prompt_http_error(exc: Exception) -> None:
@@ -109,6 +121,47 @@ async def update_settings(
     """Persist settings to .env and reload."""
     await manager.save_settings(body.values)
     return MessageResponse(message="Settings updated")
+
+
+@router.get("/memory", response_model=StoreMemoriesResponse)
+async def list_store_memories() -> StoreMemoriesResponse:
+    """Return persistent store memories used in prompt composition."""
+    return await _build_store_memories_response()
+
+
+@router.get("/memory/{memory_id}", response_model=StoreMemoryResponse)
+async def get_store_memory(memory_id: str) -> StoreMemoryResponse:
+    """Return a single persistent store memory."""
+    try:
+        memory = await settings_service.get_store_memory(memory_id)
+    except Exception as exc:
+        _raise_prompt_http_error(exc)
+    return StoreMemoryResponse.from_model(memory)
+
+
+@router.put("/memory/{memory_id}", response_model=StoreMemoryResponse)
+async def save_store_memory(
+    memory_id: str,
+    body: StoreMemoryUpsertRequest,
+) -> StoreMemoryResponse:
+    """Create or update a persistent store memory."""
+    try:
+        payload = body.memory.model_dump(mode="json")
+        payload["id"] = memory_id
+        saved = await settings_service.save_store_memory(StoreMemoryEntry.model_validate(payload))
+    except Exception as exc:
+        _raise_prompt_http_error(exc)
+    return StoreMemoryResponse.from_model(saved)
+
+
+@router.delete("/memory/{memory_id}", response_model=MessageResponse)
+async def delete_store_memory(memory_id: str) -> MessageResponse:
+    """Delete a persistent store memory."""
+    try:
+        await settings_service.delete_store_memory(memory_id)
+    except Exception as exc:
+        _raise_prompt_http_error(exc)
+    return MessageResponse(message="Store memory silindi")
 
 
 @router.get("/prompts", response_model=PromptTemplatesResponse)

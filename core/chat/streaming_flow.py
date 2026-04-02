@@ -81,6 +81,12 @@ class ChatServiceStreamingFlowMixin:
                 allow_tools=allow_tools,
             )
             self.set_runtime_skill_selection(runtime_skill_selection)
+            store_memory_context = await self._build_store_memory_context(
+                agent_type=agent_type,
+                applies_to="chat",
+            )
+            store_memory_prompt = store_memory_context.prompt
+            store_memory_log = store_memory_context.usage_log.model_dump(mode="json")
 
             # Add user message to history and trim if needed
             user_msg = ChatMessage(role="user", content=cleaned_message)
@@ -142,6 +148,7 @@ class ChatServiceStreamingFlowMixin:
                             "finish_reason": "guided_mcp",
                             "source": "ikas_mcp",
                             "active_skill": self.get_effective_skill_payload(),
+                            "store_memory": store_memory_log,
                         },
                         pending_suggestion=self._get_session_pending_suggestion(),
                     )
@@ -157,6 +164,7 @@ class ChatServiceStreamingFlowMixin:
                 agent_type,
                 allow_tools,
                 guided_context,
+                store_memory_prompt,
                 mcp_available,
                 include_save_seo_tool=(agent_type == "seo" or has_apply_intent or is_generate_request),
                 is_generate_request=is_generate_request,
@@ -222,6 +230,7 @@ class ChatServiceStreamingFlowMixin:
                             "finish_reason": "guided_mcp_fallback",
                             "source": "ikas_mcp",
                             "active_skill": self.get_effective_skill_payload(),
+                            "store_memory": store_memory_log,
                         },
                         pending_suggestion=pending_suggestion,
                     )
@@ -234,7 +243,10 @@ class ChatServiceStreamingFlowMixin:
                         thinking="",
                         tool_results=tool_results,
                         error=True,
-                        meta={"active_skill": self.get_effective_skill_payload()},
+                        meta={
+                            "active_skill": self.get_effective_skill_payload(),
+                            "store_memory": store_memory_log,
+                        },
                         pending_suggestion=pending_suggestion,
                     )
                 if chunk_handler and response.content:
@@ -287,6 +299,7 @@ class ChatServiceStreamingFlowMixin:
 
             meta = dict(meta)
             meta["active_skill"] = runtime_skill_selection.to_payload() or self.get_effective_skill_payload()
+            meta["store_memory"] = store_memory_log
 
             return ChatResponse(
                 content=response_text,

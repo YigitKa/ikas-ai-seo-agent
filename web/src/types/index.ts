@@ -82,6 +82,27 @@ export interface SettingsData {
   dry_run: boolean;
 }
 
+export type StoreMemoryType =
+  | 'brand_tone'
+  | 'forbidden_claim'
+  | 'category_glossary'
+  | 'approved_preference'
+  | 'operation_note';
+
+export interface StoreMemoryEntry {
+  id: string;
+  memory_type: StoreMemoryType | string;
+  title: string;
+  content: string;
+  summary: string;
+  category: string;
+  source: string;
+  enabled: boolean;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ProviderInfo {
   key: string;
   label: string;

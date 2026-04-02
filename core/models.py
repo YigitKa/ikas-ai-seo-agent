@@ -1,7 +1,25 @@
 from datetime import datetime
 from typing import Any, List, Optional
+from uuid import uuid4
 
 from pydantic import BaseModel, Field, model_validator
+
+
+STORE_MEMORY_TYPES = (
+    "brand_tone",
+    "forbidden_claim",
+    "category_glossary",
+    "approved_preference",
+    "operation_note",
+)
+
+
+def _summarize_store_memory_text(value: str, limit: int = 220) -> str:
+    compact = " ".join(str(value or "").split()).strip()
+    if len(compact) <= limit:
+        return compact
+    truncated = compact[:limit].rsplit(" ", 1)[0].strip()
+    return (truncated or compact[:limit].strip()) + "..."
 
 
 class Product(BaseModel):
@@ -200,6 +218,67 @@ class TaskRecord(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     heartbeat_at: datetime | None = None
+
+
+class StoreMemoryEntry(BaseModel):
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    memory_type: str
+    title: str = ""
+    content: str = ""
+    summary: str = ""
+    category: str = ""
+    source: str = "manual"
+    enabled: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_memory(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        memory_type = str(value.get("memory_type") or "").strip().lower()
+        if memory_type not in STORE_MEMORY_TYPES:
+            raise ValueError(
+                "memory_type gecersiz. Beklenen tipler: "
+                + ", ".join(STORE_MEMORY_TYPES)
+            )
+        value["memory_type"] = memory_type
+
+        content = " ".join(str(value.get("content") or "").split()).strip()
+        if not content:
+            raise ValueError("content bos olamaz")
+        value["content"] = content
+
+        title = " ".join(str(value.get("title") or "").split()).strip()
+        value["title"] = title or _summarize_store_memory_text(content, limit=72)
+
+        summary = " ".join(str(value.get("summary") or "").split()).strip()
+        value["summary"] = summary or _summarize_store_memory_text(content, limit=220)
+        value["category"] = " ".join(str(value.get("category") or "").split()).strip()
+        value["source"] = " ".join(str(value.get("source") or "manual").split()).strip() or "manual"
+        return value
+
+
+class StoreMemoryUsageLog(BaseModel):
+    enabled: bool = False
+    applies_to: str = "chat"
+    agent_type: str = ""
+    entry_count: int = 0
+    char_count: int = 0
+    truncated: bool = False
+    omitted_entries: int = 0
+    used_memory_ids: list[str] = Field(default_factory=list)
+    used_types: list[str] = Field(default_factory=list)
+    category_matches: int = 0
+
+
+class StoreMemoryContext(BaseModel):
+    prompt: str = ""
+    entries: list[StoreMemoryEntry] = Field(default_factory=list)
+    usage_log: StoreMemoryUsageLog = Field(default_factory=StoreMemoryUsageLog)
 
 
 # ── llms.txt generation models ─────────────────────────────────────────────────

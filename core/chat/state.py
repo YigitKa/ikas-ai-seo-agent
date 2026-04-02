@@ -80,6 +80,7 @@ from core.skills import (
     resolve_chat_agent_scope,
     resolve_runtime_skill_selection,
 )
+from core.services.store_memory import StoreMemoryService
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,7 @@ class ChatServiceStateMixin:
             self._permission_runtime_rules: list[PermissionRule] = []
             self._active_skill_slug: str | None = None
             self._runtime_skill_selection: SkillRuntimeSelection | None = None
+            self._store_memory_service = StoreMemoryService()
 
             # Local tool registry — add new local tools here without touching _execute_chat_tool
             self._tool_registry = create_local_chat_tool_registry(
@@ -395,6 +397,18 @@ class ChatServiceStateMixin:
             agent_type: str | None,
         ) -> list[PermissionRule]:
             return list(self._permission_runtime_rules)
+
+        async def _build_store_memory_context(
+            self,
+            *,
+            agent_type: str,
+            applies_to: str = "chat",
+        ):
+            return await self._store_memory_service.build_prompt_context(
+                product=self._product,
+                applies_to=applies_to,
+                agent_type=agent_type,
+            )
 
         @contextlib.contextmanager
         def _temporary_permission_runtime_rules(

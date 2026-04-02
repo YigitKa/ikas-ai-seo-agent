@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 from collections.abc import AsyncIterator
 from typing import Any, List, Optional, TypeVar
 
@@ -34,6 +35,7 @@ from core.services.provider import (
     test_settings_connection,
 )
 from core.services.suggestion import apply_suggestion_field, create_pending_suggestion
+from core.services.store_memory import StoreMemoryService
 from core.seo.analyzer import analyze_product
 from data import db
 
@@ -76,6 +78,7 @@ class ProductManager:
         self._ai: BaseAIClient = create_ai_client(self._config)
         self._chat: ChatService = ChatService(self._config)
         self._permission_engine = create_permission_engine(self._config)
+        self._store_memory_service = StoreMemoryService()
 
     def reload_ai_client(self) -> None:
         """Recreate AI client after config change."""
@@ -84,6 +87,7 @@ class ProductManager:
         self._ai = create_ai_client(self._config)
         self._chat = ChatService(self._config)
         self._permission_engine = create_permission_engine(self._config)
+        self._store_memory_service = StoreMemoryService()
 
     def get_config(self) -> AppConfig:
         return self._config
@@ -291,6 +295,63 @@ class ProductManager:
             "merged_skill_slugs": list(selection.merged_skill_slugs),
         }
 
+    async def _build_store_memory_runtime(
+        self,
+        *,
+        product: Product | None,
+        applies_to: str,
+        agent_type: str,
+    ) -> tuple[str, dict[str, Any]]:
+        context = await self._store_memory_service.build_prompt_context(
+            product=product,
+            applies_to=applies_to,
+            agent_type=agent_type,
+        )
+        return context.prompt, context.usage_log.model_dump(mode="json")
+
+    async def _record_approved_suggestion_memory(
+        self,
+        product: Product | None,
+        suggestion: SeoSuggestion | None,
+        *,
+        selected_fields: list[str] | None = None,
+        source: str,
+    ) -> None:
+        if product is None or suggestion is None:
+            return
+        try:
+            await self._store_memory_service.sync_approved_suggestion_memory(
+                product,
+                suggestion,
+                selected_fields=selected_fields,
+                source=source,
+            )
+        except Exception:
+            logger.warning("Approved suggestion memory extraction failed", exc_info=True)
+
+    @staticmethod
+    def _run_blocking_coroutine(coro: Any) -> Any:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+
+        result: dict[str, Any] = {}
+        errors: list[BaseException] = []
+
+        def _runner() -> None:
+            try:
+                result["value"] = asyncio.run(coro)
+            except BaseException as exc:  # pragma: no cover - defensive thread bridge
+                errors.append(exc)
+
+        thread = threading.Thread(target=_runner, daemon=True)
+        thread.start()
+        thread.join()
+        if errors:
+            raise errors[0]
+        return result.get("value")
+
     @staticmethod
     def _filter_toolkit_to_allowed_names(
         toolkit: AgentToolkit,
@@ -323,7 +384,12 @@ class ProductManager:
             routing_text=self._build_rewrite_skill_routing_text(product, score),
             permission_target=product.id,
         )
-        extra_system_prompt = selection.prompt
+        memory_prompt, memory_log = await self._build_store_memory_runtime(
+            product=product,
+            applies_to="rewrite",
+            agent_type="seo_rewrite",
+        )
+        extra_system_prompt = compose_prompt_with_skill_layer(selection.prompt, memory_prompt, "product_rewrite")
         allowed_tool_names = selection.allowed_tool_names
         if supports_tool_calling(self._config) and self._config.ai_provider != "none":
             return await self._agentic_rewrite_product(
@@ -331,10 +397,11 @@ class ProductManager:
                 score,
                 extra_system_prompt=extra_system_prompt,
                 allowed_tool_names=allowed_tool_names,
+                memory_log=memory_log,
             )
         # Fallback: single-shot rewrite
         suggestion = self._ai.rewrite_product(product, score, extra_system_prompt=extra_system_prompt)
-        await db.save_suggestion(suggestion)
+        await db.save_suggestion(suggestion, memory_log=memory_log)
         return suggestion
 
     async def _agentic_rewrite_product(
@@ -344,6 +411,7 @@ class ProductManager:
         *,
         extra_system_prompt: str = "",
         allowed_tool_names: set[str] | None = None,
+        memory_log: dict[str, Any] | None = None,
     ) -> SeoSuggestion:
         """Run the agentic rewrite pipeline with tool calling."""
         toolkit = self._filter_toolkit_to_allowed_names(
@@ -370,7 +438,13 @@ class ProductManager:
             # Agent didn't save; fall back to single-shot
             logger.warning("Agentic rewrite did not save a suggestion; falling back to single-shot")
             suggestion = self._ai.rewrite_product(product, score, extra_system_prompt=extra_system_prompt)
-            await db.save_suggestion(suggestion)
+            await db.save_suggestion(suggestion, memory_log=memory_log)
+        elif memory_log:
+            await db.attach_memory_log_to_latest_suggestion(
+                product.id,
+                memory_log,
+                statuses=("pending", "approved"),
+            )
         return suggestion
 
     async def stream_rewrite_product(
@@ -391,7 +465,12 @@ class ProductManager:
             routing_text=self._build_rewrite_skill_routing_text(product, score),
             permission_target=product.id,
         )
-        extra_system_prompt = selection.prompt
+        memory_prompt, _ = await self._build_store_memory_runtime(
+            product=product,
+            applies_to="rewrite",
+            agent_type="seo_rewrite",
+        )
+        extra_system_prompt = compose_prompt_with_skill_layer(selection.prompt, memory_prompt, "product_rewrite")
         allowed_tool_names = selection.allowed_tool_names
 
         toolkit = self._filter_toolkit_to_allowed_names(
@@ -429,7 +508,15 @@ class ProductManager:
             routing_text=self._build_rewrite_skill_routing_text(product, score, field=field),
             permission_target=product.id,
         )
+        memory_prompt, _ = self._run_blocking_coroutine(
+            self._build_store_memory_runtime(
+                product=product,
+                applies_to="rewrite",
+                agent_type="seo_rewrite",
+            )
+        )
         merged_prompt = compose_prompt_with_skill_layer(extra_system_prompt, selection.prompt, "product_rewrite")
+        merged_prompt = compose_prompt_with_skill_layer(merged_prompt, memory_prompt, "product_rewrite")
         result = self._ai.rewrite_field(field, product, score, extra_system_prompt=merged_prompt)
         if isinstance(result, tuple):
             return result
@@ -448,7 +535,15 @@ class ProductManager:
             routing_text=self._build_rewrite_skill_routing_text(product, field="description_en"),
             permission_target=product.id,
         )
+        memory_prompt, _ = self._run_blocking_coroutine(
+            self._build_store_memory_runtime(
+                product=product,
+                applies_to="rewrite",
+                agent_type="seo_rewrite",
+            )
+        )
         merged_prompt = compose_prompt_with_skill_layer(extra_system_prompt, selection.prompt, "product_rewrite")
+        merged_prompt = compose_prompt_with_skill_layer(merged_prompt, memory_prompt, "product_rewrite")
         result = self._ai.translate_description_to_en(product, extra_system_prompt=merged_prompt)
         if isinstance(result, tuple):
             return result
@@ -616,7 +711,14 @@ class ProductManager:
         await db.save_or_update_pending_suggestion(suggestion)
 
     async def approve_suggestion(self, product_id: str) -> None:
+        suggestion = await db.get_latest_suggestion_by_product(product_id, statuses=("pending",))
+        product = await db.get_product(product_id)
         await db.update_suggestion_status(product_id, "approved")
+        await self._record_approved_suggestion_memory(
+            product,
+            suggestion,
+            source="suggestion_approved",
+        )
 
     async def reject_suggestion(self, product_id: str) -> None:
         await db.update_suggestion_status(product_id, "rejected")
@@ -1220,6 +1322,29 @@ class ProductManager:
         updated_item = await db.get_batch_item(item_id)
         if updated_item is None:
             raise ValueError("Item not found after update")
+        if status == "approved":
+            product = await db.get_product(item["product_id"])
+            if product is not None:
+                suggestion = self._build_suggestion_from_batch_item(product, updated_item)
+                suggestion_data = updated_item.get("suggestion_data")
+                active_fields = suggestion_data.get("active_fields", []) if isinstance(suggestion_data, dict) else []
+                selected_fields = [
+                    f"suggested_{field}"
+                    for field in active_fields
+                    if f"suggested_{field}" in {
+                        "suggested_name",
+                        "suggested_meta_title",
+                        "suggested_meta_description",
+                        "suggested_description",
+                        "suggested_description_en",
+                    }
+                ]
+                await self._record_approved_suggestion_memory(
+                    product,
+                    suggestion,
+                    selected_fields=selected_fields or None,
+                    source="batch_item_approved",
+                )
         return updated_item
 
     async def run_analysis(self, job_id: str, product_ids: list[str], config: Any) -> None:

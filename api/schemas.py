@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
-from core.models import Product, SeoScore, SeoSuggestion, TaskRecord
+from core.models import Product, SeoScore, SeoSuggestion, StoreMemoryEntry, TaskRecord
 from core.skills import SkillDefinition, SkillPromptLayer, SkillResolvedPromptLayer
 
 
@@ -141,6 +141,44 @@ class SettingsResponse(BaseModel):
 
 class SettingsUpdateRequest(BaseModel):
     values: dict[str, Any]
+
+
+class StoreMemoryResponse(BaseModel):
+    id: str
+    memory_type: str
+    title: str = ""
+    content: str = ""
+    summary: str = ""
+    category: str = ""
+    source: str = "manual"
+    enabled: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+    updated_at: str
+
+    @classmethod
+    def from_model(cls, memory: StoreMemoryEntry) -> "StoreMemoryResponse":
+        return cls(
+            id=memory.id,
+            memory_type=memory.memory_type,
+            title=memory.title,
+            content=memory.content,
+            summary=memory.summary,
+            category=memory.category,
+            source=memory.source,
+            enabled=memory.enabled,
+            metadata=memory.metadata,
+            created_at=memory.created_at.isoformat(),
+            updated_at=memory.updated_at.isoformat(),
+        )
+
+
+class StoreMemoriesResponse(BaseModel):
+    items: list[StoreMemoryResponse] = Field(default_factory=list)
+
+
+class StoreMemoryUpsertRequest(BaseModel):
+    memory: StoreMemoryResponse
 
 
 class PromptTemplateResponse(BaseModel):

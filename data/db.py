@@ -7,7 +7,16 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Iterable, List, Optional, Sequence
 from uuid import uuid4
 
-from core.models import LlmsEntry, LlmsJob, Product, SeoScore, SeoSuggestion, TaskError, TaskRecord
+from core.models import (
+    LlmsEntry,
+    LlmsJob,
+    Product,
+    SeoScore,
+    SeoSuggestion,
+    StoreMemoryEntry,
+    TaskError,
+    TaskRecord,
+)
 
 DB_PATH = Path(__file__).parent.parent / "seo_optimizer.db"
 
@@ -35,6 +44,7 @@ CREATE TABLE IF NOT EXISTS suggestions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     product_id TEXT,
     suggestion_data JSON,
+    memory_log JSON,
     status TEXT DEFAULT 'pending',
     created_at TIMESTAMP,
     applied_at TIMESTAMP
@@ -146,6 +156,20 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_at TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS store_memories (
+    id TEXT PRIMARY KEY,
+    memory_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    category TEXT DEFAULT '',
+    source TEXT DEFAULT 'manual',
+    enabled BOOLEAN DEFAULT 1,
+    metadata JSON,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS batch_jobs (
     id TEXT PRIMARY KEY,
     task_id TEXT,
@@ -181,6 +205,12 @@ CREATE TABLE IF NOT EXISTS batch_items (
 
 CREATE INDEX IF NOT EXISTS idx_batch_items_job ON batch_items(job_id);
 CREATE INDEX IF NOT EXISTS idx_batch_items_product ON batch_items(product_id);
+
+CREATE INDEX IF NOT EXISTS idx_store_memories_type_enabled
+ON store_memories(memory_type, enabled, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_store_memories_category_enabled
+ON store_memories(category, enabled, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS daily_score_snapshots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -349,6 +379,23 @@ async def _load_suggestions(query: str, params: Sequence[object] = ()) -> List[S
     return suggestions
 
 
+def _row_to_store_memory(row: aiosqlite.Row) -> StoreMemoryEntry:
+    payload = {
+        "id": row["id"],
+        "memory_type": row["memory_type"],
+        "title": row["title"],
+        "content": row["content"],
+        "summary": row["summary"],
+        "category": row["category"] or "",
+        "source": row["source"] or "manual",
+        "enabled": bool(row["enabled"]),
+        "metadata": _json_loads_dict(row["metadata"]),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+    return StoreMemoryEntry.model_validate(payload)
+
+
 async def init_db() -> None:
     async with aiosqlite.connect(str(DB_PATH), timeout=30) as conn:
         await conn.executescript(SCHEMA)
@@ -365,9 +412,95 @@ async def init_db() -> None:
             await conn.execute("ALTER TABLE batch_jobs ADD COLUMN task_id TEXT")
         except Exception:
             pass
+        try:
+            await conn.execute("ALTER TABLE suggestions ADD COLUMN memory_log JSON")
+        except Exception:
+            pass
         await _backfill_unified_tasks(conn)
         await conn.commit()
     await _init_pool()
+
+
+async def list_store_memories(
+    *,
+    enabled_only: bool = False,
+    memory_types: Sequence[str] | None = None,
+) -> list[StoreMemoryEntry]:
+    conditions: list[str] = []
+    params: list[Any] = []
+    if enabled_only:
+        conditions.append("enabled = 1")
+    if memory_types:
+        placeholders = ", ".join("?" for _ in memory_types)
+        conditions.append(f"memory_type IN ({placeholders})")
+        params.extend(memory_types)
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    async with connection() as conn:
+        async with conn.execute(
+            f"SELECT * FROM store_memories {where} ORDER BY enabled DESC, updated_at DESC",
+            params,
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [_row_to_store_memory(row) for row in rows]
+
+
+async def get_store_memory(memory_id: str) -> StoreMemoryEntry | None:
+    async with connection() as conn:
+        async with conn.execute(
+            "SELECT * FROM store_memories WHERE id = ?",
+            (memory_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return _row_to_store_memory(row) if row else None
+
+
+async def save_store_memory(memory: StoreMemoryEntry) -> StoreMemoryEntry:
+    now = _now_iso()
+    created_at = memory.created_at.isoformat() if memory.created_at else now
+    async with connection() as conn:
+        await conn.execute(
+            """
+            INSERT INTO store_memories (
+                id, memory_type, title, content, summary, category,
+                source, enabled, metadata, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                memory_type = excluded.memory_type,
+                title = excluded.title,
+                content = excluded.content,
+                summary = excluded.summary,
+                category = excluded.category,
+                source = excluded.source,
+                enabled = excluded.enabled,
+                metadata = excluded.metadata,
+                updated_at = excluded.updated_at
+            """,
+            (
+                memory.id,
+                memory.memory_type,
+                memory.title,
+                memory.content,
+                memory.summary,
+                memory.category,
+                memory.source,
+                1 if memory.enabled else 0,
+                _json_dumps(memory.metadata),
+                created_at,
+                now,
+            ),
+        )
+        await conn.commit()
+    saved = await get_store_memory(memory.id)
+    if saved is None:
+        raise RuntimeError(f"Store memory {memory.id} could not be saved")
+    return saved
+
+
+async def delete_store_memory(memory_id: str) -> None:
+    async with connection() as conn:
+        await conn.execute("DELETE FROM store_memories WHERE id = ?", (memory_id,))
+        await conn.commit()
 
 
 async def save_product(product: Product) -> None:
@@ -517,14 +650,19 @@ async def get_latest_scores_for_products(product_ids: Sequence[str]) -> dict[str
     return result
 
 
-async def save_suggestion(suggestion: SeoSuggestion) -> None:
+async def save_suggestion(
+    suggestion: SeoSuggestion,
+    *,
+    memory_log: dict[str, Any] | None = None,
+) -> None:
     created_at = _now_iso()
     async with connection() as conn:
         await conn.execute(
-            "INSERT INTO suggestions (product_id, suggestion_data, status, created_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO suggestions (product_id, suggestion_data, memory_log, status, created_at) VALUES (?, ?, ?, ?, ?)",
             (
                 suggestion.product_id,
                 suggestion.model_dump_json(),
+                _json_dumps(memory_log or {}),
                 suggestion.status,
                 created_at,
             ),
@@ -555,13 +693,17 @@ async def update_latest_pending_suggestion(suggestion: SeoSuggestion) -> None:
         await conn.commit()
 
 
-async def save_or_update_pending_suggestion(suggestion: SeoSuggestion) -> None:
+async def save_or_update_pending_suggestion(
+    suggestion: SeoSuggestion,
+    *,
+    memory_log: dict[str, Any] | None = None,
+) -> None:
     created_at = _now_iso()
     async with connection() as conn:
         async with conn.execute(
             """
             UPDATE suggestions
-            SET suggestion_data = ?, status = ?
+            SET suggestion_data = ?, memory_log = COALESCE(?, memory_log), status = ?
             WHERE id = (
                 SELECT id
                 FROM suggestions
@@ -572,6 +714,7 @@ async def save_or_update_pending_suggestion(suggestion: SeoSuggestion) -> None:
             """,
             (
                 suggestion.model_dump_json(),
+                _json_dumps(memory_log) if memory_log is not None else None,
                 suggestion.status,
                 suggestion.product_id,
             ),
@@ -580,10 +723,11 @@ async def save_or_update_pending_suggestion(suggestion: SeoSuggestion) -> None:
 
         if rowcount == 0:
             await conn.execute(
-                "INSERT INTO suggestions (product_id, suggestion_data, status, created_at) VALUES (?, ?, ?, ?)",
+                "INSERT INTO suggestions (product_id, suggestion_data, memory_log, status, created_at) VALUES (?, ?, ?, ?, ?)",
                 (
                     suggestion.product_id,
                     suggestion.model_dump_json(),
+                    _json_dumps(memory_log or {}),
                     suggestion.status,
                     created_at,
                 ),
@@ -667,6 +811,35 @@ async def update_suggestion_status(product_id: str, status: str) -> None:
             "UPDATE suggestions SET status = ?, applied_at = ? WHERE product_id = ? AND status = 'pending'",
             (status, applied_at, product_id),
         )
+        await conn.commit()
+
+
+async def attach_memory_log_to_latest_suggestion(
+    product_id: str,
+    memory_log: dict[str, Any],
+    *,
+    statuses: Sequence[str] | None = None,
+) -> None:
+    if not memory_log:
+        return
+
+    query = """
+        UPDATE suggestions
+        SET memory_log = ?
+        WHERE id = (
+            SELECT id
+            FROM suggestions
+            WHERE product_id = ?
+    """
+    params: list[Any] = [_json_dumps(memory_log), product_id]
+    if statuses:
+        placeholders = ", ".join("?" for _ in statuses)
+        query += f" AND status IN ({placeholders})"
+        params.extend(statuses)
+    query += " ORDER BY created_at DESC LIMIT 1)"
+
+    async with connection() as conn:
+        await conn.execute(query, params)
         await conn.commit()
 
 

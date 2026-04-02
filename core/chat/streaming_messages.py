@@ -86,6 +86,7 @@ class ChatServiceStreamingMessagesMixin:
             agent_type: str,
             allow_tools: bool,
             guided_context: str,
+            store_memory_prompt: str,
             mcp_available: bool,
             include_save_seo_tool: bool,
             *,
@@ -103,7 +104,7 @@ class ChatServiceStreamingMessagesMixin:
             """
 
             if is_generate_request:
-                return self._build_generate_messages(cleaned_message)
+                return self._build_generate_messages(cleaned_message, store_memory_prompt)
 
             # --- Collect all system-level parts into one block ---
             compact = self._config.ai_provider in ("lm-studio", "ollama")
@@ -117,6 +118,8 @@ class ChatServiceStreamingMessagesMixin:
             ]
             if _should_request_structured_suggestion_options(cleaned_message):
                 system_parts.append(load_prompt_template("chat_suggestion_options_system"))
+            if store_memory_prompt:
+                system_parts.append(store_memory_prompt)
 
             # Skip verbose routing / MCP instructions for compact (local) models
             if not compact:
@@ -169,6 +172,7 @@ class ChatServiceStreamingMessagesMixin:
         def _build_generate_messages(
             self,
             cleaned_message: str,
+            store_memory_prompt: str = "",
         ) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
             """Build a minimal messages + tools payload for generate-suggestion requests.
 
@@ -188,7 +192,14 @@ class ChatServiceStreamingMessagesMixin:
                 )
                 return (
                     [
-                        {"role": "system", "content": translation_request["system_prompt"]},
+                        {
+                            "role": "system",
+                            "content": compose_prompt_with_skill_layer(
+                                translation_request["system_prompt"],
+                                store_memory_prompt,
+                                "chat",
+                            ),
+                        },
                         {
                             "role": "user",
                             "content": (
@@ -230,6 +241,7 @@ class ChatServiceStreamingMessagesMixin:
                 skill_prompt,
                 "chat",
             )
+            system_prompt = compose_prompt_with_skill_layer(system_prompt, store_memory_prompt, "chat")
 
             messages: list[dict[str, Any]] = [
                 {"role": "system", "content": system_prompt},
