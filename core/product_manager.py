@@ -18,8 +18,8 @@ from core.chat import ChatService
 from core.clients.ikas import IkasClient
 from core.models import AgentEvent, AppConfig, ChatResponse, Product, SeoScore, SeoSuggestion
 from core.utils.presentation import format_prompt_display, get_en_description_value, get_tr_description_value
-from core.prompt_store import get_rewrite_agent_system_prompt, get_batch_agent_system_prompt
-from core.skills import SkillDefinition, build_skill_prompt, get_skill_definition, resolve_skill_tool_scope
+from core.prompt_store import compose_prompt_with_skill_layer, get_batch_agent_system_prompt, get_rewrite_agent_system_prompt
+from core.skills import SkillDefinition, SkillRuntimeSelection, resolve_runtime_skill_selection
 from core.permissions import (
     PermissionDecisionError,
     PermissionOperation,
@@ -204,40 +204,82 @@ class ProductManager:
         return self._config.ai_model_name or self._config.ai_provider
 
     @staticmethod
-    def _merge_instruction_prompts(*prompts: str) -> str:
-        return "\n\n".join(prompt.strip() for prompt in prompts if prompt and prompt.strip()).strip()
+    def _build_rewrite_skill_routing_text(
+        product: Product,
+        score: SeoScore | None = None,
+        *,
+        field: str = "",
+    ) -> str:
+        parts = [
+            product.name,
+            product.category or "",
+            field,
+            sanitize_html_for_prompt(product.description, limit=600),
+        ]
+        if score is not None and score.issues:
+            parts.append("; ".join(score.issues[:8]))
+        return "\n".join(part for part in parts if part).strip()
 
-    def _resolve_runtime_skill(
+    def _build_batch_skill_routing_text(self, config: Any) -> str:
+        parts = [
+            self._get_batch_config_value(config, "category_filter", ""),
+            " ".join(self._get_batch_config_value(config, "target_fields", []) or []),
+        ]
+        if self._get_batch_config_value(config, "preserve_specs", True):
+            parts.append("preserve specs")
+        if self._get_batch_config_value(config, "prevent_cannibalization", True):
+            parts.append("prevent cannibalization")
+        if self._get_batch_config_value(config, "in_stock_only", False):
+            parts.append("in stock only")
+        return "\n".join(str(part) for part in parts if str(part).strip()).strip()
+
+    def _resolve_runtime_skill_selection(
         self,
         skill_slug: str | None,
         applies_to: str,
-    ) -> tuple[SkillDefinition | None, str, set[str] | None]:
-        slug = (skill_slug or "").strip().lower()
-        if not slug:
-            return None, "", None
-
-        skill = get_skill_definition(slug)
-        if skill.status != "active":
-            raise ValueError(f"Skill aktif degil: {skill.slug}")
-        if applies_to not in skill.applies_to:
-            raise ValueError(f"Skill {applies_to} akisi icin uygun degil: {skill.slug}")
-
-        prompt = build_skill_prompt(skill, applies_to=applies_to)
-        allowed_tools = resolve_skill_tool_scope(skill, applies_to=applies_to)
-        logger.info(
-            "Runtime skill resolved flow=%s slug=%s resolved_tools=%s",
-            applies_to,
-            skill.slug,
-            ",".join(sorted(allowed_tools)) if allowed_tools else "*",
+        *,
+        routing_text: str = "",
+        enable_routing: bool = True,
+        enable_default_fallback: bool = True,
+        permission_target: str = "",
+    ) -> SkillRuntimeSelection:
+        selection = resolve_runtime_skill_selection(
+            applies_to=applies_to,
+            explicit_skill_slugs=skill_slug,
+            routing_text=routing_text,
+            enable_routing=enable_routing,
+            enable_default_fallback=enable_default_fallback,
+            agent_scope="seo_rewrite" if applies_to == "rewrite" else "batch",
+            permission_engine=self._permission_engine,
+            permission_target=permission_target,
+            permission_source=f"product_manager.skill_runtime.{applies_to}",
         )
-        return skill, prompt, allowed_tools
+        if selection.primary_skill is None:
+            return selection
+
+        logger.info(
+            "Runtime skill resolved flow=%s mode=%s skills=%s resolved_tools=%s denied_tools=%s layers=%s",
+            applies_to,
+            selection.selection_mode,
+            ",".join(selection.merged_skill_slugs),
+            ",".join(sorted(selection.allowed_tool_names)) if selection.allowed_tool_names is not None else "*",
+            ",".join(selection.denied_tool_names) if selection.denied_tool_names else "-",
+            ",".join(selection.prompt_layer_sources) if selection.prompt_layer_sources else "-",
+        )
+        return selection
 
     def validate_skill_for_flow(
         self,
         skill_slug: str | None,
         applies_to: str,
     ) -> dict[str, Any] | None:
-        skill, _, _ = self._resolve_runtime_skill(skill_slug, applies_to)
+        selection = self._resolve_runtime_skill_selection(
+            skill_slug,
+            applies_to,
+            enable_routing=False,
+            enable_default_fallback=False,
+        )
+        skill = selection.primary_skill
         if skill is None:
             return None
         return {
@@ -245,6 +287,8 @@ class ProductManager:
             "name": skill.name,
             "applies_to": list(skill.applies_to),
             "allowed_tools": list(skill.allowed_tools),
+            "selection_mode": selection.selection_mode,
+            "merged_skill_slugs": list(selection.merged_skill_slugs),
         }
 
     @staticmethod
@@ -273,7 +317,14 @@ class ProductManager:
         *,
         skill_slug: str | None = None,
     ) -> SeoSuggestion:
-        _, extra_system_prompt, allowed_tool_names = self._resolve_runtime_skill(skill_slug, "rewrite")
+        selection = self._resolve_runtime_skill_selection(
+            skill_slug,
+            "rewrite",
+            routing_text=self._build_rewrite_skill_routing_text(product, score),
+            permission_target=product.id,
+        )
+        extra_system_prompt = selection.prompt
+        allowed_tool_names = selection.allowed_tool_names
         if supports_tool_calling(self._config) and self._config.ai_provider != "none":
             return await self._agentic_rewrite_product(
                 product,
@@ -302,7 +353,7 @@ class ProductManager:
         )
         system_prompt = get_rewrite_agent_system_prompt()
         if extra_system_prompt:
-            system_prompt = self._merge_instruction_prompts(system_prompt, extra_system_prompt)
+            system_prompt = compose_prompt_with_skill_layer(system_prompt, extra_system_prompt, "rewrite")
         orchestrator = AgentOrchestrator(
             config=self._config,
             toolkit=toolkit,
@@ -334,7 +385,14 @@ class ProductManager:
             yield AgentEvent(type="error", content=f"Product '{product_id}' not found.")
             return
         score = analyze_product(product, self._config.seo_target_keywords)
-        _, extra_system_prompt, allowed_tool_names = self._resolve_runtime_skill(skill_slug, "rewrite")
+        selection = self._resolve_runtime_skill_selection(
+            skill_slug,
+            "rewrite",
+            routing_text=self._build_rewrite_skill_routing_text(product, score),
+            permission_target=product.id,
+        )
+        extra_system_prompt = selection.prompt
+        allowed_tool_names = selection.allowed_tool_names
 
         toolkit = self._filter_toolkit_to_allowed_names(
             create_seo_rewrite_toolkit(),
@@ -343,7 +401,7 @@ class ProductManager:
         )
         system_prompt = get_rewrite_agent_system_prompt()
         if extra_system_prompt:
-            system_prompt = self._merge_instruction_prompts(system_prompt, extra_system_prompt)
+            system_prompt = compose_prompt_with_skill_layer(system_prompt, extra_system_prompt, "rewrite")
         orchestrator = AgentOrchestrator(
             config=self._config,
             toolkit=toolkit,
@@ -365,8 +423,13 @@ class ProductManager:
         skill_slug: str | None = None,
         extra_system_prompt: str = "",
     ) -> tuple[str, str]:
-        _, skill_prompt, _ = self._resolve_runtime_skill(skill_slug, "rewrite")
-        merged_prompt = self._merge_instruction_prompts(skill_prompt, extra_system_prompt)
+        selection = self._resolve_runtime_skill_selection(
+            skill_slug,
+            "rewrite",
+            routing_text=self._build_rewrite_skill_routing_text(product, score, field=field),
+            permission_target=product.id,
+        )
+        merged_prompt = compose_prompt_with_skill_layer(extra_system_prompt, selection.prompt, "product_rewrite")
         result = self._ai.rewrite_field(field, product, score, extra_system_prompt=merged_prompt)
         if isinstance(result, tuple):
             return result
@@ -379,8 +442,13 @@ class ProductManager:
         skill_slug: str | None = None,
         extra_system_prompt: str = "",
     ) -> tuple[str, str]:
-        _, skill_prompt, _ = self._resolve_runtime_skill(skill_slug, "rewrite")
-        merged_prompt = self._merge_instruction_prompts(skill_prompt, extra_system_prompt)
+        selection = self._resolve_runtime_skill_selection(
+            skill_slug,
+            "rewrite",
+            routing_text=self._build_rewrite_skill_routing_text(product, field="description_en"),
+            permission_target=product.id,
+        )
+        merged_prompt = compose_prompt_with_skill_layer(extra_system_prompt, selection.prompt, "product_rewrite")
         result = self._ai.translate_description_to_en(product, extra_system_prompt=merged_prompt)
         if isinstance(result, tuple):
             return result
@@ -669,9 +737,14 @@ class ProductManager:
             )
 
         skill_slug = self._get_batch_config_value(config, "skill_slug", "")
-        _, skill_prompt, _ = self._resolve_runtime_skill(skill_slug, "batch")
-        if skill_prompt:
-            blocks.append(skill_prompt)
+        selection = self._resolve_runtime_skill_selection(
+            skill_slug,
+            "batch",
+            routing_text=self._build_batch_skill_routing_text(config),
+            permission_target=str(self._get_batch_config_value(config, "job_id", "")),
+        )
+        if selection.prompt:
+            blocks.append(selection.prompt)
 
         return "\n\n".join(blocks).strip()
 
@@ -680,7 +753,7 @@ class ProductManager:
         runtime_prompt = self._build_batch_runtime_prompt(config)
         if not runtime_prompt:
             return get_batch_agent_system_prompt()
-        return self._merge_instruction_prompts(get_batch_agent_system_prompt(), runtime_prompt)
+        return compose_prompt_with_skill_layer(get_batch_agent_system_prompt(), runtime_prompt, "batch")
         rules: list[str] = []
         if self._get_batch_config_value(config, "preserve_specs", True):
             rules.append(

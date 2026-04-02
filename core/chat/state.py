@@ -74,10 +74,11 @@ from core.clients.mcp import IkasMCPClient, MCPError
 from core.permissions import PermissionRule, create_permission_engine
 from core.skills import (
     SkillDefinition,
-    build_skill_prompt,
+    SkillRuntimeSelection,
     get_skill_definition,
     list_skill_definitions,
-    resolve_skill_tool_scope,
+    resolve_chat_agent_scope,
+    resolve_runtime_skill_selection,
 )
 
 logger = logging.getLogger(__name__)
@@ -99,6 +100,7 @@ class ChatServiceStateMixin:
             self._permission_engine = create_permission_engine(config)
             self._permission_runtime_rules: list[PermissionRule] = []
             self._active_skill_slug: str | None = None
+            self._runtime_skill_selection: SkillRuntimeSelection | None = None
 
             # Local tool registry — add new local tools here without touching _execute_chat_tool
             self._tool_registry = create_local_chat_tool_registry(
@@ -174,14 +176,24 @@ class ChatServiceStateMixin:
             skill = self.get_active_skill()
             if skill is None:
                 return None
-            resolved_tools = sorted(resolve_skill_tool_scope(skill, applies_to="chat") or [])
+            selection = resolve_runtime_skill_selection(
+                applies_to="chat",
+                explicit_skill_slugs=skill.slug,
+                agent_scope=resolve_chat_agent_scope("general"),
+                permission_engine=self._permission_engine,
+                permission_source="chat.state.explicit_skill_payload",
+                permission_runtime_rules=self._permission_runtime_rules,
+            )
+            payload = selection.to_payload()
+            if payload is not None:
+                return payload
             return {
                 "slug": skill.slug,
                 "name": skill.name,
                 "description": skill.description,
                 "applies_to": list(skill.applies_to),
                 "allowed_tools": list(skill.allowed_tools),
-                "resolved_tools": resolved_tools,
+                "resolved_tools": [],
                 "status": skill.status,
                 "source": skill.source,
                 "selection_mode": "explicit",
@@ -194,7 +206,15 @@ class ChatServiceStateMixin:
             if "chat" not in skill.applies_to:
                 raise ValueError(f"Skill chat akisi icin uygun degil: {skill.slug}")
             self._active_skill_slug = skill.slug
-            resolved_tools = sorted(resolve_skill_tool_scope(skill, applies_to="chat") or [])
+            selection = resolve_runtime_skill_selection(
+                applies_to="chat",
+                explicit_skill_slugs=skill.slug,
+                agent_scope=resolve_chat_agent_scope("general"),
+                permission_engine=self._permission_engine,
+                permission_source="chat.state.set_active_skill",
+                permission_runtime_rules=self._permission_runtime_rules,
+            )
+            resolved_tools = sorted(selection.allowed_tool_names or [])
             logger.info(
                 "Chat skill activated slug=%s resolved_tools=%s",
                 skill.slug,
@@ -208,17 +228,80 @@ class ChatServiceStateMixin:
         def list_available_skills(self) -> list[SkillDefinition]:
             return list_skill_definitions()
 
+        def set_runtime_skill_selection(self, selection: SkillRuntimeSelection | None) -> None:
+            self._runtime_skill_selection = selection
+
+        def get_effective_skill_payload(self) -> dict[str, Any] | None:
+            if self._runtime_skill_selection is not None:
+                payload = self._runtime_skill_selection.to_payload()
+                if payload is not None:
+                    return payload
+            return self.get_active_skill_payload()
+
         def _build_active_skill_system_prompt(self) -> str:
-            skill = self.get_active_skill()
-            if skill is None or skill.status != "active":
+            if self._runtime_skill_selection is not None:
+                return self._runtime_skill_selection.prompt
+            payload = self.get_active_skill_payload()
+            if payload is None:
                 return ""
-            return build_skill_prompt(skill, applies_to="chat")
+            selection = resolve_runtime_skill_selection(
+                applies_to="chat",
+                explicit_skill_slugs=payload.get("slug"),
+                agent_scope=resolve_chat_agent_scope("general"),
+                permission_engine=self._permission_engine,
+                permission_source="chat.state.build_prompt",
+                permission_runtime_rules=self._permission_runtime_rules,
+            )
+            return selection.prompt
 
         def _get_active_skill_allowed_tools(self) -> set[str] | None:
-            skill = self.get_active_skill()
-            if skill is None or skill.status != "active" or not skill.allowed_tools:
+            if self._runtime_skill_selection is not None:
+                return self._runtime_skill_selection.allowed_tool_names
+            selection = self.get_active_skill_payload()
+            if selection is None:
                 return None
-            return resolve_skill_tool_scope(skill, applies_to="chat")
+            resolved_tools = selection.get("resolved_tools") or []
+            return set(str(name) for name in resolved_tools)
+
+        def resolve_message_skill_selection(
+            self,
+            user_message: str,
+            *,
+            agent_type: str,
+            allow_tools: bool,
+        ) -> SkillRuntimeSelection:
+            product_parts = []
+            if self._product is not None:
+                product_parts.extend([
+                    self._product.name,
+                    self._product.category or "",
+                ])
+            if self._score is not None and self._score.issues:
+                product_parts.append("; ".join(self._score.issues[:6]))
+
+            routing_text = "\n".join(part for part in [user_message, *product_parts] if part).strip()
+            selection = resolve_runtime_skill_selection(
+                applies_to="chat",
+                explicit_skill_slugs=self._active_skill_slug,
+                routing_text=routing_text,
+                enable_routing=bool(user_message.strip()) and agent_type != "operator",
+                enable_default_fallback=bool(self._product) and agent_type != "operator",
+                agent_scope=resolve_chat_agent_scope(agent_type),
+                permission_engine=self._permission_engine,
+                permission_target=self._product.id if self._product else "",
+                permission_source="chat.state.runtime_selection",
+                permission_runtime_rules=self._permission_runtime_rules,
+            )
+            logger.info(
+                "Chat runtime skill resolved mode=%s skills=%s agent=%s allow_tools=%s resolved_tools=%s denied_tools=%s",
+                selection.selection_mode,
+                ",".join(selection.merged_skill_slugs) if selection.merged_skill_slugs else "-",
+                agent_type,
+                allow_tools,
+                ",".join(sorted(selection.allowed_tool_names)) if selection.allowed_tool_names is not None else "*",
+                ",".join(selection.denied_tool_names) if selection.denied_tool_names else "-",
+            )
+            return selection
 
         @staticmethod
         def _format_skill_status_message(
@@ -687,12 +770,13 @@ class ChatServiceStateMixin:
             # Always include the apply_seo_to_ikas tool — it handles both
             # native ikas API and MCP routes internally so the LLM never
             # needs to write raw GraphQL mutations.
-            tools.extend(
-                self._tool_registry.get_openai_functions(
-                    agent_type=f"chat:{agent_type}",
-                    names=local_tool_names,
+            if local_tool_names:
+                tools.extend(
+                    self._tool_registry.get_openai_functions(
+                        agent_type=f"chat:{agent_type}",
+                        names=local_tool_names,
+                    )
                 )
-            )
             if local_tool_names:
                 instructions.append(
                     "Kullanici urun degisikliklerini onayladiginda, arka planda uygun araclari cagir. "

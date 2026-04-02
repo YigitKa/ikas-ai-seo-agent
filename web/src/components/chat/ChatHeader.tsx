@@ -29,9 +29,28 @@ export function ChatHeader({
   onClear,
   onExport,
 }: ChatHeaderProps) {
-  const skillValue = activeSkill?.slug ?? "";
+  const explicitSkillSlug =
+    activeSkill?.explicit_skill_slug
+    ?? (activeSkill?.selection_mode === 'explicit' ? activeSkill.slug : '');
+  const skillValue = explicitSkillSlug ?? "";
   const skillHelperText = activeSkill
-    ? `${activeSkill.description || activeSkill.name}${activeSkill.allowed_tools.length ? ` | ${activeSkill.allowed_tools.length} tool` : ''}`
+    ? [
+        activeSkill.description && activeSkill.selection_mode === 'explicit'
+          ? activeSkill.description
+          : '',
+        activeSkill.selection_mode === 'routed'
+          ? `Otomatik secilen skill: ${activeSkill.name}`
+          : activeSkill.selection_mode === 'default'
+            ? `Varsayilan skill: ${activeSkill.name}`
+            : activeSkill.selection_mode === 'merged'
+              ? `Birlesik runtime: ${(activeSkill.merged_skill_slugs ?? []).join(' + ') || activeSkill.name}`
+              : activeSkill.name,
+        (activeSkill.resolved_tools?.length ?? 0) > 0
+          ? `${activeSkill.resolved_tools?.length ?? 0} aktif tool`
+          : activeSkill.allowed_tools.length
+            ? `${activeSkill.allowed_tools.length} tool siniri`
+            : '',
+      ].filter(Boolean).join(' | ')
     : 'Skill secilmezse standart chat promptu kullanilir.';
 
   return (
@@ -129,7 +148,7 @@ export function ChatHeader({
                   </option>
                 ))}
               </select>
-              {activeSkill && (
+              {explicitSkillSlug && (
                 <button
                   onClick={onSkillClear}
                   className="rounded-lg border px-2.5 py-2 text-[11px] font-medium transition-all"

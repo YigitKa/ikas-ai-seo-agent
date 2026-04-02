@@ -118,7 +118,10 @@ export function useChatStream(deps: UseChatStreamDeps) {
     if (data.meta && Object.prototype.hasOwnProperty.call(data.meta, 'active_skill')) {
       const nextSkill = (data.meta.active_skill ?? null) as ActiveSkillSummary | null;
       setActiveSkill(nextSkill);
-      syncPreferredSkillSlug(nextSkill?.slug ?? null);
+      const explicitSkillSlug =
+        nextSkill?.explicit_skill_slug
+        ?? (nextSkill?.selection_mode === 'explicit' ? nextSkill.slug : null);
+      syncPreferredSkillSlug(explicitSkillSlug);
     }
 
     setMessages((prev) => {

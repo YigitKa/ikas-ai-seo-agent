@@ -45,6 +45,12 @@ const SOURCE_BADGE: Record<string, { label: string; color: string; bg: string; b
     bg: 'rgba(167,139,250,0.10)',
     border: 'rgba(167,139,250,0.25)',
   },
+  custom: {
+    label: 'USER',
+    color: '#f59e0b',
+    bg: 'rgba(245,158,11,0.12)',
+    border: 'rgba(245,158,11,0.24)',
+  },
 };
 
 const STATUS_BADGE: Record<string, { color: string; bg: string; border: string }> = {

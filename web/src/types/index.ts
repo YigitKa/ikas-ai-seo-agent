@@ -193,6 +193,9 @@ export interface ActiveSkillSummary {
   status: string;
   source: string;
   selection_mode?: string;
+  merged_skill_slugs?: string[];
+  explicit_skill_slug?: string | null;
+  prompt_layer_sources?: string[];
 }
 
 export interface RewriteResponse {

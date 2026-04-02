@@ -338,11 +338,70 @@ graph LR
 
 Skill'ler global bayrak değil — her skill, seçildiği akış için runtime'da eklenen bir **talimat paketidir**. Her skill `skills/<skill-slug>/` altında yaşar ve iki dosyadan oluşur: `meta.json` (metadata, araçlar, uygulanabilirlik) + `SKILL.md` (insan okunur talimatlar).
 
-Bir skill aktif edildiğinde iki şey olur:
-1. Skill'in prompt katmanları mevcut system prompt'a eklenir
-2. `allowed_tools` listesi **flow'un gerçek tool setiyle kesiştirilip** (`resolve_skill_tool_scope`) daraltılır — skill'in tanımlamadığı veya flow'da olmayan araçlar filtrelenir
+#### 3 Katmanlı Skill Dizini
 
-**Üç akışta kullanılabilir:**
+```
+skills/                   ← Sistem skill'leri (öncelik: 0)
+├── category-audit/
+├── brand-voice-rewrite/
+├── launch-readiness/
+├── project/              ← Proje kapsamlı skill'ler (öncelik: 1)
+│   └── custom-seo-lens/
+└── custom/               ← Kullanıcı skill'leri (öncelik: 2)
+    └── my-brand-tone/
+```
+
+Aynı slug birden fazla katmanda varsa **yüksek öncelikli kaynak kazanır** — `custom` > `project` > `system`. Böylece yerleşik bir skill'i kendi sürümünüzle override edebilirsiniz.
+
+#### Otomatik Skill Seçimi (Runtime Selection)
+
+Skill her zaman elle seçilmek zorunda değil. Sistem **5 seçim modunu** destekler:
+
+```mermaid
+graph TD
+    MSG["Kullanıcı Mesajı / Rewrite İsteği"] --> EXPLICIT{"Açıkça bir skill<br/>belirtildi mi?"}
+    EXPLICIT -->|Evet| MODE_EX["🎯 explicit"]
+    EXPLICIT -->|Hayır| ROUTING{"Token-tabanlı<br/>eşleştirme çalıştır"}
+    ROUTING -->|Eşleşme| MODE_RT["🧭 routed"]
+    ROUTING -->|Eşleşme yok| DEFAULT{"default etiketli<br/>skill var mı?"}
+    DEFAULT -->|Evet| MODE_DF["📌 default"]
+    DEFAULT -->|Hayır| MODE_NO["⬜ none"]
+
+    MODE_EX --> MERGE{"Birden fazla skill<br/>compose edilsin mi?"}
+    MODE_RT --> MERGE
+    MODE_DF --> MERGE
+    MERGE -->|Evet| MODE_MG["🔀 merged"]
+    MERGE -->|Hayır| APPLY["Prompt enjeksiyonu +<br/>Tool filtreleme"]
+    MODE_MG --> APPLY
+
+    style MSG fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style EXPLICIT fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style ROUTING fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
+    style DEFAULT fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
+    style MODE_EX fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style MODE_RT fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style MODE_DF fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style MODE_NO fill:#0f172a,stroke:#64748b,color:#e2e8f0
+    style MODE_MG fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style MERGE fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style APPLY fill:#1e293b,stroke:#10b981,color:#e2e8f0
+```
+
+| Mod | Tetikleyen | Açıklama |
+|---|---|---|
+| `explicit` | Kullanıcı veya API parametresi | Doğrudan slug ile seçilmiş skill |
+| `routed` | Token tabanlı eşleştirme | Mesaj/ürün içeriğindeki anahtar kelimeler skill'in `routing_keywords` alanıyla eşleşir |
+| `default` | `default` etiketi | Hiçbir skill eşleşmezse `default` etiketli skill otomatik devreye girer |
+| `merged` | Birden fazla skill bileşimi | Explicit + routed skill'ler tek bir prompt ve unified tool listiyle birleştirilir |
+| `none` | Eşleşme/seçim yok | Skill katmanı eklenmez; varsayılan davranış |
+
+**Token tabanlı yönlendirme** — Kullanıcı mesajı, ürün adı, kategorisi ve SEO sorunları bir `routing_text` olarak birleştirilir. Her skill'in `routing_keywords` alanına karşı kelime bazlı eşleştirme yapılır; en yüksek skor alan skill seçilir. Chat'te `operator` ajanı için routing devre dışı kalır.
+
+**Permission-aware tool filtreleme** — Skill'in `allowed_tools` listesi flow'un gerçek tool setiyle ve permission engine'in `preview()` kararıyla kesiştirilir. Permission engine'den `deny` alan veya flow'da olmayan araçlar filtrelenir — skill tanımının ötesinde bir tool'a erişim sağlanamaz.
+
+**Pozisyonlu prompt enjeksiyonu** — `compose_prompt_with_skill_layer()` skill prompt'unu flow'a özgü slot'a enjekte eder. Her flow (`chat`, `rewrite`, `batch`, `product_rewrite`) hangi katman pozisyonunda skill overlay'i alacağını `SKILL_PROMPT_LAYER_SLOTS` ile tanımlar.
+
+#### Akışlarda Kullanım
 
 | Akış | Nerede seçilir | Etki |
 |---|---|---|
@@ -350,14 +409,16 @@ Bir skill aktif edildiğinde iki şey olur:
 | **Rewrite** | API çağrısında `?skill_slug=` | Rewrite system prompt'una eklenir |
 | **Batch** | Batch config panelinde | Her alan üretimine ek talimat verir (prompt enjeksiyonu) |
 
-**Skill Studio → Chat entegrasyonu** — Skill Studio'da "Chat'te Uygula ve Test Et" butonuna tıklayın; dashboard `?skill=<slug>` parametresiyle açılır ve skill otomatik olarak chat oturumuna bağlanır. Ürün seçmeden de test edebilirsiniz.
+Chat header'da aktif skill'in **seçim modu** (routed / default / merged), çözülmüş tool sayısı ve birleştirilmiş skill listesi gerçek zamanlı gösterilir.
+
+**Skill Studio → Chat entegrasyonu** — Skill Studio'da "Chat'te Uygula ve Test Et" butonuna tıklayın; dashboard `?skill=<slug>` parametresiyle açılır ve skill otomatik olarak chat oturumuna bağlanır. Ürün seçmeden de test edebilirsiniz. Custom kaynaklı skill'ler studio'da **USER** rozeti ile işaretlenir.
 
 **Varsayılan skill'ler** sistem açılışında otomatik seed edilir:
 - `category-audit` — kategori uyumu ve alan bazlı SEO boşlukları
 - `brand-voice-rewrite` — marka tonunu kontrollü ve tutarlı hale getiren lens
 - `launch-readiness` — yayın öncesi checklist, eksik alan tespiti
 
-**Preview debug paneli** — Preview çalıştırıldığında tool scope mode, prompt boyutu (char/word), requested vs resolved tool listesi ve katman sayısı görsel olarak gösterilir.
+**Preview debug paneli** — Preview çalıştırıldığında tool scope mode, prompt boyutu (char/word), requested vs resolved tool listesi, katman kaynakları (`prompt_layer_sources`) ve katman sayısı görsel olarak gösterilir.
 
 **Güvenlik** — Skill dizinlerinde symlink koruması ve dosya allowlist'i uygulanır; `meta.json` ve `SKILL.md` dışındaki beklenmeyen dosyalar yok sayılır.
 
@@ -482,6 +543,7 @@ Yazma etkisi olan tüm kritik akışlar **merkezi permission engine** üzerinden
 - **Risk sınıfları** — `apply`, `rollback`, `bulk_apply`, `db_reset`, `external_write`
 - **Karar modeli** — `allow`, `ask`, `deny` ile kural çözümleme: global → project → session → runtime override
 - **Zorunlu preflight kontrolü** — tool handler veya servis çalışmadan önce izin kararı verilir
+- **Senkron preview** — `preview()` ile async olmadan izin kararı alınır; skill runtime tool filtrelemesinde kullanılır (audit log'a yazmaz)
 - **Audit kaydı** — onay gerektiren tüm kararlar `permission_audit_log` tablosuna yazılır
 - **REST çevirisi** — izin yoksa `409 approval required` veya `403 denied` döner
 - **Sahte-eylem güvenliği** — LLM tool çağırmadan "uyguladım" derse sistem tespit edip uyarı ekler
@@ -553,8 +615,13 @@ mindmap
       ("Fallback: MCP mutation")
       ("Uygulama sonrası re-fetch + re-score")
     ("📝 Katmanlı Prompt Mimarisi")
-      ("5 katman → tek system mesajı")
+      ("6 katman → tek system mesajı")
+      ("Skill Runtime Overlay: 2. katman")
       ("Compact mode: yerel modeller için sadeleştirme")
+    ("🎯 Skill Runtime Selection")
+      ("5 mod: none/explicit/routed/default/merged")
+      ("3 katmanlı dizin: system/project/custom")
+      ("Permission-aware tool filtreleme")
     ("🧠 Düşünce Çıkarımı")
       ("think bloğu otomatik ayrıştırma")
       ("UI'da ayrı gösterim")
@@ -695,17 +762,19 @@ Tüm katmanlar **tek bir `system` mesajında** birleştirilir (qwen, llama gibi 
 graph TB
     subgraph LAYERS ["Prompt Katmanları (tek system mesajında birleştirilir)"]
         P1["1. 📜 Ana Sistem Prompt'u<br/><i>CHAT_FLOW_SYSTEM_PROMPT_TR<br/>Rol, hedefler, doğruluk kuralları, tool rehberi</i>"]
-        P2["2. 🎭 Agent Persona<br/><i>AGENT_SYSTEM_PROMPTS_TR[seo|operator|general]<br/>Semantik routing ile seçilir</i>"]
-        P3["3. 📋 Operasyon Rehberi<br/><i>IKAS_OPERATION_GUIDE_TR<br/>apply_seo_to_ikas kullanım talimatları</i>"]
-        P4["4. 📦 Ürün Bağlamı<br/><i>Seçili ürün adı, skoru, mevcut alanları</i>"]
-        P5["5. 🧭 Yönlendirme Talimatı<br/><i>_extract_message_directives() çıktısı</i>"]
+        PSK["2. 🎯 Skill Runtime Overlay<br/><i>compose_prompt_with_skill_layer()<br/>Aktif skill'in talimat katmanı (varsa)</i>"]
+        P2["3. 🎭 Agent Persona<br/><i>AGENT_SYSTEM_PROMPTS_TR[seo|operator|general]<br/>Semantik routing ile seçilir</i>"]
+        P3["4. 📋 Operasyon Rehberi<br/><i>IKAS_OPERATION_GUIDE_TR<br/>apply_seo_to_ikas kullanım talimatları</i>"]
+        P4["5. 📦 Ürün Bağlamı<br/><i>Seçili ürün adı, skoru, mevcut alanları</i>"]
+        P5["6. 🧭 Yönlendirme Talimatı<br/><i>_extract_message_directives() çıktısı</i>"]
     end
 
-    P1 --> P2 --> P3 --> P4 --> P5
+    P1 --> PSK --> P2 --> P3 --> P4 --> P5
     P5 --> MERGE["📨 Tek system mesajı<br/><i>join('\\n\\n')</i>"]
 
     style LAYERS fill:#0f172a,stroke:#3b82f6,color:#e2e8f0
     style P1 fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style PSK fill:#1e293b,stroke:#10b981,color:#e2e8f0
     style P2 fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
     style P3 fill:#1e293b,stroke:#10b981,color:#e2e8f0
     style P4 fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
@@ -713,7 +782,7 @@ graph TB
     style MERGE fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
 ```
 
-> **Compact Mode (Yerel Modeller):** LM Studio ve Ollama'da 3. ve 5. katman atlanır, verbose tool talimatları kaldırılır. ~10K token yerine ~2-3K token'lık minimal prompt gönderilir.
+> **Compact Mode (Yerel Modeller):** LM Studio ve Ollama'da 4. ve 6. katman atlanır, verbose tool talimatları kaldırılır. ~10K token yerine ~2-3K token'lık minimal prompt gönderilir. Skill runtime overlay (2. katman) her zaman dahil edilir.
 
 ### Unified Task Runtime
 
@@ -837,7 +906,7 @@ ikas-ai-seo-agent/
 │   ├── prompt_store.py         # Template yükleme + multi-agent prompt'lar
 │   ├── permissions/            # Permission / approval engine + rule modeli
 │   ├── tasks/                  # Unified task runtime + resume/retry/stop servisleri
-│   ├── skills/                 # Disk tabanlı skill loader, validation, preview, seed
+│   ├── skills/                 # 3 katmanlı skill runtime: system/project/custom + routing + merging
 │   ├── ai/client.py            # Multi-provider AI soyutlaması (fabrika + adaptörler)
 │   ├── agent/                  # AgentOrchestrator (run + stream) + tool tanımları
 │   ├── chat/                   # Çok turlu chat (state, streaming, suggestions, guidance)
@@ -861,7 +930,7 @@ ikas-ai-seo-agent/
 │
 ├── data/db.py                  # Async SQLite + bağlantı havuzu + unified task storage
 ├── prompts/                    # Düzenlenebilir AI prompt şablonları
-├── skills/                     # Disk tabanlı skill klasörleri (meta.json + SKILL.md)
+├── skills/                     # Disk tabanlı skill klasörleri: system + project/ + custom/ (meta.json + SKILL.md)
 └── tests/                      # 20+ test dosyası, canlı API çağrısı yok
 ```
 

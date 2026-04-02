@@ -253,7 +253,7 @@ class PermissionEngine:
         self._session_rules = tuple(session_rules or ())
         self._audit_logger = audit_logger or _default_audit_logger
 
-    async def evaluate(
+    def _build_decision(
         self,
         request: PermissionRequest,
         *,
@@ -290,12 +290,38 @@ class PermissionEngine:
                 description="No permission rule matched the requested operation.",
             )
 
-        decision = PermissionDecision(
+        return PermissionDecision(
             behavior=matched_rule.behavior,
             request=request,
             matched_rule=matched_rule,
             resolution_trace=resolution_trace,
             reason=_default_reason(matched_rule.behavior, request, matched_rule),
+        )
+
+    def preview(
+        self,
+        request: PermissionRequest,
+        *,
+        session_rules: Iterable[PermissionRule] | None = None,
+        runtime_rules: Iterable[PermissionRule] | None = None,
+    ) -> PermissionDecision:
+        return self._build_decision(
+            request,
+            session_rules=session_rules,
+            runtime_rules=runtime_rules,
+        )
+
+    async def evaluate(
+        self,
+        request: PermissionRequest,
+        *,
+        session_rules: Iterable[PermissionRule] | None = None,
+        runtime_rules: Iterable[PermissionRule] | None = None,
+    ) -> PermissionDecision:
+        decision = self._build_decision(
+            request,
+            session_rules=session_rules,
+            runtime_rules=runtime_rules,
         )
 
         if decision.requires_approval:

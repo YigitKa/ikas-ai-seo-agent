@@ -14,7 +14,7 @@ from core.chat.support import (
     _should_request_structured_suggestion_options,
 )
 from core.models import ChatResponse
-from core.prompt_store import load_prompt_template
+from core.prompt_store import compose_prompt_with_skill_layer, load_prompt_template
 
 
 class ChatServiceStreamingMessagesMixin:
@@ -107,12 +107,14 @@ class ChatServiceStreamingMessagesMixin:
 
             # --- Collect all system-level parts into one block ---
             compact = self._config.ai_provider in ("lm-studio", "ollama")
-            system_parts: list[str] = [
-                _build_product_context(self._product, self._score, agent_type, compact=compact),
-            ]
             active_skill_prompt = self._build_active_skill_system_prompt()
-            if active_skill_prompt:
-                system_parts.append(active_skill_prompt)
+            system_parts: list[str] = [
+                compose_prompt_with_skill_layer(
+                    _build_product_context(self._product, self._score, agent_type, compact=compact),
+                    active_skill_prompt,
+                    "chat",
+                ),
+            ]
             if _should_request_structured_suggestion_options(cleaned_message):
                 system_parts.append(load_prompt_template("chat_suggestion_options_system"))
 
@@ -218,12 +220,15 @@ class ChatServiceStreamingMessagesMixin:
             )
 
             skill_prompt = self._build_active_skill_system_prompt()
-            system_prompt = (
-                ((skill_prompt + "\n\n") if skill_prompt else "")
-                + "Sen SEO uzmansin. "
-                + field_instruction
-                + " Dusunme, dogrudan araci cagir. /no_think\n\n"
-                + "\n".join(product_lines)
+            system_prompt = compose_prompt_with_skill_layer(
+                (
+                    "Sen SEO uzmansin. "
+                    + field_instruction
+                    + " Dusunme, dogrudan araci cagir. /no_think\n\n"
+                    + "\n".join(product_lines)
+                ),
+                skill_prompt,
+                "chat",
             )
 
             messages: list[dict[str, Any]] = [

@@ -19,11 +19,18 @@ from .store import (
     save_skill_definition,
     validate_skill_definition,
 )
+from .runtime import (
+    SkillRuntimeSelection,
+    parse_skill_slug_list,
+    resolve_chat_agent_scope,
+    resolve_runtime_skill_selection,
+)
 
 __all__ = [
     "SkillDefinition",
     "SkillPromptLayer",
     "SkillResolvedPromptLayer",
+    "SkillRuntimeSelection",
     "SkillValidationResult",
     "build_skill_prompt",
     "delete_skill_definition",
@@ -35,7 +42,10 @@ __all__ = [
     "get_skills_dir",
     "import_skill_definition",
     "list_skill_definitions",
+    "parse_skill_slug_list",
     "preview_skill_definition",
+    "resolve_chat_agent_scope",
+    "resolve_runtime_skill_selection",
     "reset_skill_definition",
     "resolve_skill_tool_scope",
     "save_skill_definition",

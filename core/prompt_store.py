@@ -637,27 +637,34 @@ PROMPT_LAYERING_ORDER: list[dict[str, object]] = [
             },
             {
                 "order": 2,
+                "prompt_key": None,
+                "label": "Skill Runtime Overlay",
+                "description": "Secili veya otomatik eslesen skill prompt'u agent persona katmanindan sonra eklenir.",
+                "linked_keys": [],
+            },
+            {
+                "order": 3,
                 "prompt_key": "chat_option_buttons_system",
                 "label": "Secenek Buton Formati",
                 "description": "Tiklanabilir JSON buton kurallari eklenir.",
                 "linked_keys": [],
             },
             {
-                "order": 3,
+                "order": 4,
                 "prompt_key": "ikas_operation_guide_system",
                 "label": "ikas Operasyon Rehberi",
                 "description": "Urun guncelleme ve onay akisi kurallari eklenir.",
                 "linked_keys": [],
             },
             {
-                "order": 4,
+                "order": 5,
                 "prompt_key": "chat_product_context_system",
                 "label": "Urun Baglami",
                 "description": "Secili urunun adi, kategorisi, fiyati, SKU, meta alanlari ve aciklama ozeti.",
                 "linked_keys": [],
             },
             {
-                "order": 5,
+                "order": 6,
                 "prompt_key": "chat_score_context_system",
                 "label": "SEO Skor Baglami",
                 "description": "Urunun 100 uzerinden SEO skoru, alan bazli kirilimlar ve sorunlar listesi.",
@@ -680,6 +687,13 @@ PROMPT_LAYERING_ORDER: list[dict[str, object]] = [
             {
                 "order": 2,
                 "prompt_key": None,
+                "label": "Skill Runtime Overlay",
+                "description": "Rewrite flow'u icin secili skill talimati system prompt'a eklenir.",
+                "linked_keys": [],
+            },
+            {
+                "order": 3,
+                "prompt_key": None,
                 "label": "Urun Verisi (User Message)",
                 "description": "Urunun adi, aciklamasi, mevcut skoru ve sorunlari user mesaji olarak gonderilir.",
                 "linked_keys": [],
@@ -701,6 +715,13 @@ PROMPT_LAYERING_ORDER: list[dict[str, object]] = [
             {
                 "order": 2,
                 "prompt_key": None,
+                "label": "Skill Runtime Overlay",
+                "description": "Batch config veya routing ile secilen skill kisitlari system prompt'a eklenir.",
+                "linked_keys": [],
+            },
+            {
+                "order": 3,
+                "prompt_key": None,
                 "label": "Urun Verisi + Kisitlamalar",
                 "description": "Urun bilgisi ve kullanici kisitlamalari (varsa) user mesaji olarak eklenir.",
                 "linked_keys": [],
@@ -721,6 +742,13 @@ PROMPT_LAYERING_ORDER: list[dict[str, object]] = [
             },
             {
                 "order": 2,
+                "prompt_key": None,
+                "label": "Skill Runtime Overlay",
+                "description": "Tek-atislik rewrite veya ceviri system prompt'una skill talimati eklenir.",
+                "linked_keys": [],
+            },
+            {
+                "order": 3,
                 "prompt_key": "description_user",
                 "label": "Description User Prompt",
                 "description": "Urun verileri {{degisken}} olarak enjekte edilir.",
@@ -730,10 +758,61 @@ PROMPT_LAYERING_ORDER: list[dict[str, object]] = [
     },
 ]
 
+SKILL_PROMPT_LAYER_SLOTS: dict[str, dict[str, object]] = {
+    "chat": {
+        "flow_id": "chat",
+        "label": "Skill Runtime Overlay",
+        "position": "append",
+        "anchor_order": 2,
+        "note": "Chat'te skill prompt'u ana agent persona/bloglam katmanindan sonra eklenir.",
+    },
+    "rewrite": {
+        "flow_id": "rewrite",
+        "label": "Skill Runtime Overlay",
+        "position": "append",
+        "anchor_order": 2,
+        "note": "Rewrite agent system prompt'u skill talimatiyla genisletilir.",
+    },
+    "batch": {
+        "flow_id": "batch",
+        "label": "Skill Runtime Overlay",
+        "position": "append",
+        "anchor_order": 2,
+        "note": "Batch agent system prompt'u skill ve batch kisitlariyla genisletilir.",
+    },
+    "product_rewrite": {
+        "flow_id": "product_rewrite",
+        "label": "Skill Runtime Overlay",
+        "position": "append",
+        "anchor_order": 2,
+        "note": "Tek-atislik rewrite/translation system prompt'u skill talimatiyla genisletilir.",
+    },
+}
+
 
 def get_prompt_layering_order() -> list[dict[str, object]]:
     """Return prompt layering order data for UI visualization."""
     return PROMPT_LAYERING_ORDER
+
+
+def get_skill_prompt_layer_slot(flow_id: str) -> dict[str, object]:
+    normalized = (flow_id or "").strip().lower()
+    return dict(SKILL_PROMPT_LAYER_SLOTS.get(normalized, SKILL_PROMPT_LAYER_SLOTS["chat"]))
+
+
+def compose_prompt_with_skill_layer(base_prompt: str, skill_prompt: str, flow_id: str) -> str:
+    base = (base_prompt or "").strip()
+    skill = (skill_prompt or "").strip()
+    if not skill:
+        return base
+    if not base:
+        return skill
+
+    slot = get_skill_prompt_layer_slot(flow_id)
+    position = str(slot.get("position") or "append").strip().lower()
+    if position == "prepend":
+        return f"{skill}\n\n{base}"
+    return f"{base}\n\n{skill}"
 
 README_TEXT = """Bu klasordeki prompt dosyalari uygulama tarafindan her AI isteginde yeniden okunur.
 

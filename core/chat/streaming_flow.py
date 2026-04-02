@@ -75,6 +75,13 @@ class ChatServiceStreamingFlowMixin:
             if is_generate_request or has_apply_intent or has_save_intent:
                 allow_tools = True
 
+            runtime_skill_selection = self.resolve_message_skill_selection(
+                cleaned_message,
+                agent_type=agent_type,
+                allow_tools=allow_tools,
+            )
+            self.set_runtime_skill_selection(runtime_skill_selection)
+
             # Add user message to history and trim if needed
             user_msg = ChatMessage(role="user", content=cleaned_message)
             self._history.append(user_msg)
@@ -89,6 +96,7 @@ class ChatServiceStreamingFlowMixin:
                     chunk_handler=chunk_handler,
                 )
                 if single_save_response is not None:
+                    self.set_runtime_skill_selection(None)
                     return single_save_response
 
                 single_apply_response = await self._maybe_handle_single_product_apply_flow(
@@ -96,6 +104,7 @@ class ChatServiceStreamingFlowMixin:
                     chunk_handler=chunk_handler,
                 )
                 if single_apply_response is not None:
+                    self.set_runtime_skill_selection(None)
                     return single_apply_response
 
             # Optionally prefetch guided MCP data for live-data questions
@@ -132,13 +141,14 @@ class ChatServiceStreamingFlowMixin:
                             "model": "ikas MCP",
                             "finish_reason": "guided_mcp",
                             "source": "ikas_mcp",
-                            "active_skill": self.get_active_skill_payload(),
+                            "active_skill": self.get_effective_skill_payload(),
                         },
                         pending_suggestion=self._get_session_pending_suggestion(),
                     )
                     if chunk_handler and response.content:
                         await chunk_handler(response.content)
                     self._schedule_history_summarization()
+                    self.set_runtime_skill_selection(None)
                     return response
 
             messages, tools = self._build_completion_messages(
@@ -211,7 +221,7 @@ class ChatServiceStreamingFlowMixin:
                             "model": "ikas MCP",
                             "finish_reason": "guided_mcp_fallback",
                             "source": "ikas_mcp",
-                            "active_skill": self.get_active_skill_payload(),
+                            "active_skill": self.get_effective_skill_payload(),
                         },
                         pending_suggestion=pending_suggestion,
                     )
@@ -224,7 +234,7 @@ class ChatServiceStreamingFlowMixin:
                         thinking="",
                         tool_results=tool_results,
                         error=True,
-                        meta={"active_skill": self.get_active_skill_payload()},
+                        meta={"active_skill": self.get_effective_skill_payload()},
                         pending_suggestion=pending_suggestion,
                     )
                 if chunk_handler and response.content:
@@ -233,6 +243,7 @@ class ChatServiceStreamingFlowMixin:
                 return response
             finally:
                 self._permission_runtime_rules = previous_permission_rules
+                self.set_runtime_skill_selection(None)
 
             # Safety net: if the LLM output suggestion fields as JSON text instead
             # of calling save_seo_suggestion, parse and save programmatically.
@@ -275,7 +286,7 @@ class ChatServiceStreamingFlowMixin:
             self._schedule_history_summarization()
 
             meta = dict(meta)
-            meta["active_skill"] = self.get_active_skill_payload()
+            meta["active_skill"] = runtime_skill_selection.to_payload() or self.get_effective_skill_payload()
 
             return ChatResponse(
                 content=response_text,

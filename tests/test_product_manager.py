@@ -2,6 +2,7 @@ from typing import Optional
 
 import pytest
 
+from core.permissions import create_permission_engine
 import core.skills.store as skill_store
 from core.models import Product
 from core.product_manager import ProductManager
@@ -58,9 +59,15 @@ def _use_temp_skills(monkeypatch, tmp_path) -> None:
     skill_store.ensure_skill_files()
 
 
+def _make_manager() -> ProductManager:
+    manager = ProductManager.__new__(ProductManager)
+    manager._permission_engine = create_permission_engine()
+    return manager
+
+
 def test_validate_skill_for_flow_rejects_skill_without_batch_support(monkeypatch, tmp_path):
     _use_temp_skills(monkeypatch, tmp_path)
-    manager = ProductManager.__new__(ProductManager)
+    manager = _make_manager()
 
     with pytest.raises(ValueError, match="batch akisi"):
         manager.validate_skill_for_flow("category-audit", "batch")
@@ -68,7 +75,7 @@ def test_validate_skill_for_flow_rejects_skill_without_batch_support(monkeypatch
 
 def test_build_batch_runtime_prompt_includes_selected_skill(monkeypatch, tmp_path):
     _use_temp_skills(monkeypatch, tmp_path)
-    manager = ProductManager.__new__(ProductManager)
+    manager = _make_manager()
 
     prompt = manager._build_batch_runtime_prompt({
         "preserve_specs": True,
@@ -80,3 +87,20 @@ def test_build_batch_runtime_prompt_includes_selected_skill(monkeypatch, tmp_pat
 
     assert "BATCH KISITLARI" in prompt
     assert "Aktif skill: Brand Voice Rewrite" in prompt
+
+
+def test_resolve_runtime_skill_selection_routes_brand_voice(monkeypatch, tmp_path):
+    _use_temp_skills(monkeypatch, tmp_path)
+    manager = _make_manager()
+
+    selection = manager._resolve_runtime_skill_selection(
+        "",
+        "rewrite",
+        routing_text="marka tonu daha kontrollu ve rewrite odakli olsun",
+        enable_routing=True,
+        enable_default_fallback=False,
+    )
+
+    assert selection.primary_skill is not None
+    assert selection.primary_skill.slug == "brand-voice-rewrite"
+    assert selection.selection_mode == "routed"

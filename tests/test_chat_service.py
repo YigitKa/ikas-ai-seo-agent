@@ -303,6 +303,23 @@ def test_get_active_skill_payload_includes_resolved_tool_scope(monkeypatch, tmp_
     assert "apply_seo_to_ikas" not in payload["resolved_tools"]
 
 
+def test_resolve_message_skill_selection_merges_default_and_routed_skill(monkeypatch, tmp_path):
+    _use_temp_skills(monkeypatch, tmp_path)
+    service = ChatService(_make_config())
+    service.set_product_context(_make_product(), _make_score())
+
+    selection = service.resolve_message_skill_selection(
+        "marka tonu daha net olsun ve rewrite yap",
+        agent_type="seo",
+        allow_tools=True,
+    )
+
+    assert selection.selection_mode == "merged"
+    assert selection.merged_skill_slugs == ["launch-readiness", "brand-voice-rewrite"]
+    assert selection.allowed_tool_names is not None
+    assert "apply_seo_to_ikas" not in selection.allowed_tool_names
+
+
 def test_build_product_context_with_product():
     product = _make_product(name="Akilli Saat", price=599.99)
     ctx = _build_product_context(product, None)
@@ -607,10 +624,10 @@ async def test_send_message_local_passes_only_save_suggestion_tool_even_if_mcp_r
     tools = captured["tools"]
     assert isinstance(tools, list)
     tool_names = [tool["function"]["name"] for tool in tools]
-    # General agent: MCP tools should NOT be included, but local tools
-    # (apply_seo_to_ikas, agent toolkit tools) are always present
+    # General agent: MCP tools should NOT be included. Runtime skill routing can
+    # also narrow the local mutation surface.
     assert SAVE_SEO_SUGGESTION_TOOL_NAME not in tool_names  # not an SEO agent in general mode
-    assert "apply_seo_to_ikas" in tool_names
+    assert "apply_seo_to_ikas" not in tool_names
     system_messages = [
         msg["content"]
         for msg in captured["messages"]  # type: ignore[index]

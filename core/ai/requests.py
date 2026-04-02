@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from core.utils.html import html_to_plain_text, sanitize_html_for_prompt
 from core.models import AppConfig, Product, SeoScore, SeoSuggestion
-from core.prompt_store import load_prompt_template, render_prompt_template
+from core.prompt_store import compose_prompt_with_skill_layer, load_prompt_template, render_prompt_template
 from core.ai.constants import FIELD_PROMPT_TEMPLATES, USER_PROMPT_TEMPLATE
 from core.ai.helpers import _get_system_prompt, _cap_field_max_tokens
 
@@ -121,13 +121,7 @@ _THINK_TAG_PROVIDERS = frozenset({"ollama", "lm-studio", "openrouter", "custom"}
 
 
 def _merge_system_prompt(system_prompt: str, extra_system_prompt: str = "") -> str:
-    base = system_prompt.strip()
-    extra = (extra_system_prompt or "").strip()
-    if not extra:
-        return base
-    if not base:
-        return extra
-    return f"{base}\n\n{extra}"
+    return compose_prompt_with_skill_layer(system_prompt, extra_system_prompt, "product_rewrite")
 
 
 def build_product_rewrite_request(

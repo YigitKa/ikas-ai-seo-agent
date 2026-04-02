@@ -6,6 +6,7 @@ from core.skills.store import (
     SKILLS_DIR,
     SkillDefinition,
     ensure_skill_files,
+    get_skill_definition,
     list_skill_definitions,
     preview_skill_definition,
     resolve_skill_tool_scope,
@@ -68,11 +69,46 @@ def test_save_skill_definition_persists_custom_skill(monkeypatch, tmp_path):
 
     assert saved.slug == "custom-audit"
     assert saved.name == "Custom Audit"
-    assert saved.source == "project"
-    meta_path = (tmp_path / "skills" / "custom-audit" / "meta.json")
+    assert saved.source == "custom"
+    meta_path = (tmp_path / "skills" / "custom" / "custom-audit" / "meta.json")
     payload = json.loads(meta_path.read_text(encoding="utf-8"))
     assert payload["slug"] == "custom-audit"
     assert payload["tags"] == ["custom", "audit"]
+
+
+def test_get_skill_definition_prefers_custom_source_over_system(monkeypatch, tmp_path):
+    monkeypatch.setattr(skill_store, "SKILLS_DIR", tmp_path / "skills")
+    skill_store._skill_cache.clear()
+    ensure_skill_files()
+
+    custom_dir = tmp_path / "skills" / "custom" / "launch-readiness"
+    custom_dir.mkdir(parents=True, exist_ok=True)
+    (custom_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "slug": "launch-readiness",
+                "name": "Launch Readiness Override",
+                "description": "Custom override",
+                "when_to_use": "custom",
+                "applies_to": ["chat"],
+                "allowed_tools": [],
+                "prompt_layers": [],
+                "tags": ["default"],
+                "priority": 5,
+                "status": "active",
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (custom_dir / "SKILL.md").write_text("# Custom override", encoding="utf-8")
+
+    skill = get_skill_definition("launch-readiness")
+
+    assert skill.source == "custom"
+    assert skill.name == "Launch Readiness Override"
 
 
 def test_resolve_skill_tool_scope_intersects_flow_tools(monkeypatch, tmp_path):

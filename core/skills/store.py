@@ -25,12 +25,15 @@ SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / "skills"
 _README_NAME = "README.txt"
 _META_FILE = "meta.json"
 _MARKDOWN_FILE = "SKILL.md"
+_PROJECT_DIR_NAME = "project"
+_CUSTOM_DIR_NAME = "custom"
 _VALID_APPLIES_TO = frozenset({"chat", "rewrite", "batch"})
 _VALID_STATUSES = frozenset({"active", "draft", "disabled"})
 _SKILL_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
 _FRONTMATTER_LINE_RE = re.compile(r"^(?P<key>[a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(?P<value>.*)$")
 _ALLOWED_SKILL_FILE_NAMES = frozenset({_META_FILE, _MARKDOWN_FILE})
 _ALLOWED_SKILL_DIR_NAMES = frozenset({"prompts", "assets", "examples"})
+_SKILL_SOURCE_PRIORITY = {"system": 0, "project": 1, "custom": 2}
 
 
 class SkillPromptLayer(BaseModel):
@@ -118,8 +121,14 @@ README_TEXT = """Bu klasordeki skill klasorleri uygulama tarafindan runtime'da d
 Beklenen yapi:
 - skills/<skill-slug>/meta.json
 - skills/<skill-slug>/SKILL.md
+- skills/project/<skill-slug>/meta.json
+- skills/project/<skill-slug>/SKILL.md
+- skills/custom/<skill-slug>/meta.json
+- skills/custom/<skill-slug>/SKILL.md
 
 Notlar:
+- Root altindaki varsayilan slug'lar `system`, `skills/project/` altindakiler `project`,
+  `skills/custom/` altindakiler `custom` source olarak okunur.
 - meta.json skill metadata'sini tutar.
 - SKILL.md skill'in insan okunur talimatlarini ve orneklerini tutar.
 - Varsayilan skill'ler silinirse API reset/uygulama bootstrap adiminda yeniden olusturulur.
@@ -278,9 +287,35 @@ def _unique_preserve(values: list[str]) -> list[str]:
     return result
 
 
-def _skill_dir(slug: str) -> Path:
+def _custom_skills_dir() -> Path:
+    return SKILLS_DIR / _CUSTOM_DIR_NAME
+
+
+def _project_skills_dir() -> Path:
+    return SKILLS_DIR / _PROJECT_DIR_NAME
+
+
+def _system_skill_dir(slug: str) -> Path:
     normalized = normalize_skill_slug(slug)
-    return get_skills_dir() / normalized
+    return SKILLS_DIR / normalized
+
+
+def _project_skill_dir(slug: str) -> Path:
+    normalized = normalize_skill_slug(slug)
+    return _project_skills_dir() / normalized
+
+
+def _custom_skill_dir(slug: str) -> Path:
+    normalized = normalize_skill_slug(slug)
+    return _custom_skills_dir() / normalized
+
+
+def _skill_cache_key(source: str, skill_dir: Path) -> str:
+    return f"{source}:{skill_dir.resolve(strict=False)}"
+
+
+def _iter_skill_sources() -> tuple[str, ...]:
+    return ("system", "project", "custom")
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:
@@ -312,6 +347,62 @@ def _guard_skill_dir(skill_dir: Path) -> None:
                 logger.warning("Beklenmeyen skill klasoru yok sayildi: %s", entry)
             continue
         logger.warning("Beklenmeyen skill girdisi yok sayildi: %s", entry)
+
+
+def _iter_legacy_root_skill_dirs() -> list[tuple[str, Path]]:
+    root = get_skills_dir()
+    items: list[tuple[str, Path]] = []
+    for child in sorted(root.iterdir(), key=lambda item: item.name.lower()):
+        if child.name in {_PROJECT_DIR_NAME, _CUSTOM_DIR_NAME}:
+            continue
+        if child.is_symlink():
+            logger.warning("Skill klasoru symlink oldugu icin atlandi: %s", child)
+            continue
+        if not child.is_dir():
+            continue
+        if not _SKILL_SLUG_RE.fullmatch(child.name):
+            logger.warning("Skill klasoru slug kurallarina uymuyor, atlandi: %s", child)
+            continue
+        source = "system" if child.name in DEFAULT_SKILLS else "project"
+        items.append((source, child))
+    return items
+
+
+def _iter_nested_skill_dirs(root_dir: Path, source: str) -> list[tuple[str, Path]]:
+    if not root_dir.exists():
+        return []
+
+    items: list[tuple[str, Path]] = []
+    for child in sorted(root_dir.iterdir(), key=lambda item: item.name.lower()):
+        if child.is_symlink():
+            logger.warning("Skill klasoru symlink oldugu icin atlandi: %s", child)
+            continue
+        if not child.is_dir():
+            continue
+        if not _SKILL_SLUG_RE.fullmatch(child.name):
+            logger.warning("Skill klasoru slug kurallarina uymuyor, atlandi: %s", child)
+            continue
+        items.append((source, child))
+    return items
+
+
+def _iter_registry_skill_dirs() -> list[tuple[str, Path]]:
+    ensure_skill_files()
+    return [
+        *_iter_legacy_root_skill_dirs(),
+        *_iter_nested_skill_dirs(_project_skills_dir(), "project"),
+        *_iter_nested_skill_dirs(_custom_skills_dir(), "custom"),
+    ]
+
+
+def _candidate_skill_locations(slug: str) -> list[tuple[str, Path]]:
+    normalized = normalize_skill_slug(slug)
+    return [
+        ("custom", _custom_skill_dir(normalized)),
+        ("project", _project_skill_dir(normalized)),
+        ("project", get_skills_dir() / normalized),
+        ("system", _system_skill_dir(normalized)),
+    ]
 
 
 def _compute_content_hash(meta_text: str, markdown_text: str) -> str:
@@ -371,6 +462,8 @@ def get_skills_dir() -> Path:
 
 def ensure_skill_files() -> Path:
     SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+    _project_skills_dir().mkdir(parents=True, exist_ok=True)
+    _custom_skills_dir().mkdir(parents=True, exist_ok=True)
 
     readme_path = SKILLS_DIR / _README_NAME
     if not readme_path.exists():
@@ -445,20 +538,20 @@ def _prompt_keys() -> set[str]:
     return keys
 
 
-def _load_skill_from_disk(slug: str) -> SkillDefinition:
-    skill_dir = _skill_dir(slug)
+def _load_skill_from_disk(slug: str, *, skill_dir: Path, source: str) -> SkillDefinition:
     meta_path = skill_dir / _META_FILE
     markdown_path = skill_dir / _MARKDOWN_FILE
     if not skill_dir.exists():
-        raise KeyError(f"Skill bulunamadi: {slug}")
+        raise KeyError(f"Skill bulunamadi: {slug} ({source})")
     if not markdown_path.exists() and not meta_path.exists():
-        raise KeyError(f"Skill dosyalari eksik: {slug}")
+        raise KeyError(f"Skill dosyalari eksik: {slug} ({source})")
     _guard_skill_dir(skill_dir)
 
     meta_mtime_ns = meta_path.stat().st_mtime_ns if meta_path.exists() else 0
     markdown_mtime_ns = markdown_path.stat().st_mtime_ns if markdown_path.exists() else 0
 
-    cached = _skill_cache.get(slug)
+    cache_key = _skill_cache_key(source, skill_dir)
+    cached = _skill_cache.get(cache_key)
     if cached and cached.meta_mtime_ns == meta_mtime_ns and cached.markdown_mtime_ns == markdown_mtime_ns:
         return cached.definition.model_copy(deep=True)
 
@@ -473,14 +566,14 @@ def _load_skill_from_disk(slug: str) -> SkillDefinition:
         **metadata,
         "slug": slug,
         "instructions_markdown": markdown_body,
-        "source": "system" if slug in DEFAULT_SKILLS else "project",
+        "source": source,
         "path": str(skill_dir),
         "is_default": slug in DEFAULT_SKILLS,
     }
     content_hash = _compute_content_hash(json.dumps(metadata, ensure_ascii=False, sort_keys=True), markdown_body)
     metadata["content_hash"] = content_hash
     definition = SkillDefinition.model_validate(metadata)
-    _skill_cache[slug] = _CachedSkill(
+    _skill_cache[cache_key] = _CachedSkill(
         definition=definition,
         meta_mtime_ns=meta_mtime_ns,
         markdown_mtime_ns=markdown_mtime_ns,
@@ -490,26 +583,43 @@ def _load_skill_from_disk(slug: str) -> SkillDefinition:
 
 def list_skill_definitions() -> list[SkillDefinition]:
     ensure_skill_files()
-    skills: list[SkillDefinition] = []
-    for child in sorted(SKILLS_DIR.iterdir(), key=lambda item: item.name.lower()):
-        if child.is_symlink():
-            logger.warning("Skill klasoru symlink oldugu icin atlandi: %s", child)
-            continue
-        if not child.is_dir():
-            continue
-        if not _SKILL_SLUG_RE.fullmatch(child.name):
-            logger.warning("Skill klasoru slug kurallarina uymuyor, atlandi: %s", child)
-            continue
+    skills_by_slug: dict[str, SkillDefinition] = {}
+    for source, child in _iter_registry_skill_dirs():
         try:
-            skills.append(_load_skill_from_disk(child.name))
+            skill = _load_skill_from_disk(child.name, skill_dir=child, source=source)
         except Exception as exc:
             logger.warning("Skill yuklenemedi: %s (%s)", child.name, exc)
-    return sorted(skills, key=lambda skill: (skill.priority, skill.name.lower(), skill.slug))
+            continue
+
+        existing = skills_by_slug.get(skill.slug)
+        if existing is None:
+            skills_by_slug[skill.slug] = skill
+            continue
+        current_priority = _SKILL_SOURCE_PRIORITY.get(skill.source, 0)
+        existing_priority = _SKILL_SOURCE_PRIORITY.get(existing.source, 0)
+        if current_priority >= existing_priority:
+            skills_by_slug[skill.slug] = skill
+
+    skills = list(skills_by_slug.values())
+    return sorted(
+        skills,
+        key=lambda skill: (_SKILL_SOURCE_PRIORITY.get(skill.source, 0), skill.priority, skill.name.lower(), skill.slug),
+    )
 
 
 def get_skill_definition(slug: str) -> SkillDefinition:
     ensure_skill_files()
-    return _load_skill_from_disk(normalize_skill_slug(slug))
+    normalized = normalize_skill_slug(slug)
+    for source, skill_dir in _candidate_skill_locations(normalized):
+        if not skill_dir.exists():
+            continue
+        if source == "project" and skill_dir == get_skills_dir() / normalized and normalized in DEFAULT_SKILLS:
+            continue
+        try:
+            return _load_skill_from_disk(normalized, skill_dir=skill_dir, source=source)
+        except KeyError:
+            continue
+    raise KeyError(f"Skill bulunamadi: {normalized}")
 
 
 def _serialize_skill_metadata(skill: SkillDefinition) -> dict[str, Any]:
@@ -632,12 +742,32 @@ def preview_skill_definition(skill: SkillDefinition, *, applies_to: str = "chat"
     }
 
 
+def _invalidate_skill_cache(slug: str) -> None:
+    normalized = normalize_skill_slug(slug)
+    for cache_key, cached_skill in list(_skill_cache.items()):
+        if cached_skill.definition.slug == normalized:
+            _skill_cache.pop(cache_key, None)
+
+
 def save_skill_definition(skill: SkillDefinition) -> SkillDefinition:
     validation = validate_skill_definition(skill)
     if not validation.ok:
         raise ValueError("; ".join(validation.errors))
 
-    skill_dir = _skill_dir(skill.slug)
+    skill_dir: Path
+    if skill.slug in DEFAULT_SKILLS:
+        skill_dir = _system_skill_dir(skill.slug)
+    else:
+        existing_skill: SkillDefinition | None = None
+        try:
+            existing_skill = get_skill_definition(skill.slug)
+        except Exception:
+            existing_skill = None
+        if existing_skill is not None:
+            skill_dir = Path(existing_skill.path)
+        else:
+            skill_dir = _custom_skill_dir(skill.slug)
+
     skill_dir.mkdir(parents=True, exist_ok=True)
     _guard_skill_dir(skill_dir)
     meta_path = skill_dir / _META_FILE
@@ -647,7 +777,7 @@ def save_skill_definition(skill: SkillDefinition) -> SkillDefinition:
         encoding="utf-8",
     )
     markdown_path.write_text(skill.instructions_markdown.strip() + ("\n" if skill.instructions_markdown.strip() else ""), encoding="utf-8")
-    _skill_cache.pop(skill.slug, None)
+    _invalidate_skill_cache(skill.slug)
     return get_skill_definition(skill.slug)
 
 
@@ -655,21 +785,20 @@ def delete_skill_definition(slug: str) -> None:
     normalized = normalize_skill_slug(slug)
     if normalized in DEFAULT_SKILLS:
         raise ValueError("Varsayilan skill silinemez; reset kullanin.")
-    skill_dir = _skill_dir(normalized)
-    if not skill_dir.exists():
-        raise KeyError(f"Skill bulunamadi: {normalized}")
+    skill = get_skill_definition(normalized)
+    skill_dir = Path(skill.path)
     _guard_skill_dir(skill_dir)
     shutil.rmtree(skill_dir)
-    _skill_cache.pop(normalized, None)
+    _invalidate_skill_cache(normalized)
 
 
 def reset_skill_definition(slug: str) -> SkillDefinition:
     normalized = normalize_skill_slug(slug)
-    skill_dir = _skill_dir(normalized)
+    skill_dir = _system_skill_dir(normalized)
     if normalized not in DEFAULT_SKILLS:
         if skill_dir.exists():
             shutil.rmtree(skill_dir)
-        _skill_cache.pop(normalized, None)
+        _invalidate_skill_cache(normalized)
         raise KeyError(f"Varsayilan olmayan skill reset edilemez: {normalized}")
 
     payload = DEFAULT_SKILLS[normalized]
@@ -677,7 +806,7 @@ def reset_skill_definition(slug: str) -> SkillDefinition:
     _guard_skill_dir(skill_dir)
     (skill_dir / _META_FILE).write_text(payload["meta"], encoding="utf-8")
     (skill_dir / _MARKDOWN_FILE).write_text(payload["markdown"], encoding="utf-8")
-    _skill_cache.pop(normalized, None)
+    _invalidate_skill_cache(normalized)
     return get_skill_definition(normalized)
 
 
