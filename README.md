@@ -7,7 +7,7 @@
 Full-stack web uygulaması: **React/TypeScript** frontend, **FastAPI** backend, **async SQLite** depolama.
 
 <p align="center">
-  <img src="./assets/Dashboard.png" alt="ikas AI SEO Agent dashboard ekranı" width="1200" />
+  <img src="./assets/dashboard.png" alt="ikas AI SEO Agent dashboard ekranı" width="1200" />
 </p>
 
 <p align="center"><i>Dashboard: ürün listesi, SEO/GEO/AEO skorları ve çalışan ajan durumu tek ekranda</i></p>
