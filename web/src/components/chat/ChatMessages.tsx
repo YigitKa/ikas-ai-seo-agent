@@ -212,11 +212,11 @@ export function ChatMessages({
         overscan={{ main: 480, reverse: 240 }}
         increaseViewportBy={{ top: 240, bottom: 360 }}
         components={{
-          Header: () => <div className="h-4" />,
-          Footer: () => <div className="h-4" />,
+          Header: () => <div className="h-2" />,
+          Footer: () => <div className="h-2" />,
         }}
         itemContent={(_, item) => (
-          <div className="px-3 pb-3 last:pb-0">
+          <div className="px-2 pb-2 last:pb-0 sm:px-3">
             {item.kind === 'score' ? (
               <SeoScoreChatMessage score={item.score} product={product} />
             ) : null}

@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import type { PromptParamOption, ParamTriggerState } from "./promptParams";
+import { useEffect, useRef, useState } from 'react';
+import type { PromptParamOption, ParamTriggerState } from './promptParams';
 import {
   buildPromptParamOptions,
   getParamTriggerState,
   resolvePromptTemplate,
-} from "./promptParams";
-import { ChatStatusDeck, type ChatStatusItem } from "./ChatStatusDeck";
-import type { Product, SeoScore } from "../../types";
+} from './promptParams';
+import { ChatStatusDeck, type ChatStatusItem } from './ChatStatusDeck';
+import type { Product, SeoScore } from '../../types';
 
 interface ChatInputProps {
   product?: Product | null;
@@ -31,25 +31,21 @@ export function ChatInput({
   onSend,
   onCancel,
 }: ChatInputProps) {
-  const [input, setInput] = useState("");
-  const [paramTrigger, setParamTrigger] = useState<ParamTriggerState | null>(
-    null,
-  );
+  const [input, setInput] = useState('');
+  const [paramTrigger, setParamTrigger] = useState<ParamTriggerState | null>(null);
   const [activeParamIndex, setActiveParamIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const promptParamOptions = buildPromptParamOptions(product, score);
 
-  // Auto-resize textarea
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
-    textarea.style.height = "0px";
+    textarea.style.height = '0px';
     textarea.style.height = `${Math.min(textarea.scrollHeight, 220)}px`;
   }, [input]);
 
-  // Reset input when product changes
   useEffect(() => {
-    setInput("");
+    setInput('');
     setParamTrigger(null);
     setActiveParamIndex(0);
   }, [productId]);
@@ -61,7 +57,7 @@ export function ChatInput({
 
   const applyParamOption = (option: PromptParamOption) => {
     if (!paramTrigger) return;
-    const closingIndex = input.indexOf("}", paramTrigger.start);
+    const closingIndex = input.indexOf('}', paramTrigger.start);
     const replaceEnd =
       closingIndex !== -1 && closingIndex >= paramTrigger.end
         ? closingIndex + 1
@@ -83,7 +79,7 @@ export function ChatInput({
     const value = resolvePromptTemplate(text, promptParamOptions).trim();
     if (!value) return;
     onSend(value);
-    setInput("");
+    setInput('');
     setParamTrigger(null);
     setActiveParamIndex(0);
   };
@@ -98,187 +94,161 @@ export function ChatInput({
           option.key.toLowerCase().includes(paramTrigger.query.toLowerCase()),
       )
     : [];
-  const showParamMenu = !isAutoIntroActive && filteredParamOptions.length > 0;
+  const visibleParamOptions = filteredParamOptions.slice(0, 8);
+  const showParamMenu = !isAutoIntroActive && visibleParamOptions.length > 0;
+  const footerHint = isAutoIntroActive
+    ? 'Ilk proaktif SEO analizi hazirlaniyor.'
+    : '{} ile hazir urun alanlarini mesaja ekleyebilirsin.';
 
   return (
-    <div className="p-3" style={{ borderTop: "1px solid rgba(148,163,184,0.16)" }}>
-      <div className="flex items-end gap-2 rounded-2xl border p-2" style={{ borderColor: "rgba(148,163,184,0.2)", background: "rgba(15,23,42,0.66)" }}>
+    <div className="px-4 py-3" style={{ borderTop: '1px solid rgba(148,163,184,0.16)' }}>
+      <div
+        className="flex items-end gap-2 rounded-[20px] border px-2.5 py-2"
+        style={{
+          borderColor: 'rgba(148,163,184,0.2)',
+          background: 'rgba(15,23,42,0.66)',
+        }}
+      >
         <div className="relative flex-1">
-          {showParamMenu && (
+          {showParamMenu ? (
             <div
               className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-xl"
               style={{
-                background: "rgba(15, 23, 42, 0.98)",
-                border: "1px solid rgba(99, 102, 241, 0.22)",
-                boxShadow: "0 14px 40px rgba(0, 0, 0, 0.34)",
+                background: 'rgba(15, 23, 42, 0.98)',
+                border: '1px solid rgba(99, 102, 241, 0.22)',
+                boxShadow: '0 14px 40px rgba(0, 0, 0, 0.34)',
               }}
             >
               <div
                 className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em]"
                 style={{
-                  color: "var(--color-text-muted)",
-                  borderBottom: "1px solid rgba(255,255,255,0.06)",
+                  color: 'var(--color-text-muted)',
+                  borderBottom: '1px solid rgba(255,255,255,0.06)',
                 }}
               >
                 Parametreler
               </div>
               <div className="max-h-64 overflow-y-auto p-1.5">
-                {filteredParamOptions.slice(0, 8).map((option, index) => (
+                {visibleParamOptions.map((option, index) => (
                   <button
                     key={option.key}
                     type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
+                    onMouseDown={(event) => {
+                      event.preventDefault();
                       applyParamOption(option);
                     }}
                     className="mb-1 block w-full rounded-lg px-2.5 py-2 text-left last:mb-0"
                     style={{
                       background:
                         index === activeParamIndex
-                          ? "rgba(99, 102, 241, 0.14)"
-                          : "rgba(255,255,255,0.02)",
+                          ? 'rgba(99, 102, 241, 0.14)'
+                          : 'rgba(255,255,255,0.02)',
                       border:
                         index === activeParamIndex
-                          ? "1px solid rgba(99, 102, 241, 0.28)"
-                          : "1px solid transparent",
+                          ? '1px solid rgba(99, 102, 241, 0.28)'
+                          : '1px solid transparent',
                     }}
                   >
                     <div className="flex items-center gap-2">
-                      <span
-                        className="font-mono text-[11px]"
-                        style={{ color: "#c7d2fe" }}
-                      >
+                      <span className="font-mono text-[11px]" style={{ color: '#c7d2fe' }}>
                         {`{${option.key}}`}
                       </span>
                       <span className="text-[11px] font-medium text-white">
                         {option.label}
                       </span>
                     </div>
-                    <div
-                      className="mt-1 text-[11px]"
-                      style={{ color: "var(--color-text-secondary)" }}
-                    >
+                    <div className="mt-1 text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
                       {option.description}
                     </div>
-                    <div
-                      className="mt-1 text-[11px]"
-                      style={{ color: "var(--color-text-muted)" }}
-                    >
+                    <div className="mt-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
                       {option.preview}
                     </div>
                   </button>
                 ))}
               </div>
             </div>
-          )}
+          ) : null}
 
           <textarea
             ref={textareaRef}
             value={input}
             disabled={isAutoIntroActive}
             rows={1}
-            onChange={(e) => {
-              const nextValue = e.target.value;
+            onChange={(event) => {
+              const nextValue = event.target.value;
               setInput(nextValue);
-              syncParamTrigger(nextValue, e.target.selectionStart);
+              syncParamTrigger(nextValue, event.target.selectionStart);
             }}
-            onSelect={(e) => {
+            onSelect={(event) => {
               syncParamTrigger(
-                e.currentTarget.value,
-                e.currentTarget.selectionStart,
+                event.currentTarget.value,
+                event.currentTarget.selectionStart,
               );
             }}
-            onKeyDown={(e) => {
+            onKeyDown={(event) => {
               if (showParamMenu) {
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  setActiveParamIndex(
-                    (prev) =>
-                      (prev + 1) % filteredParamOptions.slice(0, 8).length,
-                  );
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault();
+                  setActiveParamIndex((prev) => (prev + 1) % visibleParamOptions.length);
                   return;
                 }
-                if (e.key === "ArrowUp") {
-                  e.preventDefault();
+                if (event.key === 'ArrowUp') {
+                  event.preventDefault();
                   setActiveParamIndex((prev) =>
-                    prev === 0
-                      ? filteredParamOptions.slice(0, 8).length - 1
-                      : prev - 1,
+                    prev === 0 ? visibleParamOptions.length - 1 : prev - 1,
                   );
                   return;
                 }
-                if (
-                  (e.key === "Enter" || e.key === "Tab") &&
-                  filteredParamOptions[activeParamIndex]
-                ) {
-                  e.preventDefault();
-                  applyParamOption(filteredParamOptions[activeParamIndex]);
+                if ((event.key === 'Enter' || event.key === 'Tab') && visibleParamOptions[activeParamIndex]) {
+                  event.preventDefault();
+                  applyParamOption(visibleParamOptions[activeParamIndex]);
                   return;
                 }
-                if (e.key === "Escape") {
-                  e.preventDefault();
+                if (event.key === 'Escape') {
+                  event.preventDefault();
                   setParamTrigger(null);
                   return;
                 }
               }
 
-              if (e.key === "Enter" && !e.shiftKey && !isLoading) {
-                e.preventDefault();
+              if (event.key === 'Enter' && !event.shiftKey && !isLoading) {
+                event.preventDefault();
                 handleSend();
               }
             }}
             placeholder={
               isAutoIntroActive
-                ? "Asistan urunu inceliyor..."
+                ? 'Asistan urunu inceliyor...'
                 : displayProductName
-                  ? `${displayProductName} icin soru sorun. { ile hazir alan ekleyin...`
-                  : "Mesaj yazin... { ile parametre ekleyin."
+                  ? `${displayProductName} icin mesaj yaz... { ile alan ekle`
+                  : 'Mesaj yaz... { ile alan ekle.'
             }
-            className="min-h-[44px] w-full resize-none rounded-xl px-3 py-2 text-[13px] outline-none transition-all"
+            className="min-h-[42px] w-full resize-none rounded-2xl px-3 py-2 text-[13px] outline-none transition-all"
             style={{
-              background: "rgba(15,23,42,0.86)",
-              border: "1px solid rgba(148,163,184,0.2)",
-              color: "var(--color-text-primary)",
+              background: 'rgba(15,23,42,0.86)',
+              border: '1px solid rgba(148,163,184,0.2)',
+              color: 'var(--color-text-primary)',
               opacity: isAutoIntroActive ? 0.7 : 1,
-              cursor: isAutoIntroActive ? "not-allowed" : "text",
+              cursor: isAutoIntroActive ? 'not-allowed' : 'text',
             }}
-            onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(99,102,241,0.7)")}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = "rgba(148,163,184,0.2)";
+            onFocus={(event) => (event.currentTarget.style.borderColor = 'rgba(99,102,241,0.7)')}
+            onBlur={(event) => {
+              event.currentTarget.style.borderColor = 'rgba(148,163,184,0.2)';
               setParamTrigger(null);
             }}
           />
-          <div
-            className="mt-1 px-1 text-[11px]"
-            style={{ color: "var(--color-text-muted)" }}
-          >
-            {isAutoIntroActive
-              ? "Ilk proaktif SEO analizi hazirlaniyor."
-              : <>
-                  {"{}"} ile `productDescription`, `productMetaTitle` veya
-                  `seoMetricsSummary` gibi alanlari hizlica ekle.
-                </>
-            }
-          </div>
         </div>
 
         <button
-          onClick={
-            isLoading
-              ? onCancel
-              : handleSend
-          }
-          disabled={
-            (!isLoading && !input.trim()) ||
-            (isAutoIntroActive && !isLoading)
-          }
-          className={`flex min-h-[44px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-white transition-all hover:opacity-90 disabled:opacity-30 ${isLoading ? "min-w-[64px]" : "w-11"}`}
+          onClick={isLoading ? onCancel : handleSend}
+          disabled={(!isLoading && !input.trim()) || (isAutoIntroActive && !isLoading)}
+          className={`flex min-h-[42px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-white transition-all hover:opacity-90 disabled:opacity-30 ${isLoading ? 'min-w-[62px]' : 'w-10'}`}
           style={{
             background: isLoading
-              ? "linear-gradient(135deg, #ef4444, #f97316)"
-              : "linear-gradient(135deg, #6366f1, #8b5cf6)",
+              ? 'linear-gradient(135deg, #ef4444, #f97316)'
+              : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
           }}
-          title={isLoading ? "Aktif istegi durdur" : "Mesaji gonder"}
+          title={isLoading ? 'Aktif istegi durdur' : 'Mesaji gonder'}
         >
           {isLoading ? (
             <span className="text-[11px] font-semibold uppercase tracking-[0.12em]">
@@ -301,8 +271,14 @@ export function ChatInput({
           )}
         </button>
       </div>
-      <div className="mt-1.5 px-1">
-        <ChatStatusDeck items={sessionStatusItems} />
+
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1">
+        <div className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+          {footerHint}
+        </div>
+        <div className="min-w-0 flex-1">
+          <ChatStatusDeck items={sessionStatusItems} />
+        </div>
       </div>
     </div>
   );

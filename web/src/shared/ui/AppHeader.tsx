@@ -124,6 +124,7 @@ interface AppHeaderProps {
   meta?: AppHeaderMeta[];
   wrapperClassName?: string;
   panelClassName?: string;
+  showPanel?: boolean;
 }
 
 function MetaCard({ item }: { item: AppHeaderMeta }) {
@@ -169,6 +170,7 @@ export default function AppHeader({
   meta = [],
   wrapperClassName = 'px-5',
   panelClassName,
+  showPanel = true,
 }: AppHeaderProps) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -316,61 +318,63 @@ export default function AppHeader({
             </div>
           </div>
 
-          <div
-            className={classNames(
-              'enterprise-surface rounded-3xl px-4 py-3 sm:px-4.5',
-              panelClassName,
-            )}
-          >
-            <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  {eyebrow && (
-                    <EnterprisePill tone={eyebrow.tone ?? 'primary'} className="gap-1 px-2 py-0.5 text-[8px]">
-                      <span>{eyebrow.label}</span>
-                      {eyebrow.withDot && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-current opacity-90" />
-                      )}
-                    </EnterprisePill>
-                  )}
+          {showPanel ? (
+            <div
+              className={classNames(
+                'enterprise-surface rounded-3xl px-4 py-3 sm:px-4.5',
+                panelClassName,
+              )}
+            >
+              <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    {eyebrow && (
+                      <EnterprisePill tone={eyebrow.tone ?? 'primary'} className="gap-1 px-2 py-0.5 text-[8px]">
+                        <span>{eyebrow.label}</span>
+                        {eyebrow.withDot && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-current opacity-90" />
+                        )}
+                      </EnterprisePill>
+                    )}
 
-                  <h1
-                    className="min-w-0 text-[1.75rem] font-semibold leading-tight tracking-tight sm:text-[1.95rem]"
-                    style={{ color: 'var(--color-text-primary)' }}
-                  >
-                    {title}
-                  </h1>
+                    <h1
+                      className="min-w-0 text-[1.75rem] font-semibold leading-tight tracking-tight sm:text-[1.95rem]"
+                      style={{ color: 'var(--color-text-primary)' }}
+                    >
+                      {title}
+                    </h1>
+                  </div>
+
+                  {description && (
+                    <p
+                      className="mt-1 max-w-3xl truncate text-[11px] leading-5 sm:text-[12px]"
+                      style={{ color: 'var(--color-text-secondary)' }}
+                    >
+                      {description}
+                    </p>
+                  )}
                 </div>
 
-                {description && (
-                  <p
-                    className="mt-1 max-w-3xl truncate text-[11px] leading-5 sm:text-[12px]"
-                    style={{ color: 'var(--color-text-secondary)' }}
-                  >
-                    {description}
-                  </p>
+                {(meta.length > 0 || actions) && (
+                  <div className="flex w-full flex-wrap items-center gap-2 lg:max-w-[62%] lg:justify-end">
+                    {meta.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                        {meta.map((item) => (
+                          <MetaCard key={item.label} item={item} />
+                        ))}
+                      </div>
+                    )}
+
+                    {actions && (
+                      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                        {actions}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
-
-              {(meta.length > 0 || actions) && (
-                <div className="flex w-full flex-wrap items-center gap-2 lg:max-w-[62%] lg:justify-end">
-                  {meta.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                      {meta.map((item) => (
-                        <MetaCard key={item.label} item={item} />
-                      ))}
-                    </div>
-                  )}
-
-                  {actions && (
-                    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                      {actions}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
-          </div>
+          ) : null}
         </div>
       </div>
     </header>

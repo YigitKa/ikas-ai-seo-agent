@@ -280,7 +280,8 @@ def test_build_completion_messages_includes_active_skill_and_filters_tools(monke
         "general",
         False,
         "",
-        False,
+        "",
+        True,
         True,
     )
 

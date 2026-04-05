@@ -181,7 +181,8 @@ export default function Dashboard() {
             {syncProductsMut.isPending ? 'Senkronlaniyor...' : 'Tum urunleri senkronla'}
           </EnterpriseButton>
         )}
-        wrapperClassName="px-5"
+        wrapperClassName="px-4"
+        showPanel={false}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -192,13 +193,16 @@ export default function Dashboard() {
           filter={filter}
           page={page}
           totalPages={totalPages}
+          totalCount={productsQ.data?.total_count}
+          isSyncing={syncProductsMut.isPending}
           onSelect={handleSelectProduct}
           onFilterChange={handleFilterChange}
           onPageChange={setPage}
+          onSync={() => syncProductsMut.mutate()}
         />
 
         <main className="flex flex-1 overflow-hidden">
-          <section className="min-w-0 flex flex-1 flex-col overflow-hidden p-6">
+          <section className="min-w-0 flex flex-1 flex-col overflow-hidden p-4">
             {bannerProductName && (
               <EnterpriseSurface
                 className="mb-3 flex items-center gap-2 px-4 py-2.5 text-sm"

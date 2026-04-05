@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from 'react';
+import { memo, useState, type ReactNode } from 'react';
 import type { Product, SeoScore } from '../../types';
 import {
   explainIssue,
@@ -1149,6 +1149,7 @@ function SeoScoreChatMessage({
   score: SeoScore;
   product?: Product | null;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const totalPct = score.total_score;
   const totalColor = getScoreColor(totalPct);
   const totalStatusText = getFieldStatusText(totalPct);
@@ -1191,12 +1192,28 @@ function SeoScoreChatMessage({
   const heroSummary = buildHeroSummary(score, product, weakestCategory, prioritizedFields);
 
   return (
-    <div className="score-chat-message mr-6 space-y-0">
-      <div
-        className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-[0.16em]"
-        style={{ color: 'var(--color-text-muted)' }}
-      >
-        SEO Analiz
+    <div className="score-chat-message mr-2 space-y-0 sm:mr-4">
+      <div className="mb-1 flex items-center justify-between gap-2 px-1">
+        <div
+          className="text-[10px] font-semibold uppercase tracking-[0.16em]"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          SEO Ozeti
+        </div>
+        <button
+          type="button"
+          onClick={() => setExpanded((prev) => !prev)}
+          className="rounded-full px-2.5 py-1 text-[10px] font-semibold transition-all hover:-translate-y-0.5"
+          style={{
+            background: expanded ? 'rgba(148,163,184,0.12)' : 'rgba(59,130,246,0.14)',
+            border: expanded
+              ? '1px solid rgba(148,163,184,0.18)'
+              : '1px solid rgba(59,130,246,0.24)',
+            color: expanded ? 'var(--color-text-secondary)' : '#93c5fd',
+          }}
+        >
+          {expanded ? 'Detayi gizle' : 'Detayi ac'}
+        </button>
       </div>
 
       <div
@@ -1210,13 +1227,10 @@ function SeoScoreChatMessage({
         <div className="score-glow-drift absolute -left-12 top-10 h-40 w-40 rounded-full bg-violet-500/10 blur-3xl" />
         <div className="score-glow-drift absolute right-0 top-0 h-40 w-40 rounded-full bg-cyan-400/10 blur-3xl" />
 
-        <div
-          className="px-4 py-4 sm:px-5 sm:py-5"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-        >
-          <div className="grid gap-4 xl:grid-cols-[1.25fr_0.95fr]">
+        <div className="px-4 py-4 sm:px-5 sm:py-5">
+          <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
             <div
-              className="score-section-enter relative overflow-hidden rounded-[28px] px-4 py-4 sm:px-5"
+              className="score-section-enter relative overflow-hidden rounded-[28px] px-4 py-4"
               style={{
                 animationDelay: '0ms',
                 background: 'linear-gradient(135deg, rgba(30,41,59,0.74), rgba(15,23,42,0.92))',
@@ -1224,10 +1238,10 @@ function SeoScoreChatMessage({
               }}
             >
               <div className="score-glow-drift absolute -right-6 -top-10 h-28 w-28 rounded-full bg-violet-500/15 blur-3xl" />
-              <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center">
-                <CircularScore score={totalPct} size={86} strokeWidth={6} animated delay={120} />
+              <div className="relative flex items-center gap-4 xl:flex-col xl:items-start">
+                <CircularScore score={totalPct} size={80} strokeWidth={6} animated delay={120} />
 
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={totalStatusBadge}>
                       {totalStatusText}
@@ -1239,140 +1253,183 @@ function SeoScoreChatMessage({
                       /100
                     </span>
                   </div>
-
-                  <p className="mt-2 text-[13px] leading-6" style={{ color: 'var(--color-text-secondary)' }}>
-                    {heroSummary}
-                  </p>
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={getCategoryHintStyle(strongestCategory.accent)}>
-                      En guclu: {strongestCategory.label} {strongestCategory.value}/100
-                    </span>
-                    <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={getCategoryHintStyle(weakestCategory.accent)}>
-                      Ilk odak: {weakestCategory.label} {weakestCategory.value}/100
-                    </span>
-                    <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={{ background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.22)', color: '#f87171' }}>
-                      {score.issues.length} acik issue
-                    </span>
-                    <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={{ background: 'rgba(59,130,246,0.14)', border: '1px solid rgba(59,130,246,0.22)', color: '#93c5fd' }}>
-                      {score.suggestions.length} hazir aksiyon
-                    </span>
-                  </div>
                 </div>
               </div>
+            </div>
 
-              <div className="relative mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                {heroMetrics.map((metric, index) => (
-                  <HeroMetricCard
-                    key={metric.label}
-                    label={metric.label}
-                    value={metric.value}
-                    helper={metric.helper}
-                    accent={metric.accent}
-                    index={index}
-                  />
+            <div className="min-w-0">
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={getCategoryHintStyle(strongestCategory.accent)}>
+                  En guclu: {strongestCategory.label} {strongestCategory.value}/100
+                </span>
+                <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={getCategoryHintStyle(weakestCategory.accent)}>
+                  Ilk odak: {weakestCategory.label} {weakestCategory.value}/100
+                </span>
+                <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={{ background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.22)', color: '#f87171' }}>
+                  {score.issues.length} acik issue
+                </span>
+                <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={{ background: 'rgba(59,130,246,0.14)', border: '1px solid rgba(59,130,246,0.22)', color: '#93c5fd' }}>
+                  {score.suggestions.length} hazir aksiyon
+                </span>
+              </div>
+
+              <p className="mt-3 text-[13px] leading-6" style={{ color: 'var(--color-text-secondary)' }}>
+                {heroSummary}
+              </p>
+
+              <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-3">
+                {prioritizedFields.map((item) => (
+                  <div
+                    key={item.field.key}
+                    className="rounded-[22px] px-3.5 py-3"
+                    style={{
+                      background: 'rgba(15,23,42,0.52)',
+                      border: `1px solid ${item.accent}22`,
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className="rounded-full px-2.5 py-1 text-[10px] font-semibold"
+                        style={{ background: `${item.accent}18`, color: item.accent }}
+                      >
+                        {item.field.label}
+                      </span>
+                      <span className="text-[12px] font-semibold" style={{ color: item.color }}>
+                        {item.value}/{item.field.max}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[12px] leading-5" style={{ color: 'var(--color-text-secondary)' }}>
+                      {item.issues[0] || item.field.description}
+                    </p>
+                    <p className="mt-2 text-[11px] leading-5" style={{ color: '#e2e8f0' }}>
+                      {item.suggestions[0] || 'Bu alani guclendirmek icin icerigi ve meta sinyallerini zenginlestir.'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="relative mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {heroMetrics.map((metric, index) => (
+              <HeroMetricCard
+                key={metric.label}
+                label={metric.label}
+                value={metric.value}
+                helper={metric.helper}
+                accent={metric.accent}
+                index={index}
+              />
+            ))}
+          </div>
+        </div>
+
+        {expanded ? (
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            <div
+              className="px-4 py-4"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+            >
+              <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                <div>
+                  <div
+                    className="score-section-enter mb-3 text-[10px] font-semibold uppercase tracking-[0.16em]"
+                    style={{ color: 'var(--color-text-muted)', animationDelay: '160ms' }}
+                  >
+                    Kategori Dengesi
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    {categoryScores.map((cat, index) => (
+                      <CategoryCard key={cat.key} cat={cat} value={cat.value} index={index} />
+                    ))}
+                  </div>
+                </div>
+
+                <ProductSnapshotCard product={product} />
+              </div>
+            </div>
+
+            <div
+              className="px-4 py-4"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+            >
+              <div className="score-section-enter mb-3" style={{ animationDelay: '320ms' }}>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-muted)' }}>
+                  Hemen Odaklan
+                </div>
+                <p className="mt-1 text-[13px] leading-6" style={{ color: 'var(--color-text-secondary)' }}>
+                  En dusuk puanli alanlari dogrudan aksiyon verecek sekilde tek yerde topla.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+                {prioritizedFields.map((item, index) => (
+                  <PriorityCard key={item.field.key} item={item} index={index} />
                 ))}
               </div>
             </div>
 
-            <ProductSnapshotCard product={product} />
-          </div>
-        </div>
-
-        <div
-          className="px-4 py-4"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-        >
-          <div
-            className="score-section-enter mb-3 text-[10px] font-semibold uppercase tracking-[0.16em]"
-            style={{ color: 'var(--color-text-muted)', animationDelay: '160ms' }}
-          >
-            Kategori Dengesi
-          </div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            {categoryScores.map((cat, index) => (
-              <CategoryCard key={cat.key} cat={cat} value={cat.value} index={index} />
-            ))}
-          </div>
-        </div>
-
-        <div
-          className="px-4 py-4"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-        >
-          <div className="score-section-enter mb-3" style={{ animationDelay: '320ms' }}>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-muted)' }}>
-              Hemen Odaklan
-            </div>
-            <p className="mt-1 text-[13px] leading-6" style={{ color: 'var(--color-text-secondary)' }}>
-              En dusuk puanli alanlari on tarafa alip kullaniciyi dogrudan aksiyona tasiyan onboarding kartlari.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
-            {prioritizedFields.map((item, index) => (
-              <PriorityCard key={item.field.key} item={item} index={index} />
-            ))}
-          </div>
-        </div>
-
-        <div
-          className="px-4 py-4"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-        >
-          <div className="score-section-enter mb-3" style={{ animationDelay: '420ms' }}>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-muted)' }}>
-              Alan Derinligi
-            </div>
-            <p className="mt-1 text-[13px] leading-6" style={{ color: 'var(--color-text-secondary)' }}>
-              Her alanda mevcut degeri, skoru dusuren nedeni ve sonraki aksiyonu ayni kartta gor.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
-            {fieldCards.map((item, index) => (
-              <FieldDetailCard key={item.field.key} item={item} index={index} />
-            ))}
-          </div>
-        </div>
-
-        {score.issues.length > 0 ? (
-          <div className="px-4 py-4">
-            <div className="score-section-enter mb-3" style={{ animationDelay: '520ms' }}>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-muted)' }}>
-                  Sorun Haritasi
-                </span>
-                <span
-                  className="rounded-full px-2.5 py-1 text-[10px] font-semibold"
-                  style={{ background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.22)', color: '#f87171' }}
-                >
-                  {score.issues.length} sorun acik gorunumde
-                </span>
+            <div
+              className="px-4 py-4"
+              style={{
+                borderBottom: score.issues.length > 0 ? '1px solid rgba(255,255,255,0.05)' : undefined,
+              }}
+            >
+              <div className="score-section-enter mb-3" style={{ animationDelay: '420ms' }}>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-muted)' }}>
+                  Alan Derinligi
+                </div>
+                <p className="mt-1 text-[13px] leading-6" style={{ color: 'var(--color-text-secondary)' }}>
+                  Her alanda mevcut degeri, skoru dusuren nedeni ve sonraki aksiyonu ayni kartta gor.
+                </p>
               </div>
-              <p className="mt-1 text-[13px] leading-6" style={{ color: 'var(--color-text-secondary)' }}>
-                Liste kapali degil. Her issue daha buyuk tipografi, alan etiketi ve neden onemli aciklamasiyla acik sekilde sunuluyor.
-              </p>
+
+              <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
+                {fieldCards.map((item, index) => (
+                  <FieldDetailCard key={item.field.key} item={item} index={index} />
+                ))}
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
-              {score.issues.map((issue, index) => {
-                const field = resolveFieldForIssue(issue);
-                const suggestion = field
-                  ? score.suggestions.find((item) => field.suggestionMatcher.test(item))
-                  : undefined;
+            {score.issues.length > 0 ? (
+              <div className="px-4 py-4">
+                <div className="score-section-enter mb-3" style={{ animationDelay: '520ms' }}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-muted)' }}>
+                      Sorun Haritasi
+                    </span>
+                    <span
+                      className="rounded-full px-2.5 py-1 text-[10px] font-semibold"
+                      style={{ background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.22)', color: '#f87171' }}
+                    >
+                      {score.issues.length} sorun acik gorunumde
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[13px] leading-6" style={{ color: 'var(--color-text-secondary)' }}>
+                    Kritik issue listesini ancak ihtiyac oldugunda ac; sohbet akisini bloklamasin.
+                  </p>
+                </div>
 
-                return (
-                  <IssueCard
-                    key={`${issue}-${index}`}
-                    issue={issue}
-                    index={index}
-                    field={field}
-                    suggestion={suggestion}
-                  />
-                );
-              })}
-            </div>
+                <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
+                  {score.issues.map((issue, index) => {
+                    const field = resolveFieldForIssue(issue);
+                    const suggestion = field
+                      ? score.suggestions.find((item) => field.suggestionMatcher.test(item))
+                      : undefined;
+
+                    return (
+                      <IssueCard
+                        key={`${issue}-${index}`}
+                        issue={issue}
+                        index={index}
+                        field={field}
+                        suggestion={suggestion}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>

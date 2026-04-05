@@ -21,6 +21,7 @@ def _clear_required_env(monkeypatch):
 
 def test_get_config_raises_for_missing_required_env_without_tty(monkeypatch):
     _clear_required_env(monkeypatch)
+    monkeypatch.setattr(settings, "_get_user_overrides", lambda: {})
     monkeypatch.setattr(settings.sys.stdin, "isatty", lambda: False)
     settings.reset_config()
 
@@ -32,6 +33,7 @@ def test_get_config_raises_for_missing_required_env_without_tty(monkeypatch):
 
 def test_get_config_prompts_for_missing_required_env_with_tty(monkeypatch):
     _clear_required_env(monkeypatch)
+    monkeypatch.setattr(settings, "_get_user_overrides", lambda: {})
     settings.reset_config()
 
     values = {

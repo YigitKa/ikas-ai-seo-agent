@@ -65,23 +65,23 @@ export default function ProductTable({ items, selectedId, onSelect }: Props) {
           <button
             key={product.id}
             onClick={() => onSelect(product.id)}
-            className={`enterprise-list-item flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all duration-200 ${isSelected ? 'is-selected shadow-lg shadow-slate-950/40' : ''}`}
+            className={`enterprise-list-item flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-all duration-200 ${isSelected ? 'is-selected shadow-lg shadow-slate-950/40' : ''}`}
           >
             {thumb ? (
               <img
                 src={thumb}
                 alt=""
-                className="h-9 w-9 flex-shrink-0 rounded-lg object-cover"
+                className="h-8 w-8 flex-shrink-0 rounded-lg object-cover"
                 style={{ border: '1px solid var(--color-border)' }}
                 loading="lazy"
               />
             ) : (
               <div
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
                 style={{ background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)' }}
               >
                 <svg
-                  className="h-4 w-4"
+                  className="h-3.5 w-3.5"
                   style={{ color: 'var(--color-text-muted)' }}
                   fill="none"
                   viewBox="0 0 24 24"
@@ -95,13 +95,13 @@ export default function ProductTable({ items, selectedId, onSelect }: Props) {
 
             <div className="min-w-0 flex-1">
               <p
-                className="truncate text-[13px] font-medium leading-tight"
+                className="truncate text-[12.5px] font-medium leading-tight"
                 style={{ color: isSelected ? 'white' : 'var(--color-text-primary)' }}
               >
                 {product.name}
               </p>
               {product.category && (
-                <p className="mt-0.5 truncate text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                <p className="mt-0.5 truncate text-[10.5px]" style={{ color: 'var(--color-text-muted)' }}>
                   {product.category}
                 </p>
               )}

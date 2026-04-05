@@ -11,9 +11,12 @@ interface DashboardSidebarProps {
   filter: FilterTab;
   page: number;
   totalPages: number;
+  totalCount?: number;
+  isSyncing?: boolean;
   onSelect: (id: string) => void;
   onFilterChange: (nextFilter: FilterTab) => void;
   onPageChange: (nextPage: number) => void;
+  onSync: () => void;
 }
 
 export default function DashboardSidebar({
@@ -23,9 +26,12 @@ export default function DashboardSidebar({
   filter,
   page,
   totalPages,
+  totalCount,
+  isSyncing = false,
   onSelect,
   onFilterChange,
   onPageChange,
+  onSync,
 }: DashboardSidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -41,13 +47,36 @@ export default function DashboardSidebar({
 
   return (
     <aside
-      className="enterprise-panel-divider flex w-[384px] flex-col"
+      className="enterprise-panel-divider flex w-[320px] flex-col xl:w-[336px]"
       style={{
         background: 'linear-gradient(180deg, rgba(2,6,23,0.92), rgba(15,23,42,0.88))',
       }}
     >
-      {/* Search */}
-      <div className="px-3 pt-3 pb-2" style={{ borderBottom: '1px solid rgba(148,163,184,0.16)' }}>
+      <div className="px-3 py-3" style={{ borderBottom: '1px solid rgba(148,163,184,0.16)' }}>
+        <div className="mb-3 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div
+              className="text-[10px] font-semibold uppercase tracking-[0.18em]"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              Urun listesi
+            </div>
+            <div className="mt-1 text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+              {typeof totalCount === 'number' ? `${totalCount} urun` : 'Katalog yukleniyor'}
+            </div>
+          </div>
+
+          <EnterpriseButton
+            onClick={onSync}
+            disabled={isSyncing}
+            tone="primary"
+            size="sm"
+            className="flex-shrink-0 whitespace-nowrap px-2.5"
+          >
+            {isSyncing ? 'Sync...' : 'Sync'}
+          </EnterpriseButton>
+        </div>
+
         <div className="relative">
           <svg
             className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
@@ -79,8 +108,7 @@ export default function DashboardSidebar({
           )}
         </div>
 
-        {/* Filter tabs */}
-        <div className="mt-1.5 grid grid-cols-5 gap-1">
+        <div className="mt-2 grid grid-cols-5 gap-1">
           {FILTER_TABS.map((tabKey) => {
             const active = tabKey === filter;
             return (
@@ -105,7 +133,7 @@ export default function DashboardSidebar({
         {isLoading ? (
           <div className="space-y-2 p-3">
             {[...Array(8)].map((_, index) => (
-              <div key={index} className="animate-shimmer h-14 rounded-lg" />
+              <div key={index} className="animate-shimmer h-12 rounded-lg" />
             ))}
           </div>
         ) : filteredItems.length === 0 && searchQuery.trim() ? (
