@@ -137,6 +137,8 @@ def test_create_batch_job_success(tmp_path):
     body = resp.json()
     assert "id" in body
     assert body["total_count"] == 2
+    assert body["feedback"]["stage"] in {"queued", "analyzing"}
+    assert "summary_counts" in body["feedback"]
 
 
 # ── /api/batch/jobs/{job_id} GET ─────────────────────────────────────────────
@@ -172,6 +174,8 @@ def test_get_batch_job_existing(tmp_path):
     # BatchJobDetailResponse wraps in {"job": {...}, "items": [...]}
     body = resp.json()
     assert body["job"]["id"] == "known-job"
+    assert body["job"]["feedback"]["stage"] == "queued"
+    assert body["job"]["feedback"]["summary_counts"]["total"] == 0
 
 
 # ── /api/batch/jobs/{job_id} DELETE ──────────────────────────────────────────
@@ -221,6 +225,28 @@ def test_stop_batch_job_not_found(tmp_path):
         _clear()
 
     assert resp.status_code == 404
+
+
+def test_stop_batch_job_returns_cancelled_feedback(tmp_path):
+    _setup_api_db(tmp_path, "b_stop_ok.db")
+    asyncio.run(db_mod.create_batch_job(
+        "stop-job",
+        json.dumps({}),
+        task_payload={"config": {}, "product_ids": ["p1"], "stage": "analysis"},
+    ))
+    asyncio.run(db_mod.update_batch_job("stop-job", status="analyzing", total_count=1))
+
+    _override_manager()
+    client = TestClient(app)
+    try:
+        resp = client.post("/api/batch/jobs/stop-job/stop")
+    finally:
+        _clear()
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "cancelled"
+    assert body["feedback"]["stage"] == "cancelled"
 
 
 # ── /api/batch/jobs/{job_id}/rollback POST ────────────────────────────────────

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { BatchJob } from '../../types';
+import type { BatchFeedbackEvent, BatchJob } from '../../types';
 import ProgressBar from '../../shared/ui/ProgressBar';
 import ConfirmDialog from '../../shared/ui/ConfirmDialog';
 import { createBatchJobStream } from '../../api/client';
@@ -31,6 +31,77 @@ function DeltaBadge({ delta }: { delta: number | null }) {
   );
 }
 
+function formatEventTime(value?: string | null): string {
+  if (!value) return 'Az once';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 'Az once';
+  return parsed.toLocaleTimeString('tr-TR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function InfoCard({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: string;
+  sub?: string | null;
+}) {
+  return (
+    <div
+      className="rounded-xl p-4"
+      style={{
+        background: 'rgba(15,23,42,0.28)',
+        border: '1px solid rgba(148,163,184,0.14)',
+      }}
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-muted)' }}>
+        {label}
+      </p>
+      <p className="mt-1 text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+        {value}
+      </p>
+      {sub && (
+        <p className="mt-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+          {sub}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function EventRow({ event }: { event: BatchFeedbackEvent }) {
+  return (
+    <div
+      className="rounded-xl px-3 py-2.5"
+      style={{
+        background: 'rgba(15,23,42,0.28)',
+        border: '1px solid rgba(148,163,184,0.14)',
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[12px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+            {event.message}
+          </p>
+          {(event.product_name || event.reason_code || event.user_message) && (
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+              {[event.product_name, event.user_message, event.reason_code ? `Kod: ${event.reason_code}` : null].filter(Boolean).join(' · ')}
+            </p>
+          )}
+        </div>
+        <span className="shrink-0 text-[10px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
+          {formatEventTime(event.at)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function BatchProgressView({ job, onStop, onJobComplete }: Props) {
   const [liveJob, setLiveJob] = useState<BatchJob>(job);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
@@ -51,7 +122,9 @@ export default function BatchProgressView({ job, onStop, onJobComplete }: Props)
         }
         if (data.type === 'completed') {
           es.close();
-          onJobComplete(job.id);
+          if (data.job?.status !== 'analyzed') {
+            onJobComplete(job.id);
+          }
         }
       } catch {
         // ignore parse errors
@@ -67,11 +140,16 @@ export default function BatchProgressView({ job, onStop, onJobComplete }: Props)
     };
   }, [job.id, onJobComplete]);
 
-  const pct = liveJob.total_count > 0
-    ? Math.round((liveJob.processed_count / liveJob.total_count) * 100)
-    : 0;
-
+  const feedback = liveJob.feedback;
+  const counts = feedback.summary_counts;
+  const pct = counts.total > 0 ? Math.round((counts.processed / counts.total) * 100) : 0;
   const isRunning = liveJob.status === 'running' || liveJob.status === 'analyzing';
+  const avgDelta = liveJob.avg_score_before > 0 && liveJob.avg_score_after > 0
+    ? Math.round(liveJob.avg_score_after - liveJob.avg_score_before)
+    : null;
+  const recentEvents = feedback.recent_events.slice(0, 5);
+  const currentItem = feedback.current_item;
+  const lastItem = feedback.last_completed_item;
 
   return (
     <div className="space-y-5">
@@ -79,10 +157,15 @@ export default function BatchProgressView({ job, onStop, onJobComplete }: Props)
         title="Batch gorevi"
         status={liveJob.status}
         progress={pct}
-        subtitle="Analiz ve uygulama adimlari ortak task semantigiyle izleniyor"
+        subtitle={feedback.status_message || 'Analiz ve uygulama adimlari ortak task semantigiyle izleniyor'}
+        heartbeatAt={feedback.heartbeat_at}
+        errorMessage={liveJob.error}
         stats={[
-          { label: 'Islenen', value: `${liveJob.processed_count}/${liveJob.total_count}` },
-          { label: 'Atlanan', value: liveJob.skipped_count },
+          { label: 'Faz', value: feedback.stage_label || 'Hazirlaniyor' },
+          { label: 'Islenen', value: `${counts.processed}/${counts.total}` },
+          { label: 'Basarili', value: counts.succeeded },
+          { label: 'Atlanan', value: counts.skipped },
+          { label: 'Hatali', value: counts.failed },
         ]}
         action={isRunning ? (
           <button
@@ -98,7 +181,7 @@ export default function BatchProgressView({ job, onStop, onJobComplete }: Props)
           </button>
         ) : undefined}
       />
-      {/* Main progress card */}
+
       <div
         className="rounded-xl p-5"
         style={{
@@ -106,7 +189,7 @@ export default function BatchProgressView({ job, onStop, onJobComplete }: Props)
           border: '1px solid var(--color-border)',
         }}
       >
-        <div className="mb-4 flex items-start justify-between">
+        <div className="mb-4 flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               {isRunning && (
@@ -119,80 +202,140 @@ export default function BatchProgressView({ job, onStop, onJobComplete }: Props)
                 />
               )}
               <h2 className="text-[16px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
-                Otonom SEO Optimizasyonu
+                {feedback.stage_label || 'Toplu Islem'}
               </h2>
             </div>
             <p className="mt-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-              İşlenen:{' '}
-              <span className="font-semibold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
-                {liveJob.processed_count}
-              </span>
-              {' / '}
-              <span className="tabular-nums">{liveJob.total_count}</span>
-              {liveJob.skipped_count > 0 && (
-                <span className="ml-3">
-                  Atlanan:{' '}
-                  <span className="font-semibold tabular-nums" style={{ color: '#f59e0b' }}>
-                    {liveJob.skipped_count}
-                  </span>
-                </span>
-              )}
+              {feedback.status_message || 'Islem durumu guncelleniyor.'}
             </p>
           </div>
           <div className="text-right">
             <p className="text-[28px] font-bold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
               %{pct}
             </p>
-            {isRunning && (
-              <button
-                type="button"
-                onClick={() => setShowStopConfirm(true)}
-                className="mt-1 rounded-lg px-3 py-1 text-[11px] font-medium transition-colors hover:bg-[var(--color-bg-hover)]"
-                style={{
-                  border: '1px solid rgba(239,68,68,0.3)',
-                  color: '#ef4444',
-                }}
-              >
-                İşlemi Durdur
-              </button>
-            )}
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+              {counts.processed}/{counts.total} urun ele alindi
+            </p>
           </div>
         </div>
 
-        <ProgressBar pct={pct} animated height="h-2.5" />
+        <ProgressBar pct={pct} animated={isRunning} height="h-2.5" />
 
-        {/* Score improvement */}
-        {liveJob.avg_score_before > 0 && liveJob.avg_score_after > 0 && (
-          <div className="mt-3 flex items-center gap-2 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-            <span>Ort. skor:</span>
-            <span className="tabular-nums font-medium" style={{ color: 'var(--color-text-primary)' }}>
-              {liveJob.avg_score_before.toFixed(0)} → {liveJob.avg_score_after.toFixed(0)}
+        <div className="mt-4 grid grid-cols-3 gap-3">
+          <InfoCard
+            label="Su An"
+            value={currentItem?.product_name || 'Beklemede'}
+            sub={currentItem?.user_message || feedback.status_message}
+          />
+          <InfoCard
+            label="Son Tamamlanan"
+            value={lastItem?.product_name || 'Henuz yok'}
+            sub={lastItem?.user_message || null}
+          />
+          <InfoCard
+            label="Son Olay"
+            value={feedback.latest_event?.message || 'Bekleniyor'}
+            sub={feedback.latest_event ? formatEventTime(feedback.latest_event.at) : null}
+          />
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-[12px]">
+          <span className="rounded-full px-3 py-1" style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e' }}>
+            Basarili: <strong>{counts.succeeded}</strong>
+          </span>
+          <span className="rounded-full px-3 py-1" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>
+            Atlanan: <strong>{counts.skipped}</strong>
+          </span>
+          <span className="rounded-full px-3 py-1" style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>
+            Hatali: <strong>{counts.failed}</strong>
+          </span>
+          {avgDelta !== null && (
+            <span className="rounded-full px-3 py-1" style={{ background: 'rgba(125,211,252,0.12)', color: '#7dd3fc' }}>
+              Ort. skor degisimi <DeltaBadge delta={avgDelta} />
             </span>
-            <DeltaBadge delta={Math.round(liveJob.avg_score_after - liveJob.avg_score_before)} />
+          )}
+        </div>
+
+        {feedback.next_action_hints.length > 0 && (
+          <div className="mt-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-muted)' }}>
+              Sonraki Adim
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {feedback.next_action_hints.map((hint) => (
+                <span
+                  key={hint}
+                  className="rounded-full px-3 py-1 text-[11px]"
+                  style={{
+                    background: 'rgba(148,163,184,0.12)',
+                    color: 'var(--color-text-secondary)',
+                    border: '1px solid rgba(148,163,184,0.14)',
+                  }}
+                >
+                  {hint}
+                </span>
+              ))}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Completion state */}
+      <div
+        className="rounded-xl p-5"
+        style={{
+          background: 'var(--color-bg-surface)',
+          border: '1px solid var(--color-border)',
+        }}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-[13px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-muted)' }}>
+            Son Olaylar
+          </h3>
+          <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+            Son guncelleme {formatEventTime(feedback.last_event_at)}
+          </span>
+        </div>
+
+        {recentEvents.length > 0 ? (
+          <div className="space-y-2">
+            {recentEvents.map((event) => (
+              <EventRow key={`${event.sequence}:${event.type}`} event={event} />
+            ))}
+          </div>
+        ) : (
+          <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+            Henuz gosterilecek olay yok.
+          </p>
+        )}
+      </div>
+
       {(liveJob.status === 'completed' || liveJob.status === 'completed_with_errors') && (
         <div
-          className="rounded-xl p-5 text-center"
+          className="rounded-xl p-5"
           style={{
-            background: 'rgba(34,197,94,0.05)',
-            border: '1px solid rgba(34,197,94,0.2)',
+            background: liveJob.status === 'completed'
+              ? 'rgba(34,197,94,0.05)'
+              : 'rgba(249,115,22,0.06)',
+            border: liveJob.status === 'completed'
+              ? '1px solid rgba(34,197,94,0.2)'
+              : '1px solid rgba(249,115,22,0.22)',
           }}
         >
-          <p className="text-[15px] font-semibold" style={{ color: '#22c55e' }}>
-            Otonom Optimizasyon Döngüsü Tamamlandı
+          <p
+            className="text-[15px] font-semibold"
+            style={{ color: liveJob.status === 'completed' ? '#22c55e' : '#f97316' }}
+          >
+            {liveJob.status === 'completed' ? 'Toplu Islem Tamamlandi' : 'Toplu Islem Hata Ile Tamamlandi'}
           </p>
-          <div className="mt-2 flex justify-center gap-6 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-            <span>İşlenen Ürün: <strong style={{ color: 'var(--color-text-primary)' }}>{liveJob.processed_count}</strong></span>
-            <span>Atlanan: <strong style={{ color: 'var(--color-text-primary)' }}>{liveJob.skipped_count}</strong></span>
-            {liveJob.avg_score_before > 0 && (
+          <div className="mt-2 flex flex-wrap gap-5 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+            <span>Basarili: <strong style={{ color: 'var(--color-text-primary)' }}>{counts.succeeded}</strong></span>
+            <span>Atlanan: <strong style={{ color: 'var(--color-text-primary)' }}>{counts.skipped}</strong></span>
+            <span>Hatali: <strong style={{ color: 'var(--color-text-primary)' }}>{counts.failed}</strong></span>
+            {avgDelta !== null && (
               <span>
-                Ort. Artış:{' '}
-                <strong style={{ color: '#22c55e' }}>
-                  +{(liveJob.avg_score_after - liveJob.avg_score_before).toFixed(1)}
+                Ort. Artis:{' '}
+                <strong style={{ color: avgDelta >= 0 ? '#22c55e' : '#ef4444' }}>
+                  {avgDelta > 0 ? '+' : ''}{avgDelta}
                 </strong>
               </span>
             )}
@@ -202,10 +345,10 @@ export default function BatchProgressView({ job, onStop, onJobComplete }: Props)
 
       <ConfirmDialog
         open={showStopConfirm}
-        title="İşlemi Durdur"
-        message="Toplu optimizasyon durdurulacak. Tamamlanan ürünler kaydedilecektir. Devam etmek istiyor musunuz?"
+        title="Islemi Durdur"
+        message="Toplu optimizasyon durdurulacak. Tamamlanan urunler kaydedilecektir. Devam etmek istiyor musunuz?"
         confirmLabel="Durdur"
-        cancelLabel="İptal"
+        cancelLabel="Iptal"
         variant="danger"
         onConfirm={() => { setShowStopConfirm(false); onStop(); }}
         onCancel={() => setShowStopConfirm(false)}

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import threading
 from collections.abc import AsyncIterator
+from datetime import datetime, timezone
 from typing import Any, List, Optional, TypeVar
 
 from config.settings import get_config, save_config_to_db
@@ -67,6 +68,20 @@ BATCH_FIELD_TO_SUGGESTION_ATTR = {
 
 SUCCESSFUL_BATCH_ITEM_STATUSES = {"analyzed", "approved", "rejected", "applied", "rolled_back"}
 SKIPPED_BATCH_ITEM_STATUSES = {"skipped", "failed"}
+BATCH_FEEDBACK_EVENT_LIMIT = 8
+BATCH_STAGE_LABELS = {
+    "queued": "Hazirlaniyor",
+    "analyzing": "Analiz",
+    "awaiting_review": "Inceleme Bekleniyor",
+    "awaiting_approval": "Onay Bekleniyor",
+    "applying": "Uygulama",
+    "rolling_back": "Geri Alma",
+    "completed": "Tamamlandi",
+    "completed_with_errors": "Hata ile Tamamlandi",
+    "failed": "Hata",
+    "cancelled": "Durduruldu",
+}
+UNSET = object()
 
 TScore = TypeVar("TScore")
 
@@ -1347,6 +1362,191 @@ class ProductManager:
                 )
         return updated_item
 
+    def _batch_feedback_now(self) -> str:
+        return datetime.now(timezone.utc).isoformat()
+
+    def _build_batch_summary_counts(
+        self,
+        *,
+        total: int,
+        succeeded: int,
+        skipped: int = 0,
+        failed: int = 0,
+        retried: int = 0,
+    ) -> dict[str, int]:
+        processed = max(succeeded + skipped + failed, 0)
+        if total > 0:
+            processed = min(processed, total)
+        return {
+            "total": max(total, 0),
+            "processed": processed,
+            "succeeded": max(succeeded, 0),
+            "skipped": max(skipped, 0),
+            "failed": max(failed, 0),
+            "retried": max(retried, 0),
+            "remaining": max(total - processed, 0),
+        }
+
+    def _build_batch_feedback_item(
+        self,
+        *,
+        product_id: str,
+        product_name: str,
+        item_status: str,
+        reason_code: str | None = None,
+        user_message: str | None = None,
+        at: str | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "product_id": product_id,
+            "product_name": product_name,
+            "item_status": item_status,
+            "reason_code": reason_code,
+            "user_message": user_message,
+            "at": at or self._batch_feedback_now(),
+        }
+
+    def _build_batch_feedback_event(
+        self,
+        *,
+        sequence: int,
+        event_type: str,
+        stage: str,
+        message: str,
+        at: str,
+        product_id: str | None = None,
+        product_name: str | None = None,
+        item_status: str | None = None,
+        reason_code: str | None = None,
+        user_message: str | None = None,
+        retryable: bool | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "sequence": sequence,
+            "type": event_type,
+            "stage": stage,
+            "label": BATCH_STAGE_LABELS.get(stage, stage),
+            "message": message,
+            "at": at,
+            "product_id": product_id,
+            "product_name": product_name,
+            "item_status": item_status,
+            "reason_code": reason_code,
+            "user_message": user_message,
+            "retryable": retryable,
+        }
+
+    def _batch_next_action_hints(self, stage: str) -> list[str]:
+        if stage == "awaiting_review":
+            return [
+                "Analiz sonucunu inceleyin.",
+                "Hazir oldugunuzda toplu apply islemini baslatin.",
+            ]
+        if stage in {"completed_with_errors", "failed", "cancelled"}:
+            return [
+                "Detay ekranindan hatali veya atlanan urunleri inceleyin.",
+                "Gerekirse islemi yeniden calistirin.",
+            ]
+        if stage == "completed":
+            return [
+                "Uygulanan urunleri detay ekranindan kontrol edin.",
+                "Gerekirse rollback kullanin.",
+            ]
+        if stage in {"analyzing", "applying"}:
+            return [
+                "Canli ilerlemeyi takip edin.",
+                "Gerekirse islemi durdurun.",
+            ]
+        return []
+
+    async def _update_batch_feedback(
+        self,
+        job_id: str,
+        *,
+        stage: str | None = None,
+        status_message: str | None = None,
+        summary_counts: dict[str, int] | None = None,
+        current_item: dict[str, Any] | None | object = UNSET,
+        last_completed_item: dict[str, Any] | None | object = UNSET,
+        event_type: str | None = None,
+        event_message: str | None = None,
+        event_item: dict[str, Any] | None = None,
+        retryable: bool | None = None,
+        warning_count: int | None = None,
+        next_action_hints: list[str] | None = None,
+    ) -> None:
+        task = await db.get_task(job_id)
+        if task is None:
+            return
+
+        payload = dict(task.payload)
+        feedback = dict(payload.get("feedback") or {})
+        next_stage = str(stage or feedback.get("stage") or payload.get("stage") or "queued")
+        now = self._batch_feedback_now()
+        sequence = int(feedback.get("sequence") or 0)
+        recent_events = list(feedback.get("recent_events") or [])
+        latest_event = feedback.get("latest_event")
+        previous_stage = str(feedback.get("stage") or payload.get("stage") or "")
+
+        if previous_stage != next_stage:
+            sequence += 1
+            stage_event = self._build_batch_feedback_event(
+                sequence=sequence,
+                event_type="stage_changed",
+                stage=next_stage,
+                message=status_message or feedback.get("status_message") or "",
+                at=now,
+            )
+            recent_events = [stage_event, *recent_events][:BATCH_FEEDBACK_EVENT_LIMIT]
+            latest_event = stage_event
+
+        if event_type and event_message:
+            sequence += 1
+            event = self._build_batch_feedback_event(
+                sequence=sequence,
+                event_type=event_type,
+                stage=next_stage,
+                message=event_message,
+                at=now,
+                product_id=event_item.get("product_id") if event_item else None,
+                product_name=event_item.get("product_name") if event_item else None,
+                item_status=event_item.get("item_status") if event_item else None,
+                reason_code=event_item.get("reason_code") if event_item else None,
+                user_message=event_item.get("user_message") if event_item else None,
+                retryable=retryable,
+            )
+            recent_events = [event, *recent_events][:BATCH_FEEDBACK_EVENT_LIMIT]
+            latest_event = event
+
+        if current_item is not UNSET:
+            feedback["current_item"] = current_item
+        if last_completed_item is not UNSET:
+            feedback["last_completed_item"] = last_completed_item
+
+        feedback["stage"] = next_stage
+        feedback["stage_label"] = BATCH_STAGE_LABELS.get(next_stage, next_stage)
+        feedback["status_message"] = status_message or str(feedback.get("status_message") or "")
+        feedback["sequence"] = sequence
+        feedback["recent_events"] = recent_events
+        feedback["latest_event"] = latest_event
+        feedback["last_event_at"] = now if latest_event is not None or previous_stage != next_stage else feedback.get("last_event_at", now)
+        feedback["heartbeat_at"] = now
+        feedback["stalled_since"] = None
+        feedback["summary_counts"] = summary_counts or dict(feedback.get("summary_counts") or {})
+        feedback["warning_count"] = warning_count if warning_count is not None else int(feedback.get("warning_count") or 0)
+        feedback["eta_seconds"] = feedback.get("eta_seconds")
+        feedback["next_action_hints"] = next_action_hints or self._batch_next_action_hints(next_stage)
+
+        payload["feedback"] = feedback
+        previous_base_stage = str(payload.get("stage") or "analysis")
+        if next_stage in {"applying", "awaiting_approval"}:
+            payload["stage"] = "apply"
+        elif previous_base_stage == "apply" and next_stage in {"completed", "completed_with_errors", "failed", "cancelled"}:
+            payload["stage"] = "apply"
+        else:
+            payload["stage"] = "analysis"
+        await db.update_task(job_id, payload=payload, touch_heartbeat=True)
+
     async def run_analysis(self, job_id: str, product_ids: list[str], config: Any) -> None:
         """
         Generate AI suggestions for each selected product.
@@ -1357,24 +1557,80 @@ class ProductManager:
         product_map = {p.id: p for p in all_products}
 
         system_prompt = self._build_batch_runtime_prompt(config)
+        total_items = len(product_ids)
         processed = 0
         skipped = 0
+        failed = 0
         score_befores: list[float] = []
         score_afters: list[float] = []
+        cancelled = False
 
         def _avg(vals: list[float]) -> float:
             return sum(vals) / len(vals) if vals else 0
+
+        await self._update_batch_feedback(
+            job_id,
+            stage="analyzing",
+            status_message="Urunler analiz ediliyor.",
+            summary_counts=self._build_batch_summary_counts(total=total_items, succeeded=processed, skipped=skipped, failed=failed),
+            current_item=None,
+            last_completed_item=None,
+            warning_count=0,
+        )
 
         for pid in product_ids:
             # Check cancellation
             current_job = await db.get_batch_job(job_id)
             if not current_job or current_job["status"] == "cancelled":
                 logger.info("Analysis job %s cancelled at %d/%d", job_id, processed, len(product_ids))
+                cancelled = True
                 break
 
             product = product_map.get(pid)
             if not product:
+                skipped += 1
+                missing_item = self._build_batch_feedback_item(
+                    product_id=pid,
+                    product_name=pid,
+                    item_status="skipped",
+                    reason_code="product_not_found",
+                    user_message="Urun lokal cache'de bulunamadi.",
+                )
+                await db.update_batch_job(
+                    job_id,
+                    processed_count=processed,
+                    skipped_count=skipped,
+                    failed_count=failed,
+                    avg_score_before=_avg(score_befores),
+                    avg_score_after=_avg(score_afters),
+                )
+                await self._update_batch_feedback(
+                    job_id,
+                    stage="analyzing",
+                    status_message="Bazi urunler cache'de bulunamadigi icin atlandi.",
+                    summary_counts=self._build_batch_summary_counts(total=total_items, succeeded=processed, skipped=skipped, failed=failed),
+                    current_item=None,
+                    last_completed_item=missing_item,
+                    event_type="item_skipped",
+                    event_message="Bir urun lokal cache'de bulunamadigi icin atlandi.",
+                    event_item=missing_item,
+                    warning_count=skipped + failed,
+                )
                 continue
+
+            await self._update_batch_feedback(
+                job_id,
+                stage="analyzing",
+                status_message=f"{product.name} icin AI analizi yapiliyor.",
+                summary_counts=self._build_batch_summary_counts(total=total_items, succeeded=processed, skipped=skipped, failed=failed),
+                current_item=self._build_batch_feedback_item(
+                    product_id=product.id,
+                    product_name=product.name,
+                    item_status="processing",
+                    user_message="Analiz suruyor.",
+                ),
+                warning_count=skipped + failed,
+            )
 
             score = analyze_product(product, self._config.seo_target_keywords)
 
@@ -1406,6 +1662,14 @@ class ProductManager:
                     score_befores.append(score.total_score)
                     score_afters.append(after_score)
                     processed += 1
+                    last_item = self._build_batch_feedback_item(
+                        product_id=product.id,
+                        product_name=product.name,
+                        item_status="analyzed",
+                        user_message="Analiz tamamlandi.",
+                    )
+                    event_type = "item_completed"
+                    event_message = f"{product.name} icin analiz tamamlandi."
                 else:
                     skip_reason = self._build_batch_skip_reason(config)
                     await db.update_batch_item(
@@ -1416,29 +1680,89 @@ class ProductManager:
                         suggestion_data=suggestion_data,
                     )
                     skipped += 1
+                    last_item = self._build_batch_feedback_item(
+                        product_id=product.id,
+                        product_name=product.name,
+                        item_status="skipped",
+                        reason_code="no_suggestions_generated",
+                        user_message=skip_reason,
+                    )
+                    event_type = "item_skipped"
+                    event_message = f"{product.name} icin uygulanabilir oneriler uretilemedi."
             except Exception as exc:
                 logger.warning("Analysis failed for %s: %s", product.id, exc)
                 await db.update_batch_item(item_id, status="failed", skip_reason=str(exc)[:200])
-                skipped += 1
+                failed += 1
+                last_item = self._build_batch_feedback_item(
+                    product_id=product.id,
+                    product_name=product.name,
+                    item_status="failed",
+                    reason_code="analysis_error",
+                    user_message="Analiz sirasinda hata olustu.",
+                )
+                event_type = "item_failed"
+                event_message = f"{product.name} icin analiz hata verdi."
 
             await db.update_batch_job(
                 job_id,
                 processed_count=processed,
                 skipped_count=skipped,
+                failed_count=failed,
                 avg_score_before=_avg(score_befores),
                 avg_score_after=_avg(score_afters),
             )
+            await self._update_batch_feedback(
+                job_id,
+                stage="analyzing",
+                status_message="Analiz suruyor.",
+                summary_counts=self._build_batch_summary_counts(total=total_items, succeeded=processed, skipped=skipped, failed=failed),
+                current_item=None,
+                last_completed_item=last_item,
+                event_type=event_type,
+                event_message=event_message,
+                event_item=last_item,
+                retryable=event_type == "item_failed",
+                warning_count=skipped + failed,
+            )
+
+        await self._refresh_batch_job_metrics(job_id)
+        if cancelled:
+            await self._update_batch_feedback(
+                job_id,
+                stage="cancelled",
+                status_message="Analiz kullanici tarafindan durduruldu.",
+                summary_counts=self._build_batch_summary_counts(total=total_items, succeeded=processed, skipped=skipped, failed=failed),
+                current_item=None,
+                warning_count=skipped + failed,
+                event_type="operation_completed",
+                event_message="Analiz durduruldu.",
+                next_action_hints=[
+                    "Detay ekranindan islenen urunleri inceleyin.",
+                    "Gerekirse islemi tekrar baslatin.",
+                ],
+            )
+            return
 
         await db.update_batch_job(
             job_id,
             status="analyzed",
             processed_count=processed,
             skipped_count=skipped,
+            failed_count=failed,
             avg_score_before=_avg(score_befores),
             avg_score_after=_avg(score_afters),
         )
-        await self._refresh_batch_job_metrics(job_id)
-        logger.info("Analysis job %s done: %d analyzed, %d skipped", job_id, processed, skipped)
+        await self._update_batch_feedback(
+            job_id,
+            stage="awaiting_review",
+            status_message="Analiz tamamlandi. Inceleme bekleniyor.",
+            summary_counts=self._build_batch_summary_counts(total=total_items, succeeded=processed, skipped=skipped, failed=failed),
+            current_item=None,
+            warning_count=skipped + failed,
+            event_type="operation_completed",
+            event_message="Analiz tamamlandi.",
+        )
+        logger.info("Analysis job %s done: %d analyzed, %d skipped, %d failed", job_id, processed, skipped, failed)
 
     async def apply_batch_job(
         self,
@@ -1467,27 +1791,109 @@ class ProductManager:
             job_id,
             processed_count=0,
             skipped_count=0,
+            failed_count=0,
             total_count=len(approved),
         )
 
+        total_items = len(approved)
         applied = 0
+        skipped = 0
         failed = 0
+        cancelled = False
+        await self._update_batch_feedback(
+            job_id,
+            stage="applying",
+            status_message="Onaylanan urunler IKAS'a yaziliyor.",
+            summary_counts=self._build_batch_summary_counts(total=total_items, succeeded=applied, skipped=skipped, failed=failed),
+            current_item=None,
+            warning_count=0,
+        )
+
         for item in approved:
             current_job = await db.get_batch_job(job_id)
             if not current_job or current_job["status"] == "cancelled":
+                cancelled = True
                 break
 
             product_id = item["product_id"]
             product = product_map.get(product_id)
             if not product:
+                skipped += 1
+                missing_item = self._build_batch_feedback_item(
+                    product_id=product_id,
+                    product_name=item.get("product_name") or product_id,
+                    item_status="skipped",
+                    reason_code="product_not_found",
+                    user_message="Urun lokal cache'de bulunamadi.",
+                )
+                await db.update_batch_job(
+                    job_id,
+                    processed_count=applied,
+                    skipped_count=skipped,
+                    failed_count=failed,
+                )
+                await self._update_batch_feedback(
+                    job_id,
+                    stage="applying",
+                    status_message="Bazi urunler bulunamadigi icin atlandi.",
+                    summary_counts=self._build_batch_summary_counts(total=total_items, succeeded=applied, skipped=skipped, failed=failed),
+                    current_item=None,
+                    last_completed_item=missing_item,
+                    event_type="item_skipped",
+                    event_message="Bir urun lokal cache'de bulunamadigi icin atlandi.",
+                    event_item=missing_item,
+                    warning_count=skipped + failed,
+                )
                 continue
+
+            await self._update_batch_feedback(
+                job_id,
+                stage="applying",
+                status_message=f"{item.get('product_name') or product.name} IKAS'a yaziliyor.",
+                summary_counts=self._build_batch_summary_counts(total=total_items, succeeded=applied, skipped=skipped, failed=failed),
+                current_item=self._build_batch_feedback_item(
+                    product_id=product_id,
+                    product_name=item.get("product_name") or product.name,
+                    item_status="processing",
+                    user_message="Uygulama suruyor.",
+                ),
+                warning_count=skipped + failed,
+            )
 
             try:
                 suggestion = self._build_suggestion_from_batch_item(product, item)
                 if not any(self._get_batch_field_value(suggestion, field).strip() for field in target_fields):
                     suggestion = await db.get_latest_suggestion_by_product(product_id)
                 if not suggestion:
-                    await db.update_batch_item(item["id"], status="skipped", skip_reason="Öneri bulunamadı")
+                    await db.update_batch_item(item["id"], status="skipped", skip_reason="Oneri bulunamadi")
+                    skipped += 1
+                    last_item = self._build_batch_feedback_item(
+                        product_id=product_id,
+                        product_name=item.get("product_name") or product.name,
+                        item_status="skipped",
+                        reason_code="missing_suggestion",
+                        user_message="Uygulanacak oneri bulunamadi.",
+                    )
+                    event_type = "item_skipped"
+                    event_message = f"{item.get('product_name') or product.name} icin uygulanacak oneri bulunamadi."
+                    await db.update_batch_job(
+                        job_id,
+                        processed_count=applied,
+                        skipped_count=skipped,
+                        failed_count=failed,
+                    )
+                    await self._update_batch_feedback(
+                        job_id,
+                        stage="applying",
+                        status_message="Toplu uygulama suruyor.",
+                        summary_counts=self._build_batch_summary_counts(total=total_items, succeeded=applied, skipped=skipped, failed=failed),
+                        current_item=None,
+                        last_completed_item=last_item,
+                        event_type=event_type,
+                        event_message=event_message,
+                        event_item=last_item,
+                        warning_count=skipped + failed,
+                    )
                     continue
 
                 rollback_data = {
@@ -1553,6 +1959,14 @@ class ProductManager:
                         job_id=job_id,
                     )
                 applied += 1
+                last_item = self._build_batch_feedback_item(
+                    product_id=product_id,
+                    product_name=item.get("product_name", product.name),
+                    item_status="applied" if not self._config.dry_run else "approved",
+                    user_message="Degisiklikler basariyla uygulandi." if not self._config.dry_run else "Dry-run tamamlandi.",
+                )
+                event_type = "item_completed"
+                event_message = f"{item.get('product_name') or product.name} basariyla uygulandi."
             except Exception as exc:
                 failed += 1
                 logger.error("Batch apply failed for product %s: %s", product_id, exc)
@@ -1562,13 +1976,63 @@ class ProductManager:
                     skip_reason=str(exc)[:500],
                     score_after=None,
                 )
+                last_item = self._build_batch_feedback_item(
+                    product_id=product_id,
+                    product_name=item.get("product_name") or product.name,
+                    item_status="failed",
+                    reason_code="ikas_write_failed",
+                    user_message="IKAS'a yazma sirasinda hata olustu.",
+                )
+                event_type = "item_failed"
+                event_message = f"{item.get('product_name') or product.name} uygulanirken hata olustu."
 
-            await db.update_batch_job(job_id, processed_count=applied + failed)
+            await db.update_batch_job(
+                job_id,
+                processed_count=applied,
+                skipped_count=skipped,
+                failed_count=failed,
+            )
+            await self._update_batch_feedback(
+                job_id,
+                stage="applying",
+                status_message="Toplu uygulama suruyor.",
+                summary_counts=self._build_batch_summary_counts(total=total_items, succeeded=applied, skipped=skipped, failed=failed),
+                current_item=None,
+                last_completed_item=last_item,
+                event_type=event_type,
+                event_message=event_message,
+                event_item=last_item,
+                retryable=event_type == "item_failed",
+                warning_count=skipped + failed,
+            )
+
+        await self._refresh_batch_job_metrics(job_id)
+        if cancelled:
+            await self._update_batch_feedback(
+                job_id,
+                stage="cancelled",
+                status_message="Toplu uygulama kullanici tarafindan durduruldu.",
+                summary_counts=self._build_batch_summary_counts(total=total_items, succeeded=applied, skipped=skipped, failed=failed),
+                current_item=None,
+                warning_count=skipped + failed,
+                event_type="operation_completed",
+                event_message="Toplu uygulama durduruldu.",
+            )
+            return
 
         status = "completed" if failed == 0 else "completed_with_errors"
         await db.update_batch_job(job_id, status=status)
-        await self._refresh_batch_job_metrics(job_id)
-        logger.info("Batch apply %s done: %d applied, %d failed", job_id, applied, failed)
+        await self._update_batch_feedback(
+            job_id,
+            stage=status,
+            status_message="Toplu uygulama tamamlandi." if failed == 0 else "Toplu uygulama bitti, bazi urunlerde hata var.",
+            summary_counts=self._build_batch_summary_counts(total=total_items, succeeded=applied, skipped=skipped, failed=failed),
+            current_item=None,
+            warning_count=skipped + failed,
+            event_type="operation_completed",
+            event_message="Toplu uygulama tamamlandi." if failed == 0 else "Toplu uygulama hata ile tamamlandi.",
+        )
+        logger.info("Batch apply %s done: %d applied, %d skipped, %d failed", job_id, applied, skipped, failed)
 
     async def rollback_product(
         self,

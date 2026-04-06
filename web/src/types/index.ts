@@ -420,6 +420,58 @@ export type BatchJobStatus =
   | 'failed'
   | 'cancelled';
 
+export interface BatchFeedbackCounts {
+  total: number;
+  processed: number;
+  succeeded: number;
+  skipped: number;
+  failed: number;
+  retried: number;
+  remaining: number;
+}
+
+export interface BatchFeedbackItem {
+  product_id: string;
+  product_name: string;
+  item_status: string;
+  reason_code: string | null;
+  user_message: string | null;
+  at: string | null;
+}
+
+export interface BatchFeedbackEvent {
+  sequence: number;
+  type: string;
+  stage: string;
+  label: string;
+  message: string;
+  at: string | null;
+  product_id: string | null;
+  product_name: string | null;
+  item_status: string | null;
+  reason_code: string | null;
+  user_message: string | null;
+  retryable: boolean | null;
+}
+
+export interface BatchFeedback {
+  stage: string;
+  stage_label: string;
+  status_message: string;
+  sequence: number;
+  warning_count: number;
+  eta_seconds: number | null;
+  last_event_at: string | null;
+  stalled_since: string | null;
+  heartbeat_at: string | null;
+  summary_counts: BatchFeedbackCounts;
+  current_item: BatchFeedbackItem | null;
+  last_completed_item: BatchFeedbackItem | null;
+  latest_event: BatchFeedbackEvent | null;
+  recent_events: BatchFeedbackEvent[];
+  next_action_hints: string[];
+}
+
 export interface BatchJob {
   id: string;
   task_id: string | null;
@@ -435,6 +487,7 @@ export interface BatchJob {
   updated_at: string;
   completed_at: string | null;
   error: string | null;
+  feedback: BatchFeedback;
 }
 
 export type BatchItemStatus =

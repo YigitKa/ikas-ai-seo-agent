@@ -433,6 +433,58 @@ class BatchConfig(BaseModel):
     skill_slug: str = ""
 
 
+class BatchFeedbackCountsResponse(BaseModel):
+    total: int = 0
+    processed: int = 0
+    succeeded: int = 0
+    skipped: int = 0
+    failed: int = 0
+    retried: int = 0
+    remaining: int = 0
+
+
+class BatchFeedbackItemResponse(BaseModel):
+    product_id: str = ""
+    product_name: str = ""
+    item_status: str = ""
+    reason_code: Optional[str] = None
+    user_message: Optional[str] = None
+    at: Optional[str] = None
+
+
+class BatchFeedbackEventResponse(BaseModel):
+    sequence: int = 0
+    type: str = ""
+    stage: str = ""
+    label: str = ""
+    message: str = ""
+    at: Optional[str] = None
+    product_id: Optional[str] = None
+    product_name: Optional[str] = None
+    item_status: Optional[str] = None
+    reason_code: Optional[str] = None
+    user_message: Optional[str] = None
+    retryable: Optional[bool] = None
+
+
+class BatchFeedbackResponse(BaseModel):
+    stage: str = ""
+    stage_label: str = ""
+    status_message: str = ""
+    sequence: int = 0
+    warning_count: int = 0
+    eta_seconds: Optional[int] = None
+    last_event_at: Optional[str] = None
+    stalled_since: Optional[str] = None
+    heartbeat_at: Optional[str] = None
+    summary_counts: BatchFeedbackCountsResponse = Field(default_factory=BatchFeedbackCountsResponse)
+    current_item: Optional[BatchFeedbackItemResponse] = None
+    last_completed_item: Optional[BatchFeedbackItemResponse] = None
+    latest_event: Optional[BatchFeedbackEventResponse] = None
+    recent_events: list[BatchFeedbackEventResponse] = Field(default_factory=list)
+    next_action_hints: list[str] = Field(default_factory=list)
+
+
 class BatchJobResponse(BaseModel):
     id: str
     task_id: Optional[str] = None
@@ -448,6 +500,7 @@ class BatchJobResponse(BaseModel):
     updated_at: str
     completed_at: Optional[str] = None
     error: Optional[str] = None
+    feedback: BatchFeedbackResponse = Field(default_factory=BatchFeedbackResponse)
 
 
 class BatchItemResponse(BaseModel):
