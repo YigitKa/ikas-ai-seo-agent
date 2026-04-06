@@ -163,6 +163,10 @@ ikas-ai-seo-agent/
 │   ├── translation_en.user.txt
 │   ├── geo_rewrite.system.txt   # GEO rewrite system prompt (auto-created if missing)
 │   ├── geo_rewrite.user.txt     # GEO rewrite user prompt (auto-created if missing)
+│   ├── field_name.user.txt      # Per-field: product name rewrite prompt
+│   ├── field_meta_title.user.txt # Per-field: meta title rewrite prompt
+│   ├── field_meta_desc.user.txt  # Per-field: meta description rewrite prompt
+│   ├── field_desc_en.user.txt   # Per-field: English description rewrite prompt
 │   └── README.txt
 │
 └── tests/
@@ -339,7 +343,7 @@ ProductManager (core/product_manager.py)  [singleton for REST; per-connection fo
 **Fallback mode** (`none` provider):
 1. `ProductManager.fetch_products()` → `IkasClient` fetches products via async GraphQL
 2. `SEOAnalyzer.analyze_product()` → scores each product, returns `SeoScore`
-3. `AIClient.rewrite_product()` → single-shot prompt to AI, returns `SeoSuggestion`
+3. `AIClient.rewrite_product_per_field()` → generates each field individually using dedicated prompts, returns `SeoSuggestion`
 4. Results are stored in SQLite via async `aiosqlite`
 5. UI displays scores and diffs for user approval
 6. On approval: `ProductManager.apply_suggestion()` → `IkasClient` writes back to ikas (if `DRY_RUN=false`)
@@ -456,7 +460,7 @@ Scoring inspired by Ahrefs, Semrush, Yoast, Moz, and Screaming Frog.
 ### `core/ai/` — AI provider module (split into 7 files)
 
 `client.py` is a backward-compatible facade that re-exports all symbols. Actual code lives in:
-- `constants.py` — prompt templates, model defaults, field mappings
+- `constants.py` — system prompt templates, model defaults, field mappings (per-field user prompts moved to `prompt_store.py` file-based templates)
 - `helpers.py` — response parsing, thinking extraction, utility functions
 - `requests.py` — request builder functions (`build_product_rewrite_request`, etc.)
 - `base.py` — `BaseAIClient` + `NoneAIClient`
@@ -501,6 +505,10 @@ Prompt templates are cached in-memory (`_prompt_cache` dict) after first disk re
 | `translation_user` | `translation_en.user.txt` | `name`, `description`, `category` |
 | `geo_rewrite_system` | `geo_rewrite.system.txt` | — |
 | `geo_rewrite_user` | `geo_rewrite.user.txt` | `name`, `description`, `category`, `issues`, `keywords` |
+| `field_name_user` | `field_name.user.txt` | `name`, `description_summary`, `category`, `keywords` |
+| `field_meta_title_user` | `field_meta_title.user.txt` | `name`, `description_summary`, `category`, `keywords` |
+| `field_meta_desc_user` | `field_meta_desc.user.txt` | `name`, `description_summary`, `keywords` |
+| `field_desc_en_user` | `field_desc_en.user.txt` | `name`, `description_en`, `category`, `keywords` |
 
 **Multi-agent system prompts** (not user-editable; defined in `AGENT_SYSTEM_PROMPTS_TR`):
 | Key | Persona | Role |
@@ -705,13 +713,18 @@ React/TypeScript SPA built with Vite. Communicates with the FastAPI backend via 
 Prompt files live in `prompts/` and are loaded by `core/prompt_store.py`. They use `{{variable}}` syntax. Users can edit them at runtime via the Settings page in the UI, and changes are saved to disk. Missing files are auto-created from in-code defaults on first access.
 
 Available editable templates:
-- `description_rewrite.system.txt` / `.user.txt` — rewrites product descriptions for SEO
+- `description_rewrite.system.txt` / `.user.txt` — rewrites product descriptions (TR) for SEO
 - `translation_en.system.txt` / `.user.txt` — translates Turkish content to English
 - `geo_rewrite.system.txt` / `.user.txt` — rewrites product descriptions in encyclopaedic GEO format for AI bot citability
+- `field_name.user.txt` — per-field prompt for product name optimization
+- `field_meta_title.user.txt` — per-field prompt for meta title generation (max 60 chars)
+- `field_meta_desc.user.txt` — per-field prompt for meta description generation (max 155 chars)
+- `field_desc_en.user.txt` — per-field prompt for English description SEO rewrite
 
 The prompt system includes:
 - Per-prompt metadata (title, description, variables, height) in `PROMPT_EDITOR_META`
-- Three editor groups shown in the Settings UI: "Aciklama", "Ceviri", "GEO Yeniden Yazim"
+- Editor groups shown in the Settings UI: "Aciklama", "Ceviri", "GEO Yeniden Yazim", "Alan Bazli Promptlar", etc.
+- **Per-field prompt architecture** — all product fields use editable file-based templates loaded via `load_prompt_template()`, sharing a common system prompt with individual user prompts per field
 - Agent template support for chat system prompts (`AGENT_SYSTEM_PROMPTS_TR`)
 - Validation of placeholder names before saving
 - Fallback to hardcoded defaults (`PROMPT_DEFAULTS`) if files are missing or empty

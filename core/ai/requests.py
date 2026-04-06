@@ -6,7 +6,7 @@ from typing import List, Optional
 from core.utils.html import html_to_plain_text, sanitize_html_for_prompt
 from core.models import AppConfig, Product, SeoScore, SeoSuggestion
 from core.prompt_store import compose_prompt_with_skill_layer, load_prompt_template, render_prompt_template
-from core.ai.constants import FIELD_PROMPT_TEMPLATES, USER_PROMPT_TEMPLATE
+from core.ai.constants import USER_PROMPT_TEMPLATE
 from core.ai.helpers import _get_system_prompt, _cap_field_max_tokens
 
 
@@ -47,8 +47,21 @@ def _build_description_summary(value: str, limit: int = 320) -> str:
     return truncated or summary[:limit].strip()
 
 
+FIELD_TEMPLATE_KEYS = {
+    "name": "field_name_user",
+    "meta_title": "field_meta_title_user",
+    "meta_desc": "field_meta_desc_user",
+    "desc_en": "field_desc_en_user",
+    "desc_tr": "description_user",
+}
+
+
 def _build_field_prompt(field: str, product: Product, keywords: List[str], desc_limit: int = 800) -> str:
-    """Build a small prompt for a single field rewrite."""
+    """Build a small prompt for a single field rewrite using file-based templates."""
+    template_key = FIELD_TEMPLATE_KEYS.get(field)
+    if not template_key:
+        raise ValueError(f"Unknown field: {field}")
+
     raw_desc = sanitize_html_for_prompt(product.description, limit=desc_limit)
     raw_desc_en = sanitize_html_for_prompt(product.description_translations.get("en", ""), limit=desc_limit)
     description_summary = _build_description_summary(product.description, limit=min(400, desc_limit)) or (
@@ -57,31 +70,16 @@ def _build_field_prompt(field: str, product: Product, keywords: List[str], desc_
 
     kw_str = ", ".join(keywords) if keywords else "Belirtilmemis"
 
-    if field == "desc_tr":
-        template = load_prompt_template("description_user")
-        return render_prompt_template(
-            template,
-            {
-                "name": product.name,
-                "description": raw_desc or "Belirtilmemis",
-                "category": product.category or "Belirtilmemis",
-                "keywords": kw_str,
-            },
-        )
-
-    template = FIELD_PROMPT_TEMPLATES.get(field)
-    if not template:
-        raise ValueError(f"Unknown field: {field}")
-
-    return template.format(
-        name=product.name,
-        description=raw_desc,
-        description_short=raw_desc[:200],
-        description_summary=description_summary,
-        description_en=raw_desc_en,
-        category=product.category or "Belirtilmemis",
-        keywords=kw_str,
-    )
+    template = load_prompt_template(template_key)
+    context = {
+        "name": product.name,
+        "description": raw_desc or "Belirtilmemis",
+        "description_summary": description_summary,
+        "description_en": raw_desc_en or "Belirtilmemis",
+        "category": product.category or "Belirtilmemis",
+        "keywords": kw_str,
+    }
+    return render_prompt_template(template, context)
 
 
 def _build_suggestion(product: Product, result: dict, thinking_text: str = "") -> SeoSuggestion:

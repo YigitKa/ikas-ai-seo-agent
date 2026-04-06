@@ -1,0 +1,8 @@
+Urun Adi: {{name}}
+Urun Aciklama Ozeti: {{description_summary}}
+Hedef Keywordler: {{keywords}}
+
+Bu urun icin SEO uyumlu meta description yaz. Max 155 karakter, CTA icermeli.
+Ozette gecen kullanim amacina ve hedef alana sadik kal; veri uydurma.
+SADECE JSON dondur:
+{"suggested_meta_description": "..."}

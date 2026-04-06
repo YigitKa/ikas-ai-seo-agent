@@ -16,7 +16,6 @@ import logging
 from core.ai.constants import (
     DEFAULT_MODELS,
     FIELD_MAX_OUTPUT_TOKENS,
-    FIELD_PROMPT_TEMPLATES,
     FIELD_RESULT_KEYS,
     MODEL_PRICING,
     PROVIDER_BASE_URLS,
@@ -73,7 +72,6 @@ __all__ = [
     # Constants
     "DEFAULT_MODELS",
     "FIELD_MAX_OUTPUT_TOKENS",
-    "FIELD_PROMPT_TEMPLATES",
     "FIELD_RESULT_KEYS",
     "MODEL_PRICING",
     "PROVIDER_BASE_URLS",

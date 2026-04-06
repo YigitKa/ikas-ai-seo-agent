@@ -399,8 +399,8 @@ class ProductManager:
                 allowed_tool_names=allowed_tool_names,
                 memory_log=memory_log,
             )
-        # Fallback: single-shot rewrite
-        suggestion = self._ai.rewrite_product(product, score, extra_system_prompt=extra_system_prompt)
+        # Fallback: per-field rewrite
+        suggestion = self._ai.rewrite_product_per_field(product, score, extra_system_prompt=extra_system_prompt)
         await db.save_suggestion(suggestion, memory_log=memory_log)
         return suggestion
 
@@ -436,8 +436,8 @@ class ProductManager:
         suggestion = await db.get_latest_suggestion_by_product(product.id)
         if suggestion is None:
             # Agent didn't save; fall back to single-shot
-            logger.warning("Agentic rewrite did not save a suggestion; falling back to single-shot")
-            suggestion = self._ai.rewrite_product(product, score, extra_system_prompt=extra_system_prompt)
+            logger.warning("Agentic rewrite did not save a suggestion; falling back to per-field rewrite")
+            suggestion = self._ai.rewrite_product_per_field(product, score, extra_system_prompt=extra_system_prompt)
             await db.save_suggestion(suggestion, memory_log=memory_log)
         elif memory_log:
             await db.attach_memory_log_to_latest_suggestion(

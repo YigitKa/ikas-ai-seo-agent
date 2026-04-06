@@ -1,0 +1,9 @@
+Urun Adi: {{name}}
+Urun Aciklama Ozeti: {{description_summary}}
+Kategori: {{category}}
+Hedef Keywordler: {{keywords}}
+
+Bu urun icin SEO uyumlu meta title yaz. Max 60 karakter, marka adiyla bitir.
+Kullanim amaci ve hedef urun tipi icin aciklama ozetini esas al; insan, hayvan, bitki gibi alanlari karistirma.
+SADECE JSON dondur:
+{"suggested_meta_title": "..."}
