@@ -550,25 +550,25 @@ PROMPT_EDITOR_META = {
     "field_name_user": {
         "title": "Urun Adi Promptu",
         "description": "Urun adini SEO icin optimize eden prompt. Aciklama ozetinden urun bilgilerini cikarir.",
-        "variables": ("name", "description_summary", "category", "keywords"),
+        "variables": ("name", "description", "description_summary", "description_en", "category", "keywords"),
         "height": 150,
     },
     "field_meta_title_user": {
         "title": "Meta Title Promptu",
         "description": "SEO uyumlu meta title ureten prompt. Max 60 karakter, marka adiyla biter.",
-        "variables": ("name", "description_summary", "category", "keywords"),
+        "variables": ("name", "description", "description_summary", "description_en", "category", "keywords"),
         "height": 150,
     },
     "field_meta_desc_user": {
         "title": "Meta Description Promptu",
         "description": "SEO uyumlu meta description ureten prompt. Max 155 karakter, CTA icermeli.",
-        "variables": ("name", "description_summary", "keywords"),
+        "variables": ("name", "description", "description_summary", "description_en", "category", "keywords"),
         "height": 150,
     },
     "field_desc_en_user": {
         "title": "Ingilizce Aciklama Promptu",
         "description": "Ingilizce urun aciklamasini SEO icin yeniden yazan prompt. 200-400 kelime, HTML format.",
-        "variables": ("name", "description_en", "category", "keywords"),
+        "variables": ("name", "description", "description_summary", "description_en", "category", "keywords"),
         "height": 170,
     },
     "llms_summary_system": {

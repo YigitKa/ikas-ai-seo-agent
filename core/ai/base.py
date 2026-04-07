@@ -66,18 +66,21 @@ class BaseAIClient:
         results: dict[str, str] = {}
         thinking_parts: list[str] = []
         for field in fields:
-            result = self.rewrite_field(
-                field, product, score,
-                target_keywords=target_keywords,
-                extra_system_prompt=extra_system_prompt,
-            )
-            if isinstance(result, tuple):
-                value, thinking = result
-            else:
-                value, thinking = result, ""
-            results[FIELD_RESULT_KEYS[field]] = value
-            if thinking.strip():
-                thinking_parts.append(f"[{field}]\n{thinking.strip()}")
+            try:
+                result = self.rewrite_field(
+                    field, product, score,
+                    target_keywords=target_keywords,
+                    extra_system_prompt=extra_system_prompt,
+                )
+                if isinstance(result, tuple):
+                    value, thinking = result
+                else:
+                    value, thinking = result, ""
+                results[FIELD_RESULT_KEYS[field]] = value
+                if thinking.strip():
+                    thinking_parts.append(f"[{field}]\n{thinking.strip()}")
+            except Exception as e:
+                logger.warning("Per-field rewrite failed for %s: %s", field, e)
         return _build_suggestion(product, results, "\n\n".join(thinking_parts))
 
     def rewrite_products_batch(

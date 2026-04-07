@@ -335,15 +335,16 @@ ProductManager (core/product_manager.py)  [singleton for REST; per-connection fo
 
 **Agentic mode** (tool-calling providers — Ollama, OpenAI, Anthropic, Gemini, OpenRouter, LM Studio, custom):
 1. `ProductManager.rewrite_product()` detects tool-calling support → creates `AgentOrchestrator` with `AgentToolkit`
-2. Agent autonomously: scores product → identifies weak fields → proposes rewrites → validates with `validate_rewrite` → saves via `save_suggestion`
+2. Agent autonomously: scores product → identifies weak fields → proposes per-field rewrites → validates with `validate_rewrite` → saves via `save_suggestion`
 3. Multiple iterations possible (max 8) — agent retries if validation shows no improvement
-4. Result stored in SQLite; UI displays scores and diffs for user approval
-5. SSE streaming available via `POST /api/suggestions/generate/{id}/stream`
+4. If agent fails to save, falls back to `rewrite_product_per_field()` (per-field generation without agent loop)
+5. Result stored in SQLite; UI displays scores and diffs for user approval
+6. SSE streaming available via `POST /api/suggestions/generate/{id}/stream`
 
-**Fallback mode** (`none` provider):
+**Fallback mode** (non-agentic path or agent failure):
 1. `ProductManager.fetch_products()` → `IkasClient` fetches products via async GraphQL
 2. `SEOAnalyzer.analyze_product()` → scores each product, returns `SeoScore`
-3. `AIClient.rewrite_product_per_field()` → generates each field individually using dedicated prompts, returns `SeoSuggestion`
+3. `AIClient.rewrite_product_per_field()` → generates each field individually using dedicated per-field prompts from `prompts/`, returns `SeoSuggestion`
 4. Results are stored in SQLite via async `aiosqlite`
 5. UI displays scores and diffs for user approval
 6. On approval: `ProductManager.apply_suggestion()` → `IkasClient` writes back to ikas (if `DRY_RUN=false`)
@@ -505,10 +506,10 @@ Prompt templates are cached in-memory (`_prompt_cache` dict) after first disk re
 | `translation_user` | `translation_en.user.txt` | `name`, `description`, `category` |
 | `geo_rewrite_system` | `geo_rewrite.system.txt` | — |
 | `geo_rewrite_user` | `geo_rewrite.user.txt` | `name`, `description`, `category`, `issues`, `keywords` |
-| `field_name_user` | `field_name.user.txt` | `name`, `description_summary`, `category`, `keywords` |
-| `field_meta_title_user` | `field_meta_title.user.txt` | `name`, `description_summary`, `category`, `keywords` |
-| `field_meta_desc_user` | `field_meta_desc.user.txt` | `name`, `description_summary`, `keywords` |
-| `field_desc_en_user` | `field_desc_en.user.txt` | `name`, `description_en`, `category`, `keywords` |
+| `field_name_user` | `field_name.user.txt` | `name`, `description`, `description_summary`, `description_en`, `category`, `keywords` |
+| `field_meta_title_user` | `field_meta_title.user.txt` | `name`, `description`, `description_summary`, `description_en`, `category`, `keywords` |
+| `field_meta_desc_user` | `field_meta_desc.user.txt` | `name`, `description`, `description_summary`, `description_en`, `category`, `keywords` |
+| `field_desc_en_user` | `field_desc_en.user.txt` | `name`, `description`, `description_summary`, `description_en`, `category`, `keywords` |
 
 **Multi-agent system prompts** (not user-editable; defined in `AGENT_SYSTEM_PROMPTS_TR`):
 | Key | Persona | Role |
