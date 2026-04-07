@@ -432,13 +432,14 @@ Chat header'da aktif skill'in **seçim modu** (routed / default / merged), çöz
 
 ### 📝 Prompts Studio
 
-Sistemdeki **tüm AI prompt şablonlarını** düzenleyip yönetebileceğiniz tam özellikli editör. Python dosyasına dokunmadan, Settings sayfasından canlı olarak her prompt'u güncelleyebilirsiniz.
+Sistemdeki **tüm AI prompt şablonlarını** düzenleyip yönetebileceğiniz tam özellikli editör. Python dosyasına dokunmadan, Prompt Studio sayfasından canlı olarak her prompt'u güncelleyebilirsiniz.
 
 ```mermaid
 graph TD
     EDITOR["📝 Prompts Studio"] --> G1["📄 Açıklama Yeniden Yazım\nsystem + user"]
     EDITOR --> G2["🌐 İngilizce Çeviri\nsystem + user"]
     EDITOR --> G3["🤖 GEO Yeniden Yazım\nsystem + user"]
+    EDITOR --> G8["🧩 Alan Bazlı Promptlar\nname · meta_title · meta_desc · desc_en"]
     EDITOR --> G4["📋 llms.txt Özet\nsystem + user"]
     EDITOR --> G5["🎭 Chat Ajanları\nSEO · Operatör · Genel"]
     EDITOR --> G6["💬 Chat Akışı + Bağlam\nrouting · buttons · context"]
@@ -448,13 +449,14 @@ graph TD
     style G1 fill:#0f172a,stroke:#10b981,color:#e2e8f0
     style G2 fill:#0f172a,stroke:#10b981,color:#e2e8f0
     style G3 fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style G8 fill:#0f172a,stroke:#10b981,color:#e2e8f0
     style G4 fill:#0f172a,stroke:#10b981,color:#e2e8f0
     style G5 fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0
     style G6 fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0
     style G7 fill:#0f172a,stroke:#f59e0b,color:#e2e8f0
 ```
 
-- **7 grup, 20+ şablon** — ürün yeniden yazımı, çeviri, GEO, llms.txt özeti, chat personaları, akış bağlamı ve otonom ajan prompt'ları
+- **8 grup, 25+ şablon** — ürün yeniden yazımı, çeviri, GEO, alan bazlı promptlar (name, meta title, meta desc, desc_en), llms.txt özeti, chat personaları, akış bağlamı ve otonom ajan prompt'ları
 - **`{{değişken}}` doğrulama** — tanımsız placeholder'da kayıt öncesi uyarı
 - **Değişiklik takibi** — kaydedilmemiş prompt'lar görsel olarak işaretlenir; toplu kayıt
 - **Varsayılana sıfırlama** — tekil veya tüm grubu tek tıkla varsayılana döndürme
