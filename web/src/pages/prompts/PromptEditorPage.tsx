@@ -34,6 +34,7 @@ const GROUP_ICONS: Record<string, string> = {
   'Chat Ajanlari': 'M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a2 2 0 01-2-2v-1m0-3V4a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H7l-4 4V6', // chat bubbles
   'Chat Akisi': 'M13 10V3L4 14h7v7l9-11h-7z', // lightning bolt
   'Otonom Ajanlar': 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', // desktop/robot
+  'Alan Bazli Promptlar': 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm0 8a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zm10 0a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z', // layout/fields
 };
 
 function getGroupIcon(label: string) {

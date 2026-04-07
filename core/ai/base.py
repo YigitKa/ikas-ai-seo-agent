@@ -4,6 +4,7 @@ import logging
 from typing import List, Optional
 
 from core.models import Product, SeoScore, SeoSuggestion
+from core.ai.constants import FIELD_RESULT_KEYS
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,37 @@ class BaseAIClient:
         """Produce an information-dense summary for llms.txt."""
         raise NotImplementedError
 
+    def rewrite_product_per_field(
+        self,
+        product: Product,
+        score: SeoScore,
+        target_keywords: Optional[List[str]] = None,
+        extra_system_prompt: str = "",
+    ) -> SeoSuggestion:
+        """Generate all fields individually and combine into a single SeoSuggestion."""
+        from core.ai.requests import _build_suggestion
+
+        fields = ["name", "desc_tr", "meta_title", "meta_desc", "desc_en"]
+        results: dict[str, str] = {}
+        thinking_parts: list[str] = []
+        for field in fields:
+            try:
+                result = self.rewrite_field(
+                    field, product, score,
+                    target_keywords=target_keywords,
+                    extra_system_prompt=extra_system_prompt,
+                )
+                if isinstance(result, tuple):
+                    value, thinking = result
+                else:
+                    value, thinking = result, ""
+                results[FIELD_RESULT_KEYS[field]] = value
+                if thinking.strip():
+                    thinking_parts.append(f"[{field}]\n{thinking.strip()}")
+            except Exception as e:
+                logger.warning("Per-field rewrite failed for %s: %s", field, e)
+        return _build_suggestion(product, results, "\n\n".join(thinking_parts))
+
     def rewrite_products_batch(
         self,
         products: List[tuple[Product, SeoScore]],
@@ -93,6 +125,11 @@ class NoneAIClient(BaseAIClient):
     def translate_description_to_en(self, product, extra_system_prompt=""):
         raise RuntimeError(
             "AI provider 'none' secildi. Ceviri icin Ayarlar'dan bir provider secin."
+        )
+
+    def rewrite_product_per_field(self, product, score, target_keywords=None, extra_system_prompt=""):
+        raise RuntimeError(
+            "AI provider 'none' secildi. Yeniden yazma icin Ayarlar'dan bir provider secin."
         )
 
     def rewrite_product_for_geo(self, product, score, target_keywords=None):

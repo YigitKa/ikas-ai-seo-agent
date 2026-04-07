@@ -15,6 +15,11 @@ PROMPT_FILES = {
     "translation_user": "translation_en.user.txt",
     "geo_rewrite_system": "geo_rewrite.system.txt",
     "geo_rewrite_user": "geo_rewrite.user.txt",
+    # Per-field rewrite prompts
+    "field_name_user": "field_name.user.txt",
+    "field_meta_title_user": "field_meta_title.user.txt",
+    "field_meta_desc_user": "field_meta_desc.user.txt",
+    "field_desc_en_user": "field_desc_en.user.txt",
     "llms_summary_system": "llms_summary.system.txt",
     "llms_summary_user": "llms_summary.user.txt",
     # Chat agent personas
@@ -61,6 +66,15 @@ PROMPT_EDITOR_GROUPS = [
         (
             "geo_rewrite_system",
             "geo_rewrite_user",
+        ),
+    ),
+    (
+        "Alan Bazli Promptlar",
+        (
+            "field_name_user",
+            "field_meta_title_user",
+            "field_meta_desc_user",
+            "field_desc_en_user",
         ),
     ),
     (
@@ -179,6 +193,43 @@ Hedef Keywordler: {{keywords}}
 Bu urunu GEO (Generative Engine Optimization) icin yeniden yaz. AI botlarinin kolayca anlayip alintilayabilecegi, objektif ve bilgi yogun bir icerik olustur.
 SADECE JSON dondur:
 {"suggested_description": "..."}""",
+    # Per-field rewrite prompts
+    "field_name_user": """Urun Adi: {{name}}
+Urun Aciklama Ozeti: {{description_summary}}
+Kategori: {{category}}
+Hedef Keywordler: {{keywords}}
+
+Bu urunun adini SEO icin optimize et. Dogal ve aranabilir bir isim olustur.
+Urunun ne icin kullanildigini aciklama ozetinden cikar; insan, hayvan, bitki gibi kullanim alanlarini karistirma ve veri uydurma.
+SADECE JSON dondur:
+{"suggested_name": "..."}""",
+    "field_meta_title_user": """Urun Adi: {{name}}
+Urun Aciklama Ozeti: {{description_summary}}
+Kategori: {{category}}
+Hedef Keywordler: {{keywords}}
+
+Bu urun icin SEO uyumlu meta title yaz. Max 60 karakter, marka adiyla bitir.
+Kullanim amaci ve hedef urun tipi icin aciklama ozetini esas al; insan, hayvan, bitki gibi alanlari karistirma.
+SADECE JSON dondur:
+{"suggested_meta_title": "..."}""",
+    "field_meta_desc_user": """Urun Adi: {{name}}
+Urun Aciklama Ozeti: {{description_summary}}
+Hedef Keywordler: {{keywords}}
+
+Bu urun icin SEO uyumlu meta description yaz. Max 155 karakter, CTA icermeli.
+Ozette gecen kullanim amacina ve hedef alana sadik kal; veri uydurma.
+SADECE JSON dondur:
+{"suggested_meta_description": "..."}""",
+    "field_desc_en_user": """Urun Adi: {{name}}
+Mevcut Ingilizce Aciklama: {{description_en}}
+Kategori: {{category}}
+Hedef Keywordler: {{keywords}}
+
+Rewrite the English product description for SEO. 200-400 words, natural sales language.
+Return the description in HTML, not plain text.
+Use simple tags such as <h2>, <p>, <ul>, <li>, <strong>, and <em> when useful.
+Return ONLY JSON:
+{"suggested_description_en": "..."}""",
     "llms_summary_system": """Sen AI botlari icin llms.txt dosyasi hazirlayan bir ozet motorusun.
 
 Kurallar:
@@ -343,7 +394,7 @@ formatında gizli bir blok ekle. Bu blok yalnızca geçerli bir JSON dizisi içe
     "chat_compact_options_system": """Analiz sonrası skor context'teki "ANALİZ SONRASI SEÇENEK KURALI" bölümündeki hazır JSON seçenek listesini AYNEN yanıtın sonuna ekle. Kendi listeni uydurma.
 SEO değer önerisi verirken değerleri düz metin değil, JSON formatında sun.""",
     "rewrite_agent_system": """Sen bir SEO optimizasyon agentisin.
-Görevin verilen ürünü analiz edip, SEO skorunu maximize edecek şekilde optimize etmek.
+Görevin verilen ürünü analiz edip, HER ALANI TEK TEK optimize ederek SEO skorunu maximize etmek.
 
 Elindeki araçlar:
 - seo_score_product: Ürünü skorla, issues/suggestions listesi al
@@ -356,13 +407,19 @@ Elindeki araçlar:
 1. Önce get_seo_guidelines ile puanlama kurallarını öğren
 2. seo_score_product ile ürünü skorla
 3. Issues listesindeki en kritik sorunları belirle
-4. Her sorun için çözüm oluştur — title, description, meta_title, meta_description alanlarını optimize et
-5. validate_rewrite ile önerilen değişikliklerle skoru simüle et
+4. Her alanı AYRI AYRI optimize et — sırayla:
+   a. name (ürün adı): Doğal, aranabilir isim. Açıklama özetinden ürün bilgilerini çıkar.
+   b. description (TR açıklama): 200-400 kelime, HTML format, ilk paragrafta ana keyword.
+   c. meta_title: Max 60 karakter, marka adıyla bitir.
+   d. meta_description: Max 155 karakter, CTA içermeli.
+   e. description_en (EN açıklama): 200-400 kelime, doğal İngilizce, HTML format.
+5. validate_rewrite ile TÜM alanları birlikte simüle et
 6. Skor iyileşmesi yeterliyse save_suggestion ile kaydet
-7. Kullanıcıya önceki/sonraki skor karşılaştırmasını ve yaptığın değişiklikleri özetle
+7. Kullanıcıya önceki/sonraki skor karşılaştırmasını ve her alan için yaptığın değişiklikleri özetle
 
 Kurallar:
 - Her zaman mevcut skoru kontrol et, körlemesine rewrite yapma
+- Her alan için ürün açıklamasından bağlam çıkar; veri uydurma
 - validate_rewrite sonucu kötüyse farklı yaklaşım dene
 - Açıklama alanında temel HTML kullan (p, br, ul, ol, li, strong, em)
 - Meta title ve meta description alanlarında HTML kullanma
@@ -487,6 +544,31 @@ PROMPT_EDITOR_META = {
         "title": "GEO User Prompt",
         "description": "Urunu AI botlari icin optimize edilmis GEO formatinda yeniden yazar.",
         "variables": ("name", "description", "category", "issues", "keywords"),
+        "height": 170,
+    },
+    # Per-field rewrite prompts
+    "field_name_user": {
+        "title": "Urun Adi Promptu",
+        "description": "Urun adini SEO icin optimize eden prompt. Aciklama ozetinden urun bilgilerini cikarir.",
+        "variables": ("name", "description", "description_summary", "description_en", "category", "keywords"),
+        "height": 150,
+    },
+    "field_meta_title_user": {
+        "title": "Meta Title Promptu",
+        "description": "SEO uyumlu meta title ureten prompt. Max 60 karakter, marka adiyla biter.",
+        "variables": ("name", "description", "description_summary", "description_en", "category", "keywords"),
+        "height": 150,
+    },
+    "field_meta_desc_user": {
+        "title": "Meta Description Promptu",
+        "description": "SEO uyumlu meta description ureten prompt. Max 155 karakter, CTA icermeli.",
+        "variables": ("name", "description", "description_summary", "description_en", "category", "keywords"),
+        "height": 150,
+    },
+    "field_desc_en_user": {
+        "title": "Ingilizce Aciklama Promptu",
+        "description": "Ingilizce urun aciklamasini SEO icin yeniden yazan prompt. 200-400 kelime, HTML format.",
+        "variables": ("name", "description", "description_summary", "description_en", "category", "keywords"),
         "height": 170,
     },
     "llms_summary_system": {
