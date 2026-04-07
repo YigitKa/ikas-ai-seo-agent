@@ -30,6 +30,7 @@ import type {
   SeoSuggestion,
   SeoScore,
   StoreMemoryEntry,
+  DiagnosticsSummary,
   MCPStatus,
   LlmsStatus,
   LlmsJob,
@@ -337,6 +338,10 @@ export async function getProviders(): Promise<{ providers: ProviderInfo[] }> {
 
 export async function getProviderHealth(): Promise<ProviderHealth> {
   return request('/api/settings/health');
+}
+
+export async function getDiagnosticsSummary(): Promise<DiagnosticsSummary> {
+  return request('/api/diagnostics/summary');
 }
 
 export async function getProviderModels(

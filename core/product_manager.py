@@ -1459,6 +1459,27 @@ class ProductManager:
             ]
         return []
 
+    def _estimate_batch_eta_seconds(
+        self,
+        *,
+        started_at: datetime | None,
+        summary_counts: dict[str, int] | None,
+        stage: str,
+    ) -> int | None:
+        if stage in {"completed", "completed_with_errors"}:
+            return 0
+        if stage in {"failed", "cancelled", "awaiting_review"}:
+            return None
+        if started_at is None or not summary_counts:
+            return None
+        processed = int(summary_counts.get("processed") or 0)
+        remaining = int(summary_counts.get("remaining") or 0)
+        if processed <= 0 or remaining <= 0:
+            return None
+        elapsed_seconds = max((datetime.now(timezone.utc) - started_at).total_seconds(), 1.0)
+        seconds_per_item = elapsed_seconds / processed
+        return max(int(seconds_per_item * remaining), 1)
+
     async def _update_batch_feedback(
         self,
         job_id: str,
@@ -1532,9 +1553,14 @@ class ProductManager:
         feedback["last_event_at"] = now if latest_event is not None or previous_stage != next_stage else feedback.get("last_event_at", now)
         feedback["heartbeat_at"] = now
         feedback["stalled_since"] = None
-        feedback["summary_counts"] = summary_counts or dict(feedback.get("summary_counts") or {})
+        effective_summary_counts = summary_counts or dict(feedback.get("summary_counts") or {})
+        feedback["summary_counts"] = effective_summary_counts
         feedback["warning_count"] = warning_count if warning_count is not None else int(feedback.get("warning_count") or 0)
-        feedback["eta_seconds"] = feedback.get("eta_seconds")
+        feedback["eta_seconds"] = self._estimate_batch_eta_seconds(
+            started_at=task.started_at,
+            summary_counts=effective_summary_counts,
+            stage=next_stage,
+        )
         feedback["next_action_hints"] = next_action_hints or self._batch_next_action_hints(next_stage)
 
         payload["feedback"] = feedback

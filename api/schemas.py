@@ -417,6 +417,145 @@ class TaskListResponse(BaseModel):
     items: list[TaskResponse] = Field(default_factory=list)
 
 
+# ── Diagnostics ──────────────────────────────────────────────────────────────
+
+class DiagnosticsCheckResponse(BaseModel):
+    name: str
+    status: str = "unknown"
+    checked_at: Optional[str] = None
+    latency_ms: Optional[int] = None
+    error_code: Optional[str] = None
+    error_summary: Optional[str] = None
+    retryable: Optional[bool] = None
+
+
+class DiagnosticsIssueResponse(BaseModel):
+    scope: str = "global"
+    component: str = ""
+    reason_code: str = ""
+    summary: str = ""
+    target_id: Optional[str] = None
+    target_label: Optional[str] = None
+    recommended_action: Optional[str] = None
+
+
+class DiagnosticsComponentResponse(BaseModel):
+    status: str = "unknown"
+    summary: str = ""
+    checked_at: Optional[str] = None
+    latency_ms: Optional[int] = None
+    error_code: Optional[str] = None
+    error_summary: Optional[str] = None
+    retryable: Optional[bool] = None
+    reason_codes: list[str] = Field(default_factory=list)
+    recommended_actions: list[str] = Field(default_factory=list)
+    checks: list[DiagnosticsCheckResponse] = Field(default_factory=list)
+
+
+class DiagnosticsProviderResponse(DiagnosticsComponentResponse):
+    provider: str = ""
+    configured_model: str = ""
+    message: str = ""
+
+
+class DiagnosticsMCPResponse(DiagnosticsComponentResponse):
+    has_token: bool = False
+    initialized: bool = False
+    tool_count: int = 0
+    tool_names: list[str] = Field(default_factory=list)
+
+
+class DiagnosticsDatabaseResponse(DiagnosticsComponentResponse):
+    path: str = ""
+    journal_mode: str = ""
+    product_count: int = 0
+    suggestion_count: int = 0
+    task_count: int = 0
+    write_test_ok: bool = False
+
+
+class DiagnosticsWorkersResponse(DiagnosticsComponentResponse):
+    active_count: int = 0
+    waiting_count: int = 0
+    stuck_count: int = 0
+    latest_heartbeat_at: Optional[str] = None
+    last_crash_summary: str = ""
+
+
+class DiagnosticsPromptCacheResponse(DiagnosticsComponentResponse):
+    prompt_dir: str = ""
+    total_templates: int = 0
+    loaded_templates: int = 0
+    missing_templates: list[str] = Field(default_factory=list)
+
+
+class DiagnosticsCountsResponse(BaseModel):
+    total: int = 0
+    processed: int = 0
+    succeeded: int = 0
+    skipped: int = 0
+    failed: int = 0
+    retried: int = 0
+    remaining: int = 0
+
+
+class DiagnosticsTaskSummaryResponse(BaseModel):
+    id: str
+    type: str
+    status: str
+    progress: int = 0
+    stage: str = ""
+    stage_label: str = ""
+    status_message: str = ""
+    heartbeat_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    current_item: Optional[str] = None
+    stuck: bool = False
+    reason_code: Optional[str] = None
+    counts: DiagnosticsCountsResponse = Field(default_factory=DiagnosticsCountsResponse)
+
+
+class DiagnosticsTaskRuntimeResponse(DiagnosticsComponentResponse):
+    queued_count: int = 0
+    active_count: int = 0
+    waiting_count: int = 0
+    terminal_count: int = 0
+    failed_count: int = 0
+    stuck_count: int = 0
+    longest_running_task: Optional[DiagnosticsTaskSummaryResponse] = None
+    stuck_tasks: list[DiagnosticsTaskSummaryResponse] = Field(default_factory=list)
+
+
+class DiagnosticsStoreContextResponse(DiagnosticsComponentResponse):
+    store_name: str = ""
+    languages: list[str] = Field(default_factory=list)
+    dry_run: bool = True
+    product_count: int = 0
+    pending_suggestions: int = 0
+
+
+class DiagnosticsActiveJobsResponse(DiagnosticsComponentResponse):
+    total: int = 0
+    items: list[DiagnosticsTaskSummaryResponse] = Field(default_factory=list)
+
+
+class DiagnosticsSummaryResponse(BaseModel):
+    overall_status: str = "unknown"
+    generated_at: str
+    reason_codes: list[str] = Field(default_factory=list)
+    recommended_actions: list[str] = Field(default_factory=list)
+    issues: list[DiagnosticsIssueResponse] = Field(default_factory=list)
+    debug_report: str = ""
+    providers: DiagnosticsProviderResponse = Field(default_factory=DiagnosticsProviderResponse)
+    mcp: DiagnosticsMCPResponse = Field(default_factory=DiagnosticsMCPResponse)
+    database: DiagnosticsDatabaseResponse = Field(default_factory=DiagnosticsDatabaseResponse)
+    workers: DiagnosticsWorkersResponse = Field(default_factory=DiagnosticsWorkersResponse)
+    prompt_cache: DiagnosticsPromptCacheResponse = Field(default_factory=DiagnosticsPromptCacheResponse)
+    task_runtime: DiagnosticsTaskRuntimeResponse = Field(default_factory=DiagnosticsTaskRuntimeResponse)
+    store_context: DiagnosticsStoreContextResponse = Field(default_factory=DiagnosticsStoreContextResponse)
+    active_jobs: DiagnosticsActiveJobsResponse = Field(default_factory=DiagnosticsActiveJobsResponse)
+
+
 # ── Batch Operations ──────────────────────────────────────────────────────────
 
 ALL_TARGET_FIELDS = ["meta_title", "meta_description", "name", "description", "description_en"]

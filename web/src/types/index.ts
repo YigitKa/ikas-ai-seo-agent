@@ -374,6 +374,143 @@ export interface TaskRecord {
   heartbeat_at: string | null;
 }
 
+export interface DiagnosticsCheck {
+  name: string;
+  status: string;
+  checked_at: string | null;
+  latency_ms: number | null;
+  error_code: string | null;
+  error_summary: string | null;
+  retryable: boolean | null;
+}
+
+export interface DiagnosticsIssue {
+  scope: string;
+  component: string;
+  reason_code: string;
+  summary: string;
+  target_id: string | null;
+  target_label: string | null;
+  recommended_action: string | null;
+}
+
+export interface DiagnosticsComponent {
+  status: string;
+  summary: string;
+  checked_at: string | null;
+  latency_ms: number | null;
+  error_code: string | null;
+  error_summary: string | null;
+  retryable: boolean | null;
+  reason_codes: string[];
+  recommended_actions: string[];
+  checks: DiagnosticsCheck[];
+}
+
+export interface DiagnosticsProvider extends DiagnosticsComponent {
+  provider: string;
+  configured_model: string;
+  message: string;
+}
+
+export interface DiagnosticsMcp extends DiagnosticsComponent {
+  has_token: boolean;
+  initialized: boolean;
+  tool_count: number;
+  tool_names: string[];
+}
+
+export interface DiagnosticsDatabase extends DiagnosticsComponent {
+  path: string;
+  journal_mode: string;
+  product_count: number;
+  suggestion_count: number;
+  task_count: number;
+  write_test_ok: boolean;
+}
+
+export interface DiagnosticsWorkers extends DiagnosticsComponent {
+  active_count: number;
+  waiting_count: number;
+  stuck_count: number;
+  latest_heartbeat_at: string | null;
+  last_crash_summary: string;
+}
+
+export interface DiagnosticsPromptCache extends DiagnosticsComponent {
+  prompt_dir: string;
+  total_templates: number;
+  loaded_templates: number;
+  missing_templates: string[];
+}
+
+export interface DiagnosticsCounts {
+  total: number;
+  processed: number;
+  succeeded: number;
+  skipped: number;
+  failed: number;
+  retried: number;
+  remaining: number;
+}
+
+export interface DiagnosticsTaskSummary {
+  id: string;
+  type: string;
+  status: string;
+  progress: number;
+  stage: string;
+  stage_label: string;
+  status_message: string;
+  heartbeat_at: string | null;
+  updated_at: string | null;
+  current_item: string | null;
+  stuck: boolean;
+  reason_code: string | null;
+  counts: DiagnosticsCounts;
+}
+
+export interface DiagnosticsTaskRuntime extends DiagnosticsComponent {
+  queued_count: number;
+  active_count: number;
+  waiting_count: number;
+  terminal_count: number;
+  failed_count: number;
+  stuck_count: number;
+  longest_running_task: DiagnosticsTaskSummary | null;
+  stuck_tasks: DiagnosticsTaskSummary[];
+}
+
+export interface DiagnosticsStoreContext extends DiagnosticsComponent {
+  store_name: string;
+  languages: string[];
+  dry_run: boolean;
+  product_count: number;
+  pending_suggestions: number;
+}
+
+export interface DiagnosticsActiveJobs extends DiagnosticsComponent {
+  total: number;
+  items: DiagnosticsTaskSummary[];
+}
+
+export interface DiagnosticsSummary {
+  overall_status: string;
+  generated_at: string;
+  reason_codes: string[];
+  recommended_actions: string[];
+  issues: DiagnosticsIssue[];
+  debug_report: string;
+  providers: DiagnosticsProvider;
+  mcp: DiagnosticsMcp;
+  database: DiagnosticsDatabase;
+  workers: DiagnosticsWorkers;
+  prompt_cache: DiagnosticsPromptCache;
+  task_runtime: DiagnosticsTaskRuntime;
+  store_context: DiagnosticsStoreContext;
+  active_jobs: DiagnosticsActiveJobs;
+}
+
 export interface LlmsStatus {
   job: LlmsJob | null;
   counts: {
