@@ -710,7 +710,7 @@ React/TypeScript SPA built with Vite. Communicates with the FastAPI backend via 
 
 ## Prompt Templates
 
-Prompt files live in `prompts/` and are loaded by `core/prompt_store.py`. They use `{{variable}}` syntax. Users can edit them at runtime via the Settings page in the UI, and changes are saved to disk. Missing files are auto-created from in-code defaults on first access.
+Prompt files live in `prompts/` and are loaded by `core/prompt_store.py`. They use `{{variable}}` syntax. Users can edit them at runtime via the Prompt Studio (`/prompts`) in the web UI, and changes are saved to disk. Missing files are auto-created from in-code defaults on first access.
 
 Available editable templates:
 - `description_rewrite.system.txt` / `.user.txt` — rewrites product descriptions (TR) for SEO
@@ -723,7 +723,7 @@ Available editable templates:
 
 The prompt system includes:
 - Per-prompt metadata (title, description, variables, height) in `PROMPT_EDITOR_META`
-- Editor groups shown in the Settings UI: "Aciklama", "Ceviri", "GEO Yeniden Yazim", "Alan Bazli Promptlar", etc.
+- Editor groups shown in Prompt Studio: "Aciklama", "Ceviri", "GEO Yeniden Yazim", "Alan Bazli Promptlar", etc.
 - **Per-field prompt architecture** — all product fields use editable file-based templates loaded via `load_prompt_template()`, sharing a common system prompt with individual user prompts per field
 - Agent template support for chat system prompts (`AGENT_SYSTEM_PROMPTS_TR`)
 - Validation of placeholder names before saving
@@ -844,4 +844,4 @@ websockets>=12.0
 - The desktop UI (`ui/` directory) has been removed; the project is now web-only
 - `GeoAuditor` makes real outbound HTTP requests to the target website — tests must mock `httpx.AsyncClient` or the `_fetch()` method
 - GEO audit `geo_rewrite.system.txt` / `geo_rewrite.user.txt` prompt files are auto-created on first use; they will not appear in `prompts/` until the app runs at least once or `ensure_prompt_files()` is called
-- `AGENT_SYSTEM_PROMPTS_TR` agent prompts in `prompt_store.py` are not user-editable via the Settings UI (only the product rewrite and translation prompts are exposed for editing)
+- `AGENT_SYSTEM_PROMPTS_TR` agent prompts in `prompt_store.py` are editable via Prompt Studio (under "Chat Ajanlari" and "Otonom Ajanlar" groups)
