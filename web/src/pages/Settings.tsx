@@ -373,7 +373,7 @@ export default function Settings() {
         <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-slate-800/80 bg-slate-950/65 p-6 shadow-2xl shadow-slate-950/40 backdrop-blur md:flex-row md:items-end md:justify-between">
           <div className="space-y-3">
             <Link to="/" className="inline-flex text-sm text-sky-300 transition hover:text-sky-200">
-              &larr; Dashboard
+              &larr; Komuta Merkezi
             </Link>
             <div>
               <h1 className="text-3xl font-semibold tracking-tight text-white">Ayar Merkezi</h1>

@@ -43,6 +43,8 @@ interface ChatMessagesProps {
   assistantLabel: string;
   liveContextLength: number | null;
   liveElapsedSeconds: number;
+  /** Override default starter prompts (e.g. store-level prompts on home page). */
+  starterPrompts?: StarterPrompt[];
   onStarterPrompt: (prompt: StarterPrompt) => void;
   onApplyOption: (option: SuggestionOption, index: number) => void;
   onRetry: () => void;
@@ -121,6 +123,7 @@ export function ChatMessages({
   assistantLabel,
   liveContextLength,
   liveElapsedSeconds,
+  starterPrompts: starterPromptsOverride,
   onStarterPrompt,
   onApplyOption,
   onRetry,
@@ -223,7 +226,7 @@ export function ChatMessages({
 
             {item.kind === 'starter' ? (
               <StarterStateCard
-                prompts={STARTER_PROMPTS}
+                prompts={starterPromptsOverride ?? STARTER_PROMPTS}
                 onPromptClick={onStarterPrompt}
                 disabled={isLoading}
               />

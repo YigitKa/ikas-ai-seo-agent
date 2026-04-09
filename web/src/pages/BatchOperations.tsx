@@ -292,7 +292,7 @@ export default function BatchOperations() {
             }}
           >
             <Link
-              to="/"
+              to="/workspace"
               className="inline-flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-[12px] font-medium transition-colors hover:bg-white/[0.05]"
               style={{
                 color: 'var(--color-text-secondary)',
@@ -311,7 +311,7 @@ export default function BatchOperations() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 9.75v9.75h13.5V9.75" />
                 </svg>
               </span>
-              <span>Dashboard</span>
+              <span>Calisma Alani</span>
             </Link>
             <span className="text-[11px]" style={{ color: 'var(--color-border)' }}>
               /
