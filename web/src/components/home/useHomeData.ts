@@ -13,7 +13,6 @@ import type {
   ReportSummary,
   ScoreDistributionBucket,
   BatchStats,
-  ProductListResponse,
 } from '../../types';
 
 export interface ActionCard {
@@ -31,7 +30,6 @@ function computeActions(
   summary: ReportSummary | undefined,
   distribution: ScoreDistributionBucket[] | undefined,
   batch: BatchStats | undefined,
-  lowProducts: ProductListResponse | undefined,
 ): ActionCard[] {
   const cards: ActionCard[] = [];
 
@@ -167,8 +165,8 @@ export function useHomeData() {
   });
 
   const actions = useMemo(
-    () => computeActions(summaryQ.data, distributionQ.data, batchQ.data, lowProductsQ.data),
-    [summaryQ.data, distributionQ.data, batchQ.data, lowProductsQ.data],
+    () => computeActions(summaryQ.data, distributionQ.data, batchQ.data),
+    [summaryQ.data, distributionQ.data, batchQ.data],
   );
 
   const isFirstUse =

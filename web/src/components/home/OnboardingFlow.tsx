@@ -23,29 +23,29 @@ interface Step {
 export default function OnboardingFlow({ settings, summary }: OnboardingFlowProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { toast } = useToast();
+  const toasts = useToast();
 
   const syncMutation = useMutation({
     mutationFn: syncProductsFromIkas,
     onSuccess: (data) => {
-      toast({ tone: 'success', message: `${data.fetched_count} urun senkronize edildi.` });
+      toasts.success(`${data.fetched_count} urun senkronize edildi.`);
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['report-summary'] });
     },
     onError: (err: Error) => {
-      toast({ tone: 'error', message: `Senkronizasyon basarisiz: ${err.message}` });
+      toasts.error(`Senkronizasyon basarisiz: ${err.message}`);
     },
   });
 
   const analyzeMutation = useMutation({
     mutationFn: analyzeAll,
     onSuccess: () => {
-      toast({ tone: 'success', message: 'Analiz tamamlandi.' });
+      toasts.success('Analiz tamamlandi.');
       queryClient.invalidateQueries({ queryKey: ['report-summary'] });
       queryClient.invalidateQueries({ queryKey: ['score-distribution'] });
     },
     onError: (err: Error) => {
-      toast({ tone: 'error', message: `Analiz basarisiz: ${err.message}` });
+      toasts.error(`Analiz basarisiz: ${err.message}`);
     },
   });
 

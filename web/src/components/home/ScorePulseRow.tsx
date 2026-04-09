@@ -46,7 +46,7 @@ export default function ScorePulseRow({ summary, trends, isLoading }: ScorePulse
       {PILLARS.map((pillar, idx) => {
         const score = Math.round(summary?.latest_avg?.[pillar.key] ?? 0);
         const delta = summary?.improvement?.[pillar.key] ?? 0;
-        const trendData = trends?.map((t) => (t as Record<string, number>)[pillar.trendKey] ?? 0) ?? [];
+        const trendData = trends?.map((t) => (t as unknown as Record<string, number>)[pillar.trendKey] ?? 0) ?? [];
         const color = getScoreColor(score);
 
         return (
