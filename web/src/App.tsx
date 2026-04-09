@@ -4,10 +4,12 @@ import { Suspense, lazy } from 'react';
 import ErrorBoundary from './shared/ui/ErrorBoundary';
 import { ToastProvider } from './shared/ui/Toast';
 
+const HomePage = lazy(() => import('./pages/HomePage'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Settings = lazy(() => import('./pages/settings/SettingsPage'));
 const LlmsLab = lazy(() => import('./pages/LlmsLab'));
 const BatchOperations = lazy(() => import('./pages/BatchOperations'));
+const Diagnostics = lazy(() => import('./pages/Diagnostics'));
 const PromptEditor = lazy(() => import('./pages/prompts/PromptEditorPage'));
 const SkillStudio = lazy(() => import('./pages/skills/SkillStudioPage'));
 const Reports = lazy(() => import('./pages/Reports'));
@@ -36,8 +38,10 @@ export default function App() {
             }
           >
             <Routes>
-              <Route path="/" element={<Dashboard />} />
+              <Route path="/" element={<HomePage />} />
+              <Route path="/workspace" element={<Dashboard />} />
               <Route path="/llms" element={<LlmsLab />} />
+              <Route path="/diagnostics" element={<Diagnostics />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/batch" element={<BatchOperations />} />
               <Route path="/prompts" element={<PromptEditor />} />

@@ -28,6 +28,8 @@ interface Props {
   score?: SeoScore | null;
   productDetailUrl?: string;
   requestedSkillSlug?: string;
+  /** Override default starter prompts (e.g. store-level prompts on home page). */
+  starterPrompts?: { label: string; template: string }[];
   /** Called whenever the chat loading state changes (e.g. for a parent switch-guard). */
   onLoadingChange?: (isLoading: boolean) => void;
 }
@@ -49,6 +51,7 @@ export default function ChatPanel({
   score,
   productDetailUrl,
   requestedSkillSlug,
+  starterPrompts: starterPromptsOverride,
   onLoadingChange,
 }: Props) {
   const queryClient = useQueryClient();
@@ -282,6 +285,7 @@ export default function ChatPanel({
         assistantLabel={assistantLabel}
         liveContextLength={liveContextLength}
         liveElapsedSeconds={liveElapsedSeconds}
+        starterPrompts={starterPromptsOverride}
         onStarterPrompt={handleStarterPrompt}
         onApplyOption={handleApplySuggestionOption}
         onRetry={retryLastMessage}

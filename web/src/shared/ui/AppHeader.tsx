@@ -12,9 +12,11 @@ function classNames(...classes: Array<string | false | null | undefined>) {
 }
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', icon: 'M3 10.5L12 3l9 7.5M5.25 9.75v9.75h13.5V9.75' },
+  { to: '/', label: 'Komuta Merkezi', icon: 'M3 10.5L12 3l9 7.5M5.25 9.75v9.75h13.5V9.75' },
+  { to: '/workspace', label: 'Calisma Alani', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
   { to: '/reports', label: 'Raporlar', icon: 'M5 12h3m4-6h3m4 12h3M7 6v12m7-6v6m7-12v12' },
   { to: '/batch', label: 'Toplu Islem', icon: 'M4 6h16M4 12h16M4 18h16' },
+  { to: '/diagnostics', label: 'Diagnostics', icon: 'M9 12l2 2 4-4m5-2a9 9 0 11-18 0 9 9 0 0118 0z' },
   { to: '/llms', label: 'llms Studio', icon: 'M4 7h16M4 12h10M4 17h7' },
   { to: '/prompts', label: 'Prompt Studio', icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
   { to: '/skills', label: 'Skill Studio', icon: 'M12 6V4m0 2a4 4 0 100 8m0-8a4 4 0 110 8m0 0v2m0-2c-3.314 0-6 1.343-6 3v1h12v-1c0-1.657-2.686-3-6-3z' },

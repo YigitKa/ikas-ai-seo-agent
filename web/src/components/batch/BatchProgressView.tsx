@@ -42,6 +42,18 @@ function formatEventTime(value?: string | null): string {
   });
 }
 
+function formatEta(seconds?: number | null): string {
+  if (seconds === null || seconds === undefined) return 'Tahmin yok';
+  if (seconds <= 0) return 'Tamamlandi';
+  if (seconds < 60) return `${seconds} sn`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes < 60) return `${minutes} dk ${remainingSeconds} sn`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return `${hours} sa ${remainingMinutes} dk`;
+}
+
 function InfoCard({
   label,
   value,
@@ -166,6 +178,7 @@ export default function BatchProgressView({ job, onStop, onJobComplete }: Props)
           { label: 'Basarili', value: counts.succeeded },
           { label: 'Atlanan', value: counts.skipped },
           { label: 'Hatali', value: counts.failed },
+          { label: 'ETA', value: formatEta(feedback.eta_seconds) },
         ]}
         action={isRunning ? (
           <button
@@ -235,7 +248,7 @@ export default function BatchProgressView({ job, onStop, onJobComplete }: Props)
           <InfoCard
             label="Son Olay"
             value={feedback.latest_event?.message || 'Bekleniyor'}
-            sub={feedback.latest_event ? formatEventTime(feedback.latest_event.at) : null}
+            sub={feedback.latest_event ? `${formatEventTime(feedback.latest_event.at)} · ETA ${formatEta(feedback.eta_seconds)}` : `ETA ${formatEta(feedback.eta_seconds)}`}
           />
         </div>
 
