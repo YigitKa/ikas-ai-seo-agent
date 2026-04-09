@@ -12,7 +12,7 @@ export default function ActionRadarSection({ actions }: ActionRadarSectionProps)
   if (actions.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="flex flex-col gap-3">
       {actions.map((card, idx) => (
         <div
           key={card.id}
@@ -51,12 +51,12 @@ export default function ActionRadarSection({ actions }: ActionRadarSectionProps)
             </div>
             <div className="min-w-0 flex-1">
               <h3
-                className="text-[13px] font-semibold leading-tight"
+                className="text-[15px] font-semibold leading-tight"
                 style={{ color: 'var(--color-text-primary)' }}
               >
                 {card.title}
               </h3>
-              <p className="mt-1 text-[11px] leading-4" style={{ color: 'var(--color-text-secondary)' }}>
+              <p className="mt-1 text-[13px] leading-5" style={{ color: 'var(--color-text-secondary)' }}>
                 {card.description}
               </p>
             </div>

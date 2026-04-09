@@ -1,4 +1,5 @@
 from typing import Optional
+from datetime import datetime
 
 import pytest
 
@@ -51,6 +52,19 @@ def test_stream_chat_message_returns_chat_stream_directly():
 
     assert result is manager._chat.stream
     assert manager._chat.calls == ["merhaba"]
+
+
+def test_estimate_batch_eta_seconds_handles_naive_started_at():
+    manager = ProductManager.__new__(ProductManager)
+
+    eta = manager._estimate_batch_eta_seconds(
+        started_at=datetime.now(),
+        summary_counts={"processed": 1, "remaining": 2},
+        stage="analyzing",
+    )
+
+    assert isinstance(eta, int)
+    assert eta >= 1
 
 
 def _use_temp_skills(monkeypatch, tmp_path) -> None:

@@ -1365,6 +1365,14 @@ class ProductManager:
     def _batch_feedback_now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
 
+    @staticmethod
+    def _normalize_batch_datetime(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
     def _build_batch_summary_counts(
         self,
         *,
@@ -1476,7 +1484,10 @@ class ProductManager:
         remaining = int(summary_counts.get("remaining") or 0)
         if processed <= 0 or remaining <= 0:
             return None
-        elapsed_seconds = max((datetime.now(timezone.utc) - started_at).total_seconds(), 1.0)
+        normalized_started_at = self._normalize_batch_datetime(started_at)
+        if normalized_started_at is None:
+            return None
+        elapsed_seconds = max((datetime.now(timezone.utc) - normalized_started_at).total_seconds(), 1.0)
         seconds_per_item = elapsed_seconds / processed
         return max(int(seconds_per_item * remaining), 1)
 
@@ -1572,6 +1583,36 @@ class ProductManager:
         else:
             payload["stage"] = "analysis"
         await db.update_task(job_id, payload=payload, touch_heartbeat=True)
+
+    async def mark_batch_job_failed(
+        self,
+        job_id: str,
+        *,
+        error: str,
+        status_message: str,
+        event_message: str,
+    ) -> None:
+        await db.update_batch_job(job_id, status="failed", error=error)
+        job = await db.get_batch_job(job_id)
+        if job is None:
+            return
+
+        summary_counts = self._build_batch_summary_counts(
+            total=int(job.get("total_count") or 0),
+            succeeded=int(job.get("processed_count") or 0),
+            skipped=int(job.get("skipped_count") or 0),
+            failed=int(job.get("failed_count") or 0),
+        )
+        await self._update_batch_feedback(
+            job_id,
+            stage="failed",
+            status_message=status_message,
+            summary_counts=summary_counts,
+            current_item=None,
+            warning_count=summary_counts["skipped"] + summary_counts["failed"],
+            event_type="operation_failed",
+            event_message=event_message,
+        )
 
     async def run_analysis(self, job_id: str, product_ids: list[str], config: Any) -> None:
         """

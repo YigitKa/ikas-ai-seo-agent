@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ScoreDistributionBucket } from '../../types';
 
 const BUCKET_COLORS: Record<string, string> = {
@@ -19,6 +19,12 @@ interface ScoreDistributionBarProps {
 
 export default function ScoreDistributionBar({ distribution, isLoading }: ScoreDistributionBarProps) {
   const [hoveredBucket, setHoveredBucket] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    let r1: number, r2: number;
+    r1 = requestAnimationFrame(() => { r2 = requestAnimationFrame(() => setMounted(true)); });
+    return () => { cancelAnimationFrame(r1); cancelAnimationFrame(r2); };
+  }, []);
 
   if (isLoading) {
     return <div className="enterprise-surface animate-pulse rounded-2xl" style={{ height: 72 }} />;
@@ -41,10 +47,10 @@ export default function ScoreDistributionBar({ distribution, isLoading }: ScoreD
       }}
     >
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-text-secondary)' }}>
+        <span className="text-[13px] font-semibold uppercase tracking-widest" style={{ color: 'var(--color-text-secondary)' }}>
           Katalog Skor Dagilimi
         </span>
-        <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+        <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
           {total} urun
         </span>
       </div>
@@ -58,12 +64,13 @@ export default function ScoreDistributionBar({ distribution, isLoading }: ScoreD
           return (
             <div
               key={b.bucket}
-              className="relative transition-all duration-300"
+              className="relative"
               style={{
-                width: `${pct}%`,
+                width: mounted ? `${pct}%` : '0%',
                 background: BUCKET_COLORS[b.bucket],
                 opacity: hoveredBucket && !isHovered ? 0.4 : 0.85,
                 transform: isHovered ? 'scaleY(1.15)' : 'scaleY(1)',
+                transition: 'width 1s cubic-bezier(0.4,0,0.2,1), opacity 0.3s, transform 0.3s',
               }}
               onMouseEnter={() => setHoveredBucket(b.bucket)}
               onMouseLeave={() => setHoveredBucket(null)}
@@ -94,7 +101,7 @@ export default function ScoreDistributionBar({ distribution, isLoading }: ScoreD
               className="inline-block h-2 w-2 rounded-full"
               style={{ background: BUCKET_COLORS[b.bucket] }}
             />
-            <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+            <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
               {b.bucket}: {b.count}
             </span>
           </div>

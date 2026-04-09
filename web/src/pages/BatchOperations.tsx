@@ -88,7 +88,7 @@ export default function BatchOperations() {
     if (st === 'analyzing') setView('analyzing');
     else if (st === 'analyzed') setView('review');
     else if (st === 'running') setView('running');
-    else if (st === 'completed' || st === 'failed' || st === 'cancelled') setView('detail');
+    else if (st === 'completed' || st === 'completed_with_errors' || st === 'failed' || st === 'cancelled') setView('detail');
   }, [activeJob?.status]);
 
   // ── Mutations ──────────────────────────────────────────────────────────────
@@ -424,7 +424,7 @@ export default function BatchOperations() {
                       const st = aj.status;
                       if (st === 'analyzed') setView('review');
                       else if (st === 'running') setView('running');
-                      else if (st === 'completed' || st === 'failed' || st === 'cancelled') setView('detail');
+                      else if (st === 'completed' || st === 'completed_with_errors' || st === 'failed' || st === 'cancelled') setView('detail');
                       else setView('analyzing');
                     }}
                     className="rounded-lg px-3 py-1 text-[12px] font-medium"

@@ -52,7 +52,7 @@ export default function ScorePulseRow({ summary, trends, isLoading }: ScorePulse
         return (
           <div
             key={pillar.key}
-            className="enterprise-surface rounded-2xl p-4 transition-all duration-200 hover:-translate-y-0.5"
+            className="enterprise-surface rounded-2xl px-4 py-3.5 transition-all duration-200 hover:-translate-y-0.5"
             style={{
               background: 'linear-gradient(160deg, rgba(15,23,42,0.88), rgba(30,41,59,0.62))',
               border: '1px solid rgba(148,163,184,0.14)',
@@ -60,21 +60,21 @@ export default function ScorePulseRow({ summary, trends, isLoading }: ScorePulse
           >
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-widest" style={{ color }}>
+                <div className="text-[16px] font-bold uppercase tracking-widest" style={{ color }}>
                   {pillar.label}
                 </div>
-                <div className="mt-0.5 text-[10px] leading-4" style={{ color: 'var(--color-text-muted)' }}>
+                <div className="mt-0.5 text-[13px] leading-5" style={{ color: 'var(--color-text-muted)' }}>
                   {pillar.description}
                 </div>
               </div>
-              <CircularScore score={score} size={68} animated delay={300 + idx * 150} />
+              <CircularScore score={score} size={84} animated delay={300 + idx * 150} />
             </div>
 
-            <div className="mt-3 flex items-center justify-between">
-              <TrendSparkline data={trendData} color={color} width={90} height={24} />
+            <div className="mt-2.5 flex items-center justify-between">
+              <TrendSparkline data={trendData} color={color} width={110} height={28} />
               {delta !== 0 && (
                 <span
-                  className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+                  className="rounded-full px-2.5 py-1 text-[12px] font-bold"
                   style={{
                     background: delta > 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
                     color: delta > 0 ? '#34d399' : '#f87171',

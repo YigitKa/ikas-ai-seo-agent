@@ -151,7 +151,7 @@ export function useHomeData() {
 
   const lowProductsQ = useQuery({
     queryKey: ['products-low-score'],
-    queryFn: () => fetchProducts(1, 6, 'all', { sort_by: 'total_score', sort_dir: 'asc' }),
+    queryFn: () => fetchProducts(1, 10, 'all', { sort_by: 'total_score', sort_dir: 'asc', score_threshold: 69 }),
   });
 
   const activityQ = useQuery({

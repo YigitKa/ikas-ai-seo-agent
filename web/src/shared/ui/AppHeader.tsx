@@ -210,8 +210,9 @@ export default function AppHeader({
     >
       <div className={wrapperClassName}>
         <div className="flex flex-col gap-2 py-2.5">
-          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+          {/* ── Nav row — always identical across all pages ── */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-shrink-0 items-center gap-2.5">
               <BrandMark />
 
               <div
@@ -231,65 +232,9 @@ export default function AppHeader({
                   onClick={() => navigate(1)}
                 />
               </div>
-
-              {breadcrumbs.length > 0 && (
-                <nav className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
-                  {breadcrumbs.map((item, index) => {
-                    const isCurrent = index === breadcrumbs.length - 1;
-
-                    return (
-                      <div
-                        key={`${item.label}-${index}`}
-                        className="flex min-w-0 items-center gap-1.5"
-                      >
-                        {item.to ? (
-                          <Link
-                            to={item.to}
-                            className="rounded-lg px-2 py-1 transition-colors duration-200 hover:bg-white/[0.04]"
-                            style={{
-                              color: isCurrent
-                                ? 'var(--color-text-primary)'
-                                : 'var(--color-text-secondary)',
-                            }}
-                          >
-                            {item.label}
-                          </Link>
-                        ) : item.onClick && !isCurrent ? (
-                          <button
-                            type="button"
-                            onClick={item.onClick}
-                            className="rounded-lg px-2 py-1 transition-colors duration-200 hover:bg-white/[0.04]"
-                            style={{ color: 'var(--color-text-secondary)' }}
-                          >
-                            {item.label}
-                          </button>
-                        ) : (
-                          <span
-                            className={classNames(
-                              'rounded-lg px-2 py-1',
-                              isCurrent && 'font-medium',
-                            )}
-                            style={{
-                              color: isCurrent
-                                ? 'var(--color-text-primary)'
-                                : 'var(--color-text-secondary)',
-                            }}
-                          >
-                            {item.label}
-                          </span>
-                        )}
-
-                        {!isCurrent && (
-                          <span style={{ color: 'var(--color-text-muted)' }}>/</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </nav>
-              )}
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex flex-shrink-0 items-center gap-2">
               {NAV_ITEMS.map((item) => (
                 <Link key={item.to} to={item.to}>
                   <EnterpriseNavButton active={isRouteActive(location.pathname, item.to)}>
@@ -319,6 +264,45 @@ export default function AppHeader({
               </span>
             </div>
           </div>
+
+          {/* ── Breadcrumbs row — shown independently of panel ── */}
+          {breadcrumbs.length > 0 && (
+            <nav className="flex flex-wrap items-center gap-1 px-1 text-[11px]">
+              {breadcrumbs.map((item, index) => {
+                const isCurrent = index === breadcrumbs.length - 1;
+                return (
+                  <div key={`${item.label}-${index}`} className="flex items-center gap-1.5">
+                    {item.to ? (
+                      <Link
+                        to={item.to}
+                        className="rounded-lg px-2 py-0.5 transition-colors hover:bg-white/[0.04]"
+                        style={{ color: isCurrent ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}
+                      >
+                        {item.label}
+                      </Link>
+                    ) : item.onClick && !isCurrent ? (
+                      <button
+                        type="button"
+                        onClick={item.onClick}
+                        className="rounded-lg px-2 py-0.5 transition-colors hover:bg-white/[0.04]"
+                        style={{ color: 'var(--color-text-secondary)' }}
+                      >
+                        {item.label}
+                      </button>
+                    ) : (
+                      <span
+                        className={classNames('rounded-lg px-2 py-0.5', isCurrent && 'font-medium')}
+                        style={{ color: isCurrent ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}
+                      >
+                        {item.label}
+                      </span>
+                    )}
+                    {!isCurrent && <span style={{ color: 'var(--color-text-muted)' }}>/</span>}
+                  </div>
+                );
+              })}
+            </nav>
+          )}
 
           {showPanel ? (
             <div

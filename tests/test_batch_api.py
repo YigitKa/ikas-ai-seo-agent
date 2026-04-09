@@ -178,6 +178,56 @@ def test_get_batch_job_existing(tmp_path):
     assert body["job"]["feedback"]["summary_counts"]["total"] == 0
 
 
+def test_get_batch_job_failed_overrides_stale_analyzing_feedback(tmp_path):
+    _setup_api_db(tmp_path, "b_failed_stage.db")
+    asyncio.run(db_mod.create_batch_job(
+        "failed-job",
+        json.dumps({"skill_slug": "seo_basic"}),
+        task_payload={"config": {}, "product_ids": ["p1", "p2"], "stage": "analysis"},
+    ))
+    asyncio.run(db_mod.patch_task_payload(
+        "failed-job",
+        {
+            "feedback": {
+                "stage": "analyzing",
+                "stage_label": "Analiz",
+                "status_message": "Urunler analiz ediliyor.",
+                "sequence": 1,
+                "summary_counts": {
+                    "total": 2,
+                    "processed": 1,
+                    "succeeded": 1,
+                    "skipped": 0,
+                    "failed": 0,
+                    "retried": 0,
+                    "remaining": 1,
+                },
+            },
+        },
+    ))
+    asyncio.run(db_mod.update_batch_job(
+        "failed-job",
+        status="failed",
+        error="boom",
+        total_count=2,
+        processed_count=1,
+    ))
+
+    _override_manager()
+    client = TestClient(app)
+    try:
+        resp = client.get("/api/batch/jobs/failed-job")
+    finally:
+        _clear()
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["job"]["status"] == "failed"
+    assert body["job"]["feedback"]["stage"] == "failed"
+    assert body["job"]["feedback"]["stage_label"] == "Hata"
+    assert body["job"]["feedback"]["status_message"] == "Islem hata ile sonlandi."
+
+
 # ── /api/batch/jobs/{job_id} DELETE ──────────────────────────────────────────
 
 def test_delete_batch_job_not_found_returns_400(tmp_path):

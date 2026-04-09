@@ -55,6 +55,7 @@ BATCH_STAGE_MESSAGES = {
 }
 
 TERMINAL_BATCH_STATUSES = {"analyzed", "completed", "completed_with_errors", "failed", "cancelled"}
+TERMINAL_FEEDBACK_STAGES = {"awaiting_review", "completed", "completed_with_errors", "failed", "cancelled"}
 
 
 def _build_summary_counts(job: dict) -> dict[str, int]:
@@ -122,6 +123,18 @@ def _default_next_action_hints(stage: str, job_status: str) -> list[str]:
     return []
 
 
+def _resolve_feedback_stage(job_status: str, task_stage: str, raw_stage: str) -> str:
+    fallback_stage = _default_feedback_stage(job_status, task_stage)
+    stage = str(raw_stage or "").strip()
+    if not stage:
+        return fallback_stage
+    if job_status in {"failed", "cancelled", "completed", "completed_with_errors"}:
+        return fallback_stage
+    if job_status == "analyzed" and stage not in TERMINAL_FEEDBACK_STAGES:
+        return fallback_stage
+    return stage
+
+
 def _normalize_feedback_item(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
@@ -158,7 +171,9 @@ def _build_feedback(job: dict, task: Any | None) -> dict[str, Any]:
     payload = dict(task.payload) if task is not None else {}
     raw_feedback = payload.get("feedback") if isinstance(payload.get("feedback"), dict) else {}
     task_stage = str(payload.get("stage") or "")
-    stage = str(raw_feedback.get("stage") or _default_feedback_stage(str(job.get("status") or ""), task_stage))
+    job_status = str(job.get("status") or "")
+    raw_stage = str(raw_feedback.get("stage") or "")
+    stage = _resolve_feedback_stage(job_status, task_stage, raw_stage)
     summary_counts = _build_summary_counts(job)
     raw_counts = raw_feedback.get("summary_counts") if isinstance(raw_feedback.get("summary_counts"), dict) else {}
     summary_counts["retried"] = int(raw_counts.get("retried") or 0)
@@ -173,6 +188,9 @@ def _build_feedback(job: dict, task: Any | None) -> dict[str, Any]:
     ]
     heartbeat_at = task.heartbeat_at.isoformat() if task and task.heartbeat_at else None
     last_event_at = raw_feedback.get("last_event_at") or heartbeat_at or job.get("updated_at")
+    status_message = str(raw_feedback.get("status_message") or "")
+    if stage != raw_stage:
+        status_message = BATCH_STAGE_MESSAGES.get(stage, status_message)
     if latest_event is None and recent_events:
         latest_event = recent_events[0]
     if latest_event is None and last_event_at:
@@ -181,7 +199,7 @@ def _build_feedback(job: dict, task: Any | None) -> dict[str, Any]:
             "type": "status",
             "stage": stage,
             "label": BATCH_STAGE_LABELS.get(stage, stage),
-            "message": str(raw_feedback.get("status_message") or BATCH_STAGE_MESSAGES.get(stage, "")),
+            "message": status_message or BATCH_STAGE_MESSAGES.get(stage, ""),
             "at": last_event_at,
             "product_id": None,
             "product_name": None,
@@ -190,10 +208,28 @@ def _build_feedback(job: dict, task: Any | None) -> dict[str, Any]:
             "user_message": None,
             "retryable": None,
         }
+    elif latest_event is not None and stage != str(latest_event.get("stage") or "") and last_event_at:
+        latest_event = {
+            "sequence": max(sequence, int(latest_event.get("sequence") or 0)),
+            "type": "status",
+            "stage": stage,
+            "label": BATCH_STAGE_LABELS.get(stage, stage),
+            "message": status_message or BATCH_STAGE_MESSAGES.get(stage, ""),
+            "at": last_event_at,
+            "product_id": None,
+            "product_name": None,
+            "item_status": None,
+            "reason_code": None,
+            "user_message": None,
+            "retryable": None,
+        }
+    stage_label = str(raw_feedback.get("stage_label") or BATCH_STAGE_LABELS.get(stage, stage))
+    if stage != raw_stage:
+        stage_label = BATCH_STAGE_LABELS.get(stage, stage)
     return {
         "stage": stage,
-        "stage_label": str(raw_feedback.get("stage_label") or BATCH_STAGE_LABELS.get(stage, stage)),
-        "status_message": str(raw_feedback.get("status_message") or BATCH_STAGE_MESSAGES.get(stage, "")),
+        "stage_label": stage_label,
+        "status_message": status_message or BATCH_STAGE_MESSAGES.get(stage, ""),
         "sequence": sequence,
         "warning_count": int(raw_feedback.get("warning_count") or (summary_counts["skipped"] + summary_counts["failed"])),
         "eta_seconds": raw_feedback.get("eta_seconds"),
@@ -205,7 +241,11 @@ def _build_feedback(job: dict, task: Any | None) -> dict[str, Any]:
         "last_completed_item": last_completed_item,
         "latest_event": latest_event,
         "recent_events": recent_events,
-        "next_action_hints": list(raw_feedback.get("next_action_hints") or _default_next_action_hints(stage, str(job.get("status") or ""))),
+        "next_action_hints": list(
+            raw_feedback.get("next_action_hints")
+            if stage == raw_stage and raw_feedback.get("next_action_hints")
+            else _default_next_action_hints(stage, job_status)
+        ),
     }
 
 

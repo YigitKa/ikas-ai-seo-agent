@@ -178,15 +178,31 @@ export default function BatchJobDetail({ job, items, onRollbackItem, onRollbackA
 
   const feedback = job.feedback;
   const hasAnyRollback = items.some((i) => i.has_rollback);
+  const hasAppliedChanges = items.some((i) => i.status === 'applied' || i.status === 'rolled_back');
   const appliedCount = items.filter((i) => i.status === 'applied' || i.status === 'approved').length;
   const avgBefore = job.avg_score_before;
   const avgAfter = job.avg_score_after;
-  const avgDelta = avgAfter - avgBefore;
+  const hasScoreSignal = avgBefore > 0 || avgAfter > 0;
+  const avgDelta = hasScoreSignal ? avgAfter - avgBefore : null;
+  const projectedScore = !hasAppliedChanges;
   const resumable = job.status === 'failed' || job.status === 'cancelled';
   const lastProcessed = feedback.last_completed_item;
-  const lastError = feedback.recent_events.find((event) => event.type === 'item_failed') ?? null;
+  const lastError = feedback.recent_events.find((event) => event.type === 'item_failed' || event.type === 'operation_failed') ?? null;
   const lastSkipped = feedback.recent_events.find((event) => event.type === 'item_skipped') ?? null;
   const recentEvents = feedback.recent_events.slice(0, 6);
+  const successLabel = hasAppliedChanges
+    ? 'Uygulanan Urun'
+    : feedback.stage === 'awaiting_review' || job.status === 'analyzed' || feedback.stage === 'analyzing'
+      ? 'Analiz Edilen Urun'
+      : 'Islenen Urun';
+  const scoreLabel = projectedScore ? 'Tahmini Skor Degisimi' : 'Ort. Skor Degisimi';
+  const scoreSub = projectedScore
+    ? (job.status === 'failed'
+      ? 'Islem uygulanmadan durdu; skor farki analiz tahminidir.'
+      : 'Skor farki analiz sonucundan hesaplandi.')
+    : (job.completed_at ? `Tamamlanma ${formatDate(job.completed_at)}` : 'Islem tamamlanmadi');
+  const scoreColumnLabel = projectedScore ? 'Tahmini Skor' : 'Skor Degisimi';
+  const lastProcessedLabel = projectedScore ? 'Son Analiz Edilen Urun' : 'Son Islenen Urun';
 
   const filterCounts: Record<ItemFilter, number> = {
     all: items.length,
@@ -250,14 +266,14 @@ export default function BatchJobDetail({ job, items, onRollbackItem, onRollbackA
           sub={feedback.status_message || null}
         />
         <SummaryCard
-          label="Son Islenen Urun"
+          label={lastProcessedLabel}
           value={lastProcessed?.product_name || 'Henuz yok'}
           sub={lastProcessed?.user_message || null}
         />
         <SummaryCard
           label="Son Hata"
-          value={lastError?.product_name || 'Hata yok'}
-          sub={lastError?.user_message || lastError?.reason_code || null}
+          value={lastError?.product_name || (lastError ? 'Is Hatasi' : 'Hata yok')}
+          sub={lastError?.user_message || lastError?.reason_code || job.error || null}
           highlight={lastError ? '#ef4444' : undefined}
         />
         <SummaryCard
@@ -273,15 +289,32 @@ export default function BatchJobDetail({ job, items, onRollbackItem, onRollbackA
         />
       </div>
 
+      {job.error && (
+        <div
+          className="rounded-xl p-4"
+          style={{
+            background: 'rgba(239,68,68,0.08)',
+            border: '1px solid rgba(239,68,68,0.22)',
+          }}
+        >
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: '#fca5a5' }}>
+            Is Hatasi
+          </p>
+          <p className="mt-2 text-[12px]" style={{ color: '#fecaca' }}>
+            {job.error}
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-4 gap-4">
-        <SummaryCard label="Basarili Urun" value={`${feedback.summary_counts.succeeded}`} />
+        <SummaryCard label={successLabel} value={`${feedback.summary_counts.succeeded}`} />
         <SummaryCard label="Atlanan Urun" value={`${feedback.summary_counts.skipped}`} sub={lastSkipped?.user_message || 'Son atlama nedeni burada gorunur'} />
-        <SummaryCard label="Hatali Urun" value={`${feedback.summary_counts.failed}`} sub={lastError?.user_message || 'Son hata burada gorunur'} highlight={feedback.summary_counts.failed > 0 ? '#ef4444' : undefined} />
+        <SummaryCard label="Hatali Urun" value={`${feedback.summary_counts.failed}`} sub={lastError?.user_message || job.error || 'Son hata burada gorunur'} highlight={feedback.summary_counts.failed > 0 || job.status === 'failed' ? '#ef4444' : undefined} />
         <SummaryCard
-          label="Ort. Skor Degisimi"
-          value={avgDelta > 0 ? `+${avgDelta.toFixed(1)}` : avgDelta.toFixed(1)}
-          sub={job.completed_at ? `Tamamlanma ${formatDate(job.completed_at)}` : 'Islem tamamlanmadi'}
-          highlight={avgDelta > 0 ? '#22c55e' : undefined}
+          label={scoreLabel}
+          value={avgDelta === null ? '-' : avgDelta > 0 ? `+${avgDelta.toFixed(1)}` : avgDelta.toFixed(1)}
+          sub={scoreSub}
+          highlight={avgDelta !== null && !projectedScore && avgDelta > 0 ? '#22c55e' : undefined}
         />
       </div>
 
@@ -424,7 +457,7 @@ export default function BatchJobDetail({ job, items, onRollbackItem, onRollbackA
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-                {['Urun Adi', 'Skor Degisimi', 'Durum', 'Gerekce', 'Eylem'].map((col) => (
+                {['Urun Adi', scoreColumnLabel, 'Durum', 'Gerekce', 'Eylem'].map((col) => (
                   <th
                     key={col}
                     className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider"

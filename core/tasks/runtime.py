@@ -6,7 +6,6 @@ from typing import Any
 
 from core.permissions import PermissionRule
 from core.product_manager import ProductManager
-from data import db
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +20,12 @@ async def run_batch_analysis(
         await manager.run_analysis(job_id, product_ids, config)
     except Exception as exc:
         logger.exception("Analysis failed for job %s", job_id)
-        await db.update_batch_job(job_id, status="failed", error=str(exc))
+        await manager.mark_batch_job_failed(
+            job_id,
+            error=str(exc),
+            status_message="Toplu analiz beklenmeyen bir hata nedeniyle durdu.",
+            event_message="Toplu analiz hata ile sonlandi.",
+        )
 
 
 def launch_batch_analysis(
@@ -43,7 +47,12 @@ async def run_batch_apply(
         await manager.apply_batch_job(job_id, config, permission_rules=permission_rules)
     except Exception as exc:
         logger.exception("Batch apply %s failed", job_id)
-        await db.update_batch_job(job_id, status="failed", error=str(exc))
+        await manager.mark_batch_job_failed(
+            job_id,
+            error=str(exc),
+            status_message="Toplu uygulama beklenmeyen bir hata nedeniyle durdu.",
+            event_message="Toplu uygulama hata ile sonlandi.",
+        )
 
 
 def launch_batch_apply(

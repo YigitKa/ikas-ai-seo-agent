@@ -1,15 +1,15 @@
 import type { BatchJob } from '../../types';
 
 const STATUS_LABELS: Record<string, string> = {
-  idle: 'Boşta',
+  idle: 'Bosta',
   analyzing: 'Analiz Ediliyor',
-  analyzed: 'Analiz Tamamlandı',
-  running: 'Çalışıyor',
-  paused: 'Duraklatıldı',
-  completed: 'Tamamlandı',
-  completed_with_errors: 'Kısmi Tamamlandı',
+  analyzed: 'Analiz Tamamlandi',
+  running: 'Calisiyor',
+  paused: 'Duraklatildi',
+  completed: 'Tamamlandi',
+  completed_with_errors: 'Kismi Tamamlandi',
   failed: 'Hata',
-  cancelled: 'İptal',
+  cancelled: 'Iptal',
 };
 
 const STATUS_BG: Record<string, string> = {
@@ -51,15 +51,24 @@ function formatDate(iso: string): string {
   });
 }
 
-function ScoreDelta({ before, after }: { before: number; after: number }) {
-  if (!before && !after) return <span style={{ color: 'var(--color-text-muted)' }}>—</span>;
+function ScoreDelta({
+  before,
+  after,
+  projected = false,
+}: {
+  before: number;
+  after: number;
+  projected?: boolean;
+}) {
+  if (!before && !after) return <span style={{ color: 'var(--color-text-muted)' }}>-</span>;
   const delta = after - before;
   return (
     <span
       className="font-semibold tabular-nums"
       style={{ color: delta > 0 ? '#22c55e' : delta < 0 ? '#ef4444' : 'var(--color-text-muted)' }}
     >
-      {before.toFixed(0)} → {after.toFixed(0)}
+      {projected && <span style={{ color: 'var(--color-text-muted)' }}>Tahmini </span>}
+      {before.toFixed(0)} {'->'} {after.toFixed(0)}
       {delta !== 0 && (
         <span className="ml-1 text-[10px]">
           ({delta > 0 ? '+' : ''}{delta.toFixed(1)})
@@ -83,13 +92,13 @@ export default function BatchHistory({ jobs, onSelect, onDelete }: Props) {
           className="text-[13px] font-semibold uppercase tracking-wider"
           style={{ color: 'var(--color-text-muted)' }}
         >
-          İşlem Geçmişi
+          Islem Gecmisi
         </h3>
       </div>
 
       {jobs.length === 0 ? (
         <div className="px-4 py-8 text-center text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-          Henüz işlem yapılmadı.
+          Henuz islem yapilmadi.
         </div>
       ) : (
         <div className="divide-y" style={{ borderColor: 'var(--color-border)' }}>
@@ -114,10 +123,14 @@ export default function BatchHistory({ jobs, onSelect, onDelete }: Props) {
                   </span>
                 </div>
                 <div className="mt-1 flex items-center gap-3 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                  <span>{job.processed_count} işlendi</span>
-                  {job.skipped_count > 0 && <span>{job.skipped_count} atlandı</span>}
+                  <span>{job.processed_count} islendi</span>
+                  {job.skipped_count > 0 && <span>{job.skipped_count} atlandi</span>}
                   {(job.avg_score_before > 0 || job.avg_score_after > 0) && (
-                    <ScoreDelta before={job.avg_score_before} after={job.avg_score_after} />
+                    <ScoreDelta
+                      before={job.avg_score_before}
+                      after={job.avg_score_after}
+                      projected={job.status !== 'completed' && job.status !== 'completed_with_errors'}
+                    />
                   )}
                 </div>
               </div>
