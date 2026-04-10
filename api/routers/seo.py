@@ -100,6 +100,46 @@ async def generate_llms_txt() -> str:
     return "\n".join(lines) + "\n"
 
 
+@router.post("/competitor-prices/{product_id}")
+async def get_competitor_prices(product_id: str) -> dict:
+    """Research competitor prices for a product via Google search."""
+    import json as _json
+
+    from core.clients.competitor_search import CompetitorSearchClient, _build_query
+
+    product = await db.get_product(product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Urun bulunamadi")
+
+    client = CompetitorSearchClient()
+    query = _build_query(product.name)
+
+    cached = await db.get_cached_competitor_prices(product_id, query)
+    if cached is not None:
+        cached["cached"] = True
+        return cached
+
+    try:
+        competitors = await client.search_competitors(query)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Rakip fiyat arastirmasi basarisiz: {exc}",
+        ) from exc
+
+    report = client.build_report(product, competitors, query)
+    report_dict = report.model_dump(mode="json")
+
+    try:
+        await db.save_competitor_prices(
+            product_id, query, _json.dumps(report_dict, ensure_ascii=False)
+        )
+    except Exception:
+        pass  # Cache failure should not break the endpoint
+
+    return report_dict
+
+
 @router.post("/geo-audit", response_model=GeoAuditResponse)
 async def run_geo_audit(payload: GeoAuditRequest) -> GeoAuditResponse:
     """Run full GEO audit flow for a website URL."""

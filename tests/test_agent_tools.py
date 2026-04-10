@@ -9,6 +9,7 @@ from core.agent.tools import (
     AgentToolkit,
     ToolRegistry,
     build_apply_seo_to_ikas_tool,
+    build_competitor_price_research_tool,
     build_get_product_details_tool,
     build_get_seo_guidelines_tool,
     build_save_seo_suggestion_tool,
@@ -316,7 +317,8 @@ def test_create_seo_rewrite_toolkit():
     assert "validate_rewrite" in toolkit
     assert "save_suggestion" in toolkit
     assert "get_seo_guidelines" in toolkit
-    assert len(toolkit) == 5
+    assert "competitor_price_research" in toolkit
+    assert len(toolkit) == 6
 
 
 def test_create_chat_toolkit():
@@ -324,7 +326,8 @@ def test_create_chat_toolkit():
 
     assert "search_products" in toolkit
     assert "seo_score_product" in toolkit
-    assert len(toolkit) == 6
+    assert "competitor_price_research" in toolkit
+    assert len(toolkit) == 7
 
 
 def test_create_batch_toolkit():
@@ -332,4 +335,20 @@ def test_create_batch_toolkit():
 
     assert "search_products" in toolkit
     assert "save_suggestion" in toolkit
-    assert len(toolkit) == 5
+    assert "competitor_price_research" in toolkit
+    assert len(toolkit) == 6
+
+
+def test_competitor_price_research_tool_definition():
+    tool = build_competitor_price_research_tool()
+
+    assert tool.name == "competitor_price_research"
+    assert tool.read_only is True
+    assert tool.risk_level == "low"
+    assert "product_id" in tool.input_schema["properties"]
+    assert "search_query" in tool.input_schema["properties"]
+    assert tool.input_schema["required"] == ["product_id"]
+
+    fn = tool.to_openai_function()
+    assert fn["function"]["name"] == "competitor_price_research"
+    assert "product_id" in fn["function"]["parameters"]["properties"]

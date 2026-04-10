@@ -855,6 +855,92 @@ def build_get_seo_guidelines_tool() -> ToolDefinition:
     )
 
 
+def build_competitor_price_research_tool() -> ToolDefinition:
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
+        import json as _json
+
+        from core.clients.competitor_search import (
+            CompetitorSearchClient,
+            _build_query,
+        )
+        from data import db
+
+        product_id = str(args.get("product_id") or "")
+        product = await db.get_product(product_id)
+        if product is None:
+            return tool_error(
+                "product_not_found",
+                f"Urun '{product_id}' bulunamadi.",
+                details={"product_id": product_id},
+            )
+
+        custom_query = args.get("search_query") or None
+        query = custom_query or _build_query(product.name)
+
+        # Check cache first
+        cached = await db.get_cached_competitor_prices(product_id, query)
+        if cached is not None:
+            cached["cached"] = True
+            return tool_success(cached)
+
+        # Scrape Google for competitor prices
+        client = CompetitorSearchClient()
+        try:
+            competitors = await client.search_competitors(query)
+        except Exception as exc:
+            return tool_error(
+                "scrape_failed",
+                f"Rakip fiyat arastirmasi basarisiz: {exc}",
+                retryable=True,
+            )
+
+        report = client.build_report(product, competitors, query)
+        report_dict = report.model_dump(mode="json")
+
+        # Cache the result
+        try:
+            await db.save_competitor_prices(
+                product_id, query, _json.dumps(report_dict, ensure_ascii=False)
+            )
+        except Exception:
+            pass  # Cache failure should not break the tool
+
+        return tool_success(report_dict)
+
+    return ToolDefinition(
+        name="competitor_price_research",
+        description=(
+            "Bir urunun rakip sitelerdeki fiyatlarini Google'da arastirir. "
+            "Hem buyuk marketleri hem mustakil e-ticaret sitelerini tarayarak "
+            "fiyat karsilastirmasi ve pazar pozisyonu analizi yapar."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "product_id": {
+                    "type": "string",
+                    "description": "Arastirilacak urunun ID'si",
+                },
+                "search_query": {
+                    "type": "string",
+                    "description": (
+                        "Ozel arama sorgusu (opsiyonel). "
+                        "Bos birakilirsa urun adindan otomatik olusturulur."
+                    ),
+                },
+            },
+            "required": ["product_id"],
+        },
+        risk_level="low",
+        read_only=True,
+        destructive=False,
+        concurrency_safe=True,
+        ui_meta={"label": "Rakip Fiyat Arastirmasi", "variant": "price"},
+        handler=handler,
+        allowlist=_SHARED_TOOL_ALLOWLIST,
+    )
+
+
 def build_save_seo_suggestion_tool(handler: ToolHandler | None = None) -> ToolDefinition:
     return ToolDefinition(
         name=SAVE_SEO_SUGGESTION_TOOL_NAME,
@@ -978,6 +1064,7 @@ def create_seo_rewrite_toolkit() -> AgentToolkit:
             build_validate_rewrite_tool(),
             build_save_suggestion_tool(),
             build_get_seo_guidelines_tool(),
+            build_competitor_price_research_tool(),
         ],
         agent_type="seo_rewrite",
     )
@@ -992,6 +1079,7 @@ def create_chat_toolkit() -> AgentToolkit:
             build_validate_rewrite_tool(),
             build_save_suggestion_tool(),
             build_get_seo_guidelines_tool(),
+            build_competitor_price_research_tool(),
         ],
         agent_type="chat",
     )
@@ -1005,6 +1093,7 @@ def create_batch_toolkit() -> AgentToolkit:
             build_get_product_details_tool(),
             build_validate_rewrite_tool(),
             build_save_suggestion_tool(),
+            build_competitor_price_research_tool(),
         ],
         agent_type="batch",
     )
@@ -1022,6 +1111,7 @@ __all__ = [
     "ToolRegistry",
     "ToolResponseEnvelope",
     "build_apply_seo_to_ikas_tool",
+    "build_competitor_price_research_tool",
     "build_get_product_details_tool",
     "build_get_seo_guidelines_tool",
     "build_save_seo_suggestion_tool",

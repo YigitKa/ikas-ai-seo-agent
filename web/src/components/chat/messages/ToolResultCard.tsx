@@ -26,6 +26,10 @@ const SEO_AGENT_TOOLS: Record<string, { label: string; icon: string }> = {
     label: 'Urun Arama',
     icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
   },
+  competitor_price_research: {
+    label: 'Rakip Fiyat Arastirmasi',
+    icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+  },
 };
 
 function unwrapToolEnvelope(resultJson: string): { payload: unknown; envelope: ToolResultEnvelope | null } {
@@ -95,6 +99,40 @@ function extractValidateResult(resultJson: string): { improved: boolean; delta?:
   return { improved };
 }
 
+function extractPriceResearchResult(resultJson: string): {
+  position?: string;
+  count?: number;
+  avgPrice?: number;
+  ourPrice?: number;
+} | null {
+  const { payload } = unwrapToolEnvelope(resultJson);
+  if (payload && typeof payload === 'object') {
+    const p = payload as {
+      price_position?: string;
+      competitor_count?: number;
+      average_price?: number;
+      our_price?: number;
+    };
+    if (p.competitor_count !== undefined || p.price_position) {
+      return {
+        position: p.price_position,
+        count: p.competitor_count,
+        avgPrice: p.average_price,
+        ourPrice: p.our_price,
+      };
+    }
+  }
+  return null;
+}
+
+const POSITION_LABELS: Record<string, { text: string; color: string }> = {
+  en_ucuz: { text: 'En Ucuz', color: '#34d399' },
+  ortalama_alti: { text: 'Ort. Alti', color: '#34d399' },
+  ortalama: { text: 'Ortalama', color: '#fbbf24' },
+  ortalama_ustu: { text: 'Ort. Ustu', color: '#f97316' },
+  en_pahali: { text: 'En Pahali', color: '#ef4444' },
+};
+
 function isSavedResult(resultJson: string): boolean {
   const { envelope } = unwrapToolEnvelope(resultJson);
   if (!envelope || !envelope.ok || !envelope.data || typeof envelope.data !== 'object') {
@@ -130,6 +168,7 @@ function SeoAgentToolCard({ result, toolMeta }: { result: ToolResult; toolMeta: 
   const scoreResult = result.tool === 'seo_score_product' ? extractSeoScoreResult(result.result) : null;
   const validateResult = result.tool === 'validate_rewrite' ? extractValidateResult(result.result) : null;
   const isSaved = result.tool === 'save_suggestion' && isSavedResult(result.result);
+  const priceResult = result.tool === 'competitor_price_research' ? extractPriceResearchResult(result.result) : null;
 
   const colorMap: Record<string, { bg: string; border: string; icon: string; badge: string }> = {
     seo_score_product: {
@@ -155,6 +194,12 @@ function SeoAgentToolCard({ result, toolMeta }: { result: ToolResult; toolMeta: 
       border: 'rgba(16, 185, 129, 0.2)',
       icon: '#34d399',
       badge: 'rgba(16, 185, 129, 0.18)',
+    },
+    competitor_price_research: {
+      bg: 'rgba(245, 158, 11, 0.06)',
+      border: 'rgba(245, 158, 11, 0.18)',
+      icon: '#f59e0b',
+      badge: 'rgba(245, 158, 11, 0.18)',
     },
     default: {
       bg: 'rgba(99, 102, 241, 0.04)',
@@ -209,6 +254,25 @@ function SeoAgentToolCard({ result, toolMeta }: { result: ToolResult; toolMeta: 
             {validateResult.improved
               ? `Iyilesme${validateResult.delta !== undefined && validateResult.delta > 0 ? ` (+${validateResult.delta})` : ''}`
               : 'Devam ediyor'}
+          </span>
+        )}
+
+        {priceResult !== null && (
+          <span
+            className="ml-auto flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+            style={{
+              background: colors.badge,
+              color: priceResult.position
+                ? (POSITION_LABELS[priceResult.position]?.color ?? colors.icon)
+                : colors.icon,
+            }}
+          >
+            {priceResult.position && POSITION_LABELS[priceResult.position]
+              ? POSITION_LABELS[priceResult.position].text
+              : 'Sonuc'}
+            {priceResult.count !== undefined && priceResult.count > 0 && (
+              <span className="opacity-70">({priceResult.count} rakip)</span>
+            )}
           </span>
         )}
 
