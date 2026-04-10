@@ -5,6 +5,7 @@ interface ChatHeaderProps {
   displayProductCategory?: string | null;
   displaySeoScore?: number | null;
   productDetailUrl?: string;
+  chatScope?: 'product' | 'store';
   availableSkills: SkillDefinition[];
   activeSkill: ActiveSkillSummary | null;
   skillLoading: boolean;
@@ -20,6 +21,7 @@ export function ChatHeader({
   displayProductCategory,
   displaySeoScore,
   productDetailUrl,
+  chatScope,
   availableSkills,
   activeSkill,
   skillLoading,
@@ -61,21 +63,29 @@ export function ChatHeader({
             <span
               className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
               style={{
-                background: displayProductName ? 'rgba(59,130,246,0.14)' : 'rgba(148,163,184,0.12)',
-                border: displayProductName
-                  ? '1px solid rgba(59,130,246,0.22)'
-                  : '1px solid rgba(148,163,184,0.18)',
-                color: displayProductName ? '#93c5fd' : 'var(--color-text-secondary)',
+                background: chatScope === 'store'
+                  ? 'rgba(99,102,241,0.14)'
+                  : displayProductName ? 'rgba(59,130,246,0.14)' : 'rgba(148,163,184,0.12)',
+                border: chatScope === 'store'
+                  ? '1px solid rgba(99,102,241,0.22)'
+                  : displayProductName
+                    ? '1px solid rgba(59,130,246,0.22)'
+                    : '1px solid rgba(148,163,184,0.18)',
+                color: chatScope === 'store'
+                  ? '#c7d2fe'
+                  : displayProductName ? '#93c5fd' : 'var(--color-text-secondary)',
               }}
             >
-              {displayProductName ? 'Aktif urun' : 'Sohbet'}
+              {chatScope === 'store' ? 'Magaza Asistani' : displayProductName ? 'Aktif urun' : 'Sohbet'}
             </span>
 
             <div
               className="min-w-0 truncate text-[16px] font-semibold"
               style={{ color: 'var(--color-text-primary)' }}
             >
-              {displayProductName || 'Bir urun secin veya sohbete baslayin'}
+              {chatScope === 'store'
+                ? 'Magazanizi yonetin'
+                : displayProductName || 'Bir urun secin veya sohbete baslayin'}
             </div>
 
             {displayProductName && productDetailUrl ? (
@@ -100,8 +110,14 @@ export function ChatHeader({
             className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]"
             style={{ color: 'var(--color-text-muted)' }}
           >
-            <span>{displayProductCategory || 'Kategori yok'}</span>
-            {typeof displaySeoScore === 'number' ? <span>SEO {displaySeoScore}/100</span> : null}
+            {chatScope === 'store' ? (
+              <span>Siparisler, stok, musteriler ve daha fazlasi</span>
+            ) : (
+              <>
+                <span>{displayProductCategory || 'Kategori yok'}</span>
+                {typeof displaySeoScore === 'number' ? <span>SEO {displaySeoScore}/100</span> : null}
+              </>
+            )}
           </div>
         </div>
 

@@ -103,6 +103,7 @@ class ChatServiceStateMixin:
             self._active_skill_slug: str | None = None
             self._runtime_skill_selection: SkillRuntimeSelection | None = None
             self._store_memory_service = StoreMemoryService()
+            self._chat_scope: str = "product"  # "product" | "store"
 
             # Local tool registry — add new local tools here without touching _execute_chat_tool
             self._tool_registry = create_local_chat_tool_registry(
@@ -157,6 +158,18 @@ class ChatServiceStateMixin:
             """Set the current product context for the conversation."""
             self._product = product
             self._score = score
+            self._chat_scope = "product"
+
+        def set_store_context(self) -> None:
+            """Switch to store-wide chat scope (no product context)."""
+            self._product = None
+            self._score = None
+            self._chat_scope = "store"
+
+        @property
+        def chat_scope(self) -> str:
+            """Return the current chat scope: 'product' or 'store'."""
+            return self._chat_scope
 
         def clear_history(self) -> None:
             """Clear conversation history."""
@@ -553,10 +566,20 @@ class ChatServiceStateMixin:
 
             base_url = self._get_base_url()
             model = self._config.ai_model_name or self._get_default_model()
+            routing_prompt = _get_semantic_routing_prompt()
+            if self._chat_scope == "store":
+                routing_prompt += (
+                    "\n\nEk Bilgi: Kullanici su anda magaza geneli sohbet modunda. "
+                    "Urun-spesifik bir baglam yok. "
+                    "Siparis, stok, musteri, kategori, fiyat, indirim, kampanya, kargo, odeme gibi "
+                    "magaza operasyonlari icin OPERATOR sec. "
+                    "SEO durumu, urun icerik analizi icin SEO sec. "
+                    "Diger durumlarda GENERAL sec."
+                )
             request_body = {
                 "model": model,
                 "messages": [
-                    {"role": "system", "content": _get_semantic_routing_prompt()},
+                    {"role": "system", "content": routing_prompt},
                     {"role": "user", "content": cleaned_message},
                 ],
                 "temperature": 0.0,
@@ -607,12 +630,23 @@ class ChatServiceStateMixin:
             """Route the message to the appropriate agent and build instructions."""
             cleaned_message = (user_message or "").strip()
             agent_type = await self._route_to_agent(user_message)
-            allow_tools = agent_type == "operator"
+            # In store scope, always enable tools so every agent can use MCP
+            allow_tools = agent_type == "operator" or self._chat_scope == "store"
 
             if allow_tools:
-                return (
-                    cleaned_message,
-                    (
+                if self._chat_scope == "store":
+                    instruction = (
+                        "Kullanici magaza genelinde sohbet ediyor. "
+                        "Siparisler, stok, musteriler, kategoriler, indirimler, kampanyalar, kargo, odeme gibi "
+                        "tum magaza operasyonlari icin uygun araclari kullan. "
+                        "Canli veri cekemiyorsan bunu acikca belirt. "
+                        "Sonuclari tablo veya liste formatinda, okunakli sekilde sun. "
+                        "Destructive islemler (silme, iptal, fiyat degisikligi) icin MUTLAKA onay iste. "
+                        "ONEMLI: Yalnizca arac gercekten cagirilip basarili sonuc dondugunde islemi raporla. Arac cagirmadan 'guncelledim' deme. "
+                        "Kullaniciya arac adi, MCP, GraphQL gibi teknik detaylari gosterme."
+                    )
+                else:
+                    instruction = (
                         "Semantic routing bu mesaj icin canli magaza verisine "
                         "ihtiyac oldugunu tespit etti. "
                         "Mumkunse uygun araclarla canli veri cek. "
@@ -622,7 +656,10 @@ class ChatServiceStateMixin:
                         "arka planda uygun araclari kullanarak taslak kaydet; sonra alan bazli onay sun. "
                         "ONEMLI: Yalnizca arac gercekten cagirilip basarili sonuc dondugunde islemi raporla. Arac cagirmadan 'guncelledim' deme. "
                         "Kullaniciya arac adi, MCP, GraphQL gibi teknik detaylari gosterme."
-                    ),
+                    )
+                return (
+                    cleaned_message,
+                    instruction,
                     agent_type,
                     True,
                 )

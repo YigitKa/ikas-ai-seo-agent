@@ -25,6 +25,7 @@ export interface ChatProductContext {
   category?: string | null;
   score?: number | null;
   assistantLabel?: string;
+  scope?: 'product' | 'store';
 }
 
 export interface UseChatOptions {
@@ -131,10 +132,40 @@ export function useChat(productContext?: ChatProductContext, onProductUpdated?: 
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []);
 
-  // --- Product context switch effect ---
+  // --- Product / store context switch effect ---
   useEffect(() => {
+    const scope = productContext?.scope;
     const nextProductId = productContext?.id;
     const prevProductId = activeProductIdRef.current;
+
+    // Store-wide chat mode: use a special key, no product context
+    if (scope === 'store') {
+      const storeKey = '__store__';
+      if (activeProductIdRef.current === storeKey) return;
+
+      // Persist outgoing messages
+      if (prevProductId && messagesRef.current.length > 0) {
+        saveHistory(prevProductId, messagesRef.current);
+      }
+
+      activeProductIdRef.current = storeKey;
+
+      if (ws.wsRef.current?.readyState === WebSocket.OPEN) {
+        ws.clearReasonRef.current = 'switch';
+        ws.wsRef.current.send(JSON.stringify({ action: 'clear' }));
+        ws.wsRef.current.send(JSON.stringify({ action: 'set_context', scope: 'store' }));
+      }
+
+      // Restore stored store history or start clean
+      const stored = loadHistory(storeKey);
+      if (stored.length > 0) {
+        setMessages(normalizeChatMessages(stored));
+        status.setPendingSuggestion(null);
+      } else {
+        resetToContextIntro();
+      }
+      return;
+    }
 
     if (!nextProductId) {
       activeProductIdRef.current = undefined;
@@ -181,6 +212,7 @@ export function useChat(productContext?: ChatProductContext, onProductUpdated?: 
     productContext?.category,
     productContext?.score,
     productContext?.assistantLabel,
+    productContext?.scope,
     autoIntro.clearAutoIntro,
     autoIntro.queueAutoIntro,
     resetToContextIntro,
@@ -196,10 +228,11 @@ export function useChat(productContext?: ChatProductContext, onProductUpdated?: 
     };
   }, [stream.cleanup]);
 
-  // --- clearHistory: also wipes localStorage for the active product ---
+  // --- clearHistory: also wipes localStorage for the active product/store ---
   const clearHistory = useCallback(() => {
-    if (activeProductIdRef.current) {
-      clearStoredHistory(activeProductIdRef.current);
+    const key = activeProductIdRef.current;
+    if (key) {
+      clearStoredHistory(key);
     }
     ws.clearHistory();
   }, [ws.clearHistory]);

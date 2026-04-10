@@ -183,13 +183,23 @@ async def ws_chat(ws: WebSocket) -> None:
             action = payload.get("action", "message")
 
             if action == "set_context":
+                scope = payload.get("scope")
                 product_id = payload.get("product_id")
-                if product_id:
+                if scope == "store":
+                    manager.set_chat_store_context()
+                    await send_json({
+                        "type": "context_set",
+                        "scope": "store",
+                        "product_id": None,
+                        "product_name": "",
+                    })
+                elif product_id:
                     product = await db.get_product(product_id)
                     score = await db.get_latest_score(product_id) if product else None
                     manager.set_chat_product_context(product, score)
                     await send_json({
                         "type": "context_set",
+                        "scope": "product",
                         "product_id": product_id,
                         "product_name": product.name if product else "",
                     })

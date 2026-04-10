@@ -760,6 +760,10 @@ class ProductManager:
         """Set the current product context for the chat service."""
         self._chat.set_product_context(product, score)
 
+    def set_chat_store_context(self) -> None:
+        """Switch chat to store-wide scope (no product context)."""
+        self._chat.set_store_context()
+
     async def initialize_mcp(self) -> tuple[bool, str]:
         """Initialize the ikas MCP connection."""
         return await self._chat.initialize_mcp()
