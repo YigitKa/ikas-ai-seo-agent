@@ -8,7 +8,7 @@ const MAX_RECONNECT_ATTEMPTS = 8;
 const BASE_RECONNECT_DELAY_MS = 1000;
 
 interface UseChatWebSocketDeps {
-  productContextRef: React.RefObject<{ id?: string } | undefined>;
+  productContextRef: React.RefObject<{ id?: string; scope?: 'product' | 'store' } | undefined>;
   pendingSinceRef: React.RefObject<number | null>;
 
   // Status callbacks
@@ -101,8 +101,11 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
       reconnectAttemptsRef.current = 0;
       setIsReconnecting(false);
 
-      const productId = latestRef.current.productContextRef.current?.id;
-      if (productId) {
+      const ctx = latestRef.current.productContextRef.current;
+      const productId = ctx?.id;
+      if (ctx?.scope === 'store') {
+        ws.send(JSON.stringify({ action: 'set_context', scope: 'store' }));
+      } else if (productId) {
         ws.send(JSON.stringify({ action: 'set_context', product_id: productId }));
       }
       if (preferredSkillSlugRef.current) {
@@ -178,7 +181,7 @@ export function useChatWebSocket(deps: UseChatWebSocketDeps) {
 
         case 'context_set':
           h.setPendingSuggestion(data.pending_suggestion ?? null);
-          if (data.product_id) {
+          if (data.scope !== 'store' && data.product_id) {
             h.sendHiddenAutoIntro(data.product_id);
           }
           break;

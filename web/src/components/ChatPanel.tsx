@@ -28,6 +28,8 @@ interface Props {
   score?: SeoScore | null;
   productDetailUrl?: string;
   requestedSkillSlug?: string;
+  /** Chat scope: 'product' for product-specific, 'store' for store-wide management. */
+  chatScope?: 'product' | 'store';
   /** Override default starter prompts (e.g. store-level prompts on home page). */
   starterPrompts?: { label: string; template: string }[];
   /** Called whenever the chat loading state changes (e.g. for a parent switch-guard). */
@@ -51,6 +53,7 @@ export default function ChatPanel({
   score,
   productDetailUrl,
   requestedSkillSlug,
+  chatScope,
   starterPrompts: starterPromptsOverride,
   onLoadingChange,
 }: Props) {
@@ -98,6 +101,7 @@ export default function ChatPanel({
     category: displayProductCategory,
     score: displaySeoScore,
     assistantLabel: configuredAssistantLabel,
+    scope: chatScope,
   }, handleProductUpdated);
 
   const [liveElapsedSeconds, setLiveElapsedSeconds] = useState(0);
@@ -261,6 +265,7 @@ export default function ChatPanel({
         displayProductCategory={displayProductCategory}
         displaySeoScore={displaySeoScore}
         productDetailUrl={productDetailUrl}
+        chatScope={chatScope}
         availableSkills={chatSkills}
         activeSkill={activeSkill}
         skillLoading={skillsQ.isLoading}
