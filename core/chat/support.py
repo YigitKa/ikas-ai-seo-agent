@@ -20,6 +20,7 @@ import logging
 import re
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import datetime, timedelta, timezone, tzinfo
 from typing import Any
 
 # Type alias for local tool handlers registered in ToolRegistry
@@ -292,6 +293,313 @@ SELECTED_PRODUCT_LIVE_QUERY = """query listProduct($id: StringFilterInput, $pagi
     }
   }
 }"""
+
+
+STORE_ORDER_LIVE_QUERY = """query listOrder(
+  $pagination: PaginationInput
+  $sort: String
+  $orderedAt: DateFilterInput
+  $orderPaymentStatus: OrderPaymentStatusEnumInputFilter
+  $status: OrderStatusEnumInputFilter
+) {
+  listOrder(
+    pagination: $pagination
+    sort: $sort
+    orderedAt: $orderedAt
+    orderPaymentStatus: $orderPaymentStatus
+    status: $status
+  ) {
+    count
+    hasNext
+    page
+    limit
+    data {
+      id
+      orderNumber
+      orderedAt
+      status
+      orderPaymentStatus
+      totalPrice
+      customer {
+        fullName
+        email
+        phone
+      }
+      orderLineItems {
+        quantity
+        variant {
+          name
+          sku
+        }
+      }
+    }
+  }
+}"""
+
+_STORE_ORDER_TODAY_PATTERN = re.compile(
+    r"\bbugun(?:un)?\b.*\b(satis\w*|siparis\w*)\b|\b(satis\w*|siparis\w*)\b.*\b(ozet|ciro|bugun)\b",
+    re.IGNORECASE,
+)
+_STORE_ORDER_PENDING_PATTERN = re.compile(
+    r"\b(bekleyen|onay bekleyen|odeme bekleyen|taslak|draft|waiting)\b.*\bsiparis\w*\b"
+    r"|\bsiparis\w*\b.*\b(bekleyen|onay bekleyen|odeme bekleyen|taslak|draft|waiting)\b",
+    re.IGNORECASE,
+)
+_STORE_ORDER_RECENT_PATTERN = re.compile(
+    r"\b(en son|son|guncel)\b.*\bsiparis\w*\b"
+    r"|\bsiparis\w*\b.*\b(listele|goster|getir|sirala)\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_store_order_request_kind(user_message: str) -> str | None:
+    normalized_text = _normalize_matching_text(user_message)
+    if not normalized_text:
+        return None
+    if "siparis" not in normalized_text and "satis" not in normalized_text:
+        return None
+    if _STORE_ORDER_TODAY_PATTERN.search(normalized_text):
+        return "today_summary"
+    if _STORE_ORDER_PENDING_PATTERN.search(normalized_text):
+        return "pending_orders"
+    if _STORE_ORDER_RECENT_PATTERN.search(normalized_text):
+        return "recent_orders"
+    return None
+
+
+def _build_today_order_query_variables(
+    now: datetime,
+    *,
+    page: int = 1,
+    limit: int = 200,
+) -> dict[str, Any]:
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    local_now = now.astimezone(now.tzinfo)
+    start_of_day = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+    return {
+        "pagination": {"page": page, "limit": limit},
+        "sort": "-orderedAt",
+        "orderedAt": {
+            "gte": int(start_of_day.timestamp() * 1000),
+            "lt": int(end_of_day.timestamp() * 1000),
+        },
+    }
+
+
+def _parse_ikas_timestamp(
+    value: Any,
+    *,
+    default_tz: tzinfo | None = None,
+) -> datetime | None:
+    target_tz = default_tz or datetime.now().astimezone().tzinfo or timezone.utc
+    try:
+        if isinstance(value, (int, float)):
+            seconds = float(value)
+            if abs(seconds) > 100_000_000_000:
+                seconds /= 1000.0
+            return datetime.fromtimestamp(seconds, tz=timezone.utc).astimezone(target_tz)
+
+        if isinstance(value, str):
+            candidate = value.strip()
+            if not candidate:
+                return None
+            if candidate.lstrip("-").isdigit():
+                return _parse_ikas_timestamp(int(candidate), default_tz=target_tz)
+            parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(target_tz)
+    except Exception:
+        return None
+
+    return None
+
+
+def _extract_list_order_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    list_order = payload.get("listOrder", {}) if isinstance(payload, dict) else {}
+    data = list_order.get("data", []) if isinstance(list_order, dict) else []
+    if not isinstance(data, list):
+        return []
+    return [item for item in data if isinstance(item, dict)]
+
+
+def _is_pending_order(order: dict[str, Any]) -> bool:
+    normalized_status = _normalize_matching_text(str(order.get("status") or ""))
+    normalized_payment = _normalize_matching_text(str(order.get("orderPaymentStatus") or ""))
+    if normalized_payment in {"waiting", "pending", "unpaid", "not_paid"}:
+        return True
+    return normalized_status in {"draft", "waiting_upsell_action", "pending"}
+
+
+def _format_store_order_entry(
+    order: dict[str, Any],
+    *,
+    default_tz: tzinfo | None = None,
+) -> str:
+    ordered_at = _parse_ikas_timestamp(order.get("orderedAt"), default_tz=default_tz)
+    ordered_at_text = ordered_at.strftime("%d.%m.%Y %H:%M") if ordered_at else "-"
+    order_number = str(order.get("orderNumber") or order.get("id") or "-")
+    status = str(order.get("status") or "-")
+    payment_status = str(order.get("orderPaymentStatus") or "-")
+
+    total_price = order.get("totalPrice")
+    if isinstance(total_price, (int, float)):
+        total_text = _format_decimal(total_price)
+    elif isinstance(total_price, str) and total_price.strip():
+        total_text = total_price.strip()
+    else:
+        total_text = "-"
+
+    customer = order.get("customer", {})
+    customer_text = "-"
+    if isinstance(customer, dict):
+        for key in ("fullName", "email", "phone"):
+            candidate = str(customer.get(key) or "").strip()
+            if candidate:
+                customer_text = candidate
+                break
+
+    item_texts: list[str] = []
+    order_line_items = order.get("orderLineItems", [])
+    if isinstance(order_line_items, list):
+        for index, item in enumerate(order_line_items[:2], start=1):
+            if not isinstance(item, dict):
+                continue
+            variant = item.get("variant", {})
+            label = ""
+            if isinstance(variant, dict):
+                label = str(variant.get("name") or variant.get("sku") or "").strip()
+            if not label:
+                label = f"Kalem {index}"
+
+            quantity = item.get("quantity")
+            if isinstance(quantity, (int, float)):
+                item_texts.append(f"{label} x{_format_decimal(quantity)}")
+            else:
+                item_texts.append(label)
+        extra_count = len(order_line_items) - len(item_texts)
+        if extra_count > 0:
+            item_texts.append(f"+{extra_count} urun daha")
+    item_summary = ", ".join(item_texts) if item_texts else "-"
+
+    return (
+        f"- #{order_number} | {ordered_at_text} | durum: {status} | odeme: {payment_status} "
+        f"| toplam: {total_text} | musteri: {customer_text} | urunler: {item_summary}"
+    )
+
+
+def _build_recent_orders_guided_response(
+    orders: list[dict[str, Any]],
+    *,
+    now: datetime | None = None,
+) -> str:
+    default_tz = (now or datetime.now().astimezone()).tzinfo or timezone.utc
+    visible_orders = [order for order in orders if isinstance(order, dict)]
+    lines = ["**Son Siparisler**"]
+    if not visible_orders:
+        lines.append("- Son siparis verisi bulunamadi.")
+    else:
+        lines.append(f"- Gosterilen siparis: {len(visible_orders)}")
+        lines.extend(
+            _format_store_order_entry(order, default_tz=default_tz)
+            for order in visible_orders[:10]
+        )
+    lines.extend([
+        "",
+        "**Not**",
+        "- Bu liste ikas MCP canli verisinden dogrudan alindi.",
+    ])
+    return "\n".join(lines)
+
+
+def _build_pending_orders_guided_response(
+    orders: list[dict[str, Any]],
+    *,
+    now: datetime | None = None,
+) -> str:
+    default_tz = (now or datetime.now().astimezone()).tzinfo or timezone.utc
+    pending_orders = [order for order in orders if _is_pending_order(order)]
+    lines = ["**Bekleyen Siparisler**"]
+    if not pending_orders:
+        lines.append("- Bekleyen veya onay bekleyen siparis bulunamadi.")
+    else:
+        lines.append(f"- Bekleyen siparis: {len(pending_orders)}")
+        lines.extend(
+            _format_store_order_entry(order, default_tz=default_tz)
+            for order in pending_orders[:20]
+        )
+    lines.extend([
+        "",
+        "**Not**",
+        "- Liste bekleyen odeme veya taslak durumundaki siparisleri gosterir.",
+    ])
+    return "\n".join(lines)
+
+
+def _build_today_orders_guided_response(
+    orders: list[dict[str, Any]],
+    *,
+    now: datetime | None = None,
+) -> str:
+    base_now = now or datetime.now().astimezone()
+    default_tz = base_now.tzinfo or timezone.utc
+    today_orders: list[dict[str, Any]] = []
+    total_revenue = 0.0
+
+    for order in orders:
+        if not isinstance(order, dict):
+            continue
+        ordered_at = _parse_ikas_timestamp(order.get("orderedAt"), default_tz=default_tz)
+        if ordered_at is None or ordered_at.date() != base_now.date():
+            continue
+        today_orders.append(order)
+        total_price = order.get("totalPrice")
+        if isinstance(total_price, (int, float)):
+            total_revenue += float(total_price)
+        elif isinstance(total_price, str):
+            with contextlib.suppress(ValueError):
+                total_revenue += float(total_price.strip())
+
+    paid_count = sum(
+        1
+        for order in today_orders
+        if _normalize_matching_text(str(order.get("orderPaymentStatus") or "")) == "paid"
+    )
+    pending_count = sum(1 for order in today_orders if _is_pending_order(order))
+    cancelled_count = sum(
+        1
+        for order in today_orders
+        if _normalize_matching_text(str(order.get("status") or "")) in {
+            "cancelled",
+            "refunded",
+            "partially_cancelled",
+            "partially_refunded",
+        }
+    )
+
+    lines = ["**Bugunun Satis Ozeti**", f"- Tarih: {base_now.strftime('%d.%m.%Y')}"]
+    if not today_orders:
+        lines.append("- Bugune ait siparis bulunamadi.")
+    else:
+        lines.extend([
+            f"- Siparis adedi: {len(today_orders)}",
+            f"- Toplam ciro: {_format_decimal(total_revenue)}",
+            f"- Odemesi tamamlanan: {paid_count}",
+            f"- Bekleyen: {pending_count}",
+            f"- Iptal/iade: {cancelled_count}",
+        ])
+        lines.extend(
+            _format_store_order_entry(order, default_tz=default_tz)
+            for order in today_orders[:5]
+        )
+    lines.extend([
+        "",
+        "**Not**",
+        "- Bu ozet bugun filtresiyle cekilen ikas MCP verisine dayanir.",
+    ])
+    return "\n".join(lines)
 
 
 def _extract_chat_completion_content(data: Any) -> str:

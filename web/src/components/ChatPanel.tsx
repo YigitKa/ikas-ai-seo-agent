@@ -20,6 +20,8 @@ import { ChatMessages } from "./chat/ChatMessages";
 import { ChatInput } from "./chat/ChatInput";
 
 interface Props {
+  pendingMessage?: { id: string; text: string } | null;
+  onPendingMessageConsumed?: (messageId: string) => void;
   productId?: string;
   productName?: string;
   productCategory?: string | null;
@@ -45,6 +47,8 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 export default function ChatPanel({
+  pendingMessage,
+  onPendingMessageConsumed,
   productId,
   productName,
   productCategory,
@@ -114,6 +118,7 @@ export default function ChatPanel({
   const [diffModalSuggestion, setDiffModalSuggestion] = useState<SeoSuggestion | null>(null);
   const [diffModalAction, setDiffModalAction] = useState<string>("");
   const prevPendingSuggestionRef = useRef<SeoSuggestion | null>(null);
+  const lastHandledPendingMessageIdRef = useRef<string | null>(null);
   const requestedSkillRef = useRef<string>('');
   const promptParamOptions = buildPromptParamOptions(product, score);
 
@@ -188,6 +193,19 @@ export default function ChatPanel({
     if (!value) return;
     sendMessage(value);
   }, [promptParamOptions, sendMessage]);
+
+  useEffect(() => {
+    if (!pendingMessage) {
+      return;
+    }
+    if (lastHandledPendingMessageIdRef.current === pendingMessage.id) {
+      return;
+    }
+
+    lastHandledPendingMessageIdRef.current = pendingMessage.id;
+    handleSend(pendingMessage.text);
+    onPendingMessageConsumed?.(pendingMessage.id);
+  }, [handleSend, onPendingMessageConsumed, pendingMessage]);
 
   const handleStarterPrompt = useCallback((prompt: typeof STARTER_PROMPTS[number]) => {
     const value = resolvePromptTemplate(prompt.template, promptParamOptions).trim();

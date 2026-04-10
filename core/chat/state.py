@@ -8,6 +8,7 @@ import logging
 import re
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -25,6 +26,7 @@ from core.chat.support import (
     SAVE_SEO_SUGGESTION_TOOL_NAME,
     SELECTED_PRODUCT_LIVE_QUERY,
     SEMANTIC_ROUTING_JSON_PATTERN,
+    STORE_ORDER_LIVE_QUERY,
     SINGLE_PRODUCT_APPLY_ACTIONS,
     SUGGESTION_APPLY_FIELD_CONFIG,
     SUGGESTION_SAVE_SUCCESS_MESSAGE,
@@ -42,9 +44,11 @@ from core.chat.support import (
     _decode_json_string_fragment,
     _detect_manual_apply_action,
     _detect_suggestion_field_heading,
+    _detect_store_order_request_kind,
     _extract_chat_action,
     _extract_chat_action_payload,
     _extract_chat_completion_content,
+    _extract_list_order_items,
     _extract_mcp_json_payload,
     _extract_mcp_text,
     _extract_suggestion_fields_from_text,
@@ -52,6 +56,10 @@ from core.chat.support import (
     _format_chat_error,
     _format_decimal,
     _format_money,
+    _build_pending_orders_guided_response,
+    _build_recent_orders_guided_response,
+    _build_today_order_query_variables,
+    _build_today_orders_guided_response,
     _get_apply_extraction_prompt,
     _get_history_summary_prefix,
     _get_memory_summarization_prompt,
@@ -683,13 +691,124 @@ class ChatServiceStateMixin:
 
         async def _maybe_run_guided_mcp_request(
             self,
+            cleaned_message: str,
         ) -> tuple[str, list[dict[str, Any]], str] | None:
-            """Run a deterministic MCP query to fetch live product data (stock, price, variants).
+            """Run deterministic MCP queries for common guided product/store requests."""
+            if not self._mcp or not self._mcp_initialized:
+                return None
 
-            Called only when the Semantic Router has already determined that live MCP data is
-            needed. Fetches a focused snapshot of the currently selected product from ikas.
-            """
-            if not self._product or not self._mcp or not self._mcp_initialized:
+            if self._chat_scope == "store":
+                request_kind = _detect_store_order_request_kind(cleaned_message)
+                if request_kind == "recent_orders":
+                    recent_args = {
+                        "pagination": {"limit": 10, "page": 1},
+                        "sort": "-orderedAt",
+                    }
+                    result = await self._mcp.call_tool("listOrder", {
+                        "query": STORE_ORDER_LIVE_QUERY,
+                        "variables": recent_args,
+                    })
+                    payload = _extract_mcp_json_payload(result)
+                    orders = _extract_list_order_items(payload)
+                    fallback = _build_recent_orders_guided_response(orders)
+                    return (
+                        fallback,
+                        [{
+                            "tool": "listOrder",
+                            "arguments": {
+                                "mode": "store_recent_orders",
+                                "variables": recent_args,
+                            },
+                            "result": _extract_mcp_text(result)[:2000],
+                        }],
+                        fallback,
+                    )
+
+                if request_kind == "pending_orders":
+                    query_runs = [
+                        {
+                            "pagination": {"limit": 50, "page": 1},
+                            "sort": "-orderedAt",
+                            "orderPaymentStatus": {"eq": "WAITING"},
+                        },
+                        {
+                            "pagination": {"limit": 50, "page": 1},
+                            "sort": "-orderedAt",
+                            "status": {"in": ["DRAFT", "WAITING_UPSELL_ACTION"]},
+                        },
+                    ]
+                    merged_orders: list[dict[str, Any]] = []
+                    seen_order_keys: set[str] = set()
+                    tool_results: list[dict[str, Any]] = []
+
+                    for variables in query_runs:
+                        result = await self._mcp.call_tool("listOrder", {
+                            "query": STORE_ORDER_LIVE_QUERY,
+                            "variables": variables,
+                        })
+                        payload = _extract_mcp_json_payload(result)
+                        for order in _extract_list_order_items(payload):
+                            order_key = str(order.get("id") or order.get("orderNumber") or "").strip()
+                            if not order_key or order_key in seen_order_keys:
+                                continue
+                            seen_order_keys.add(order_key)
+                            merged_orders.append(order)
+                        tool_results.append({
+                            "tool": "listOrder",
+                            "arguments": {
+                                "mode": "store_pending_orders",
+                                "variables": variables,
+                            },
+                            "result": _extract_mcp_text(result)[:2000],
+                        })
+
+                    merged_orders.sort(
+                        key=lambda item: float(item.get("orderedAt") or 0),
+                        reverse=True,
+                    )
+                    fallback = _build_pending_orders_guided_response(merged_orders)
+                    return (fallback, tool_results, fallback)
+
+                if request_kind == "today_summary":
+                    now = datetime.now().astimezone()
+                    page = 1
+                    today_orders: list[dict[str, Any]] = []
+                    tool_results: list[dict[str, Any]] = []
+                    has_next = True
+                    page_limit = 200
+                    max_pages = 20
+
+                    while has_next and page <= max_pages:
+                        variables = _build_today_order_query_variables(now, page=page, limit=page_limit)
+                        result = await self._mcp.call_tool("listOrder", {
+                            "query": STORE_ORDER_LIVE_QUERY,
+                            "variables": variables,
+                        })
+                        payload = _extract_mcp_json_payload(result)
+                        list_order = payload.get("listOrder", {}) if isinstance(payload, dict) else {}
+                        today_orders.extend(_extract_list_order_items(payload))
+                        tool_results.append({
+                            "tool": "listOrder",
+                            "arguments": {
+                                "mode": "store_today_summary",
+                                "variables": variables,
+                            },
+                            "result": _extract_mcp_text(result)[:2000],
+                        })
+                        has_next = bool(list_order.get("hasNext")) if isinstance(list_order, dict) else False
+                        page += 1
+
+                    fallback = _build_today_orders_guided_response(today_orders, now=now)
+                    if has_next:
+                        fallback += (
+                            "\n- Not: Gunluk siparis sayisi yuksek oldugu icin ozet ilk "
+                            f"{max_pages * page_limit} kayit ile sinirlandi."
+                        )
+                    return (fallback, tool_results, fallback)
+
+                return None
+
+            if not self._product:
                 return None
 
             result = await self._mcp.call_tool("listProduct", {

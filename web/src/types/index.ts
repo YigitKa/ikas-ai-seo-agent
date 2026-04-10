@@ -328,6 +328,7 @@ export interface ChatWsMessage {
   suggestion_saved?: SuggestionSavedInfo;
   pending_suggestion?: SeoSuggestion | null;
   active_skill?: ActiveSkillSummary | null;
+  scope?: 'product' | 'store';
 }
 
 export interface LlmsJob {

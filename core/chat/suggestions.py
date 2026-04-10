@@ -959,7 +959,7 @@ class ChatServiceSuggestionMixin:
             if self._mcp and self._mcp_initialized:
                 try:
                     result = await self._mcp.call_tool(tool_name, args)
-                    return json.dumps(result, ensure_ascii=False, indent=2), None
+                    return _extract_mcp_text(result), None
                 except Exception as exc:
                     return json.dumps({
                         "error": str(exc),

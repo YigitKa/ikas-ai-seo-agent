@@ -1,9 +1,12 @@
 """Tests for core/chat/support.py — extraction, normalization, and pattern-matching helpers."""
 
 import json
+from datetime import datetime, timezone
+
 import pytest
 
 from core.chat.support import (
+    _build_pending_orders_guided_response,
     _extract_chat_completion_content,
     _parse_agent_type,
     _normalize_matching_text,
@@ -20,8 +23,18 @@ from core.chat.support import (
     _extract_options_from_assistant_message,
     _resolve_typed_option_selection,
     _build_field_priority_options,
+    _build_recent_orders_guided_response,
+    _build_today_order_query_variables,
+    _build_today_orders_guided_response,
     _build_tool_catalog_instruction,
     _build_local_no_think_instruction,
+    _detect_store_order_request_kind,
+    _extract_list_order_items,
+    _extract_mcp_json_payload,
+    _extract_mcp_text,
+    _format_store_order_entry,
+    _is_pending_order,
+    _parse_ikas_timestamp,
 )
 from core.models import AppConfig, SeoScore
 
@@ -60,7 +73,196 @@ def _make_score(**overrides) -> SeoScore:
     return SeoScore(**defaults)
 
 
+def _make_order(**overrides) -> dict[str, object]:
+    defaults: dict[str, object] = {
+        "id": "ord-1",
+        "orderNumber": "4001",
+        "orderedAt": 1712311200000,
+        "status": "CREATED",
+        "orderPaymentStatus": "PAID",
+        "totalPrice": 1499.5,
+        "customer": {"fullName": "Ada Lovelace", "email": "ada@example.com"},
+        "orderLineItems": [
+            {"quantity": 2, "variant": {"name": "Demo Urun", "sku": "SKU-1"}},
+        ],
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+class TestDetectStoreOrderRequestKind:
+    def test_recent_orders_prompt_detected(self):
+        assert _detect_store_order_request_kind("Son siparisleri listele.") == "recent_orders"
+
+    def test_pending_orders_prompt_detected(self):
+        assert _detect_store_order_request_kind("Bekleyen veya onay bekleyen siparisleri goster.") == "pending_orders"
+
+    def test_today_summary_prompt_detected(self):
+        assert _detect_store_order_request_kind("Bugunun satis ozetini cikar.") == "today_summary"
+
+    def test_irrelevant_message_returns_none(self):
+        assert _detect_store_order_request_kind("SEO skorunu yorumla.") is None
+
+
+class TestBuildTodayOrderQueryVariables:
+    def test_builds_today_range_in_milliseconds(self):
+        now = datetime(2026, 4, 10, 13, 45, tzinfo=timezone.utc)
+
+        result = _build_today_order_query_variables(now, page=2, limit=50)
+
+        assert result["pagination"] == {"page": 2, "limit": 50}
+        assert result["sort"] == "-orderedAt"
+        assert result["orderedAt"]["gte"] == 1775779200000
+        assert result["orderedAt"]["lt"] == 1775865600000
+
+
+class TestParseIkasTimestamp:
+    def test_parses_millisecond_timestamp(self):
+        result = _parse_ikas_timestamp(1712311200000, default_tz=timezone.utc)
+
+        assert result == datetime(2024, 4, 5, 10, 0, tzinfo=timezone.utc)
+
+    def test_invalid_value_returns_none(self):
+        assert _parse_ikas_timestamp("not-a-date", default_tz=timezone.utc) is None
+
+
+class TestExtractListOrderItems:
+    def test_returns_only_dict_items(self):
+        payload = {
+            "listOrder": {
+                "data": [
+                    {"orderNumber": "4001"},
+                    "invalid",
+                ],
+            },
+        }
+
+        assert _extract_list_order_items(payload) == [{"orderNumber": "4001"}]
+
+    def test_returns_empty_list_for_missing_payload(self):
+        assert _extract_list_order_items({}) == []
+
+
+class TestIsPendingOrder:
+    def test_waiting_payment_is_pending(self):
+        assert _is_pending_order(_make_order(orderPaymentStatus="WAITING")) is True
+
+    def test_paid_created_order_is_not_pending(self):
+        assert _is_pending_order(_make_order(orderPaymentStatus="PAID", status="CREATED")) is False
+
+
+class TestFormatStoreOrderEntry:
+    def test_formats_customer_and_items(self):
+        result = _format_store_order_entry(_make_order(), default_tz=timezone.utc)
+
+        assert "#4001" in result
+        assert "05.04.2024 10:00" in result
+        assert "musteri: Ada Lovelace" in result
+        assert "Demo Urun x2" in result
+
+
+class TestBuildRecentOrdersGuidedResponse:
+    def test_includes_recent_order_lines(self):
+        result = _build_recent_orders_guided_response([
+            _make_order(),
+            _make_order(id="ord-2", orderNumber="4002"),
+        ], now=datetime(2026, 4, 10, tzinfo=timezone.utc))
+
+        assert "Son Siparisler" in result
+        assert "Gosterilen siparis: 2" in result
+        assert "#4001" in result
+        assert "#4002" in result
+
+    def test_empty_orders_returns_clear_message(self):
+        result = _build_recent_orders_guided_response([], now=datetime(2026, 4, 10, tzinfo=timezone.utc))
+
+        assert "Son siparis verisi bulunamadi." in result
+
+
+class TestBuildPendingOrdersGuidedResponse:
+    def test_filters_only_pending_orders(self):
+        result = _build_pending_orders_guided_response([
+            _make_order(orderNumber="5001", orderPaymentStatus="WAITING"),
+            _make_order(orderNumber="5002", status="DRAFT", orderPaymentStatus="WAITING"),
+            _make_order(orderNumber="5003", orderPaymentStatus="PAID"),
+        ], now=datetime(2026, 4, 10, tzinfo=timezone.utc))
+
+        assert "Bekleyen Siparisler" in result
+        assert "#5001" in result
+        assert "#5002" in result
+        assert "#5003" not in result
+
+    def test_empty_pending_list_returns_clear_message(self):
+        result = _build_pending_orders_guided_response([
+            _make_order(orderPaymentStatus="PAID"),
+        ], now=datetime(2026, 4, 10, tzinfo=timezone.utc))
+
+        assert "Bekleyen veya onay bekleyen siparis bulunamadi." in result
+
+
+class TestBuildTodayOrdersGuidedResponse:
+    def test_summarizes_only_today_orders(self):
+        now = datetime(2026, 4, 10, 12, 0, tzinfo=timezone.utc)
+        result = _build_today_orders_guided_response([
+            _make_order(orderNumber="6001", orderedAt=1775811600000, totalPrice=100.0),
+            _make_order(orderNumber="6002", orderedAt=1775815200000, totalPrice=250.5, orderPaymentStatus="WAITING"),
+            _make_order(orderNumber="5999", orderedAt=1775728800000, totalPrice=999.0),
+        ], now=now)
+
+        assert "Bugunun Satis Ozeti" in result
+        assert "Siparis adedi: 2" in result
+        assert "Toplam ciro: 350.50" in result
+        assert "Bekleyen: 1" in result
+        assert "#6001" in result
+        assert "#5999" not in result
+
+    def test_no_today_orders_returns_clear_message(self):
+        now = datetime(2026, 4, 10, 12, 0, tzinfo=timezone.utc)
+        result = _build_today_orders_guided_response([
+            _make_order(orderedAt=1775728800000),
+        ], now=now)
+
+        assert "Bugune ait siparis bulunamadi." in result
+
+
 # ── _extract_chat_completion_content ─────────────────────────────────────────
+
+class TestExtractMcpPayloadHelpers:
+    def test_extract_mcp_text_returns_joined_text(self):
+        result = {
+            "content": [
+                {"type": "text", "text": '{"listOrder": '},
+                {"type": "text", "text": '{"data": []}}'},
+            ],
+        }
+
+        assert _extract_mcp_text(result) == '{"listOrder": \n{"data": []}}'
+
+    def test_extract_mcp_text_falls_back_to_json_dump(self):
+        result = {"ok": True}
+
+        assert _extract_mcp_text(result) == '{"ok": true}'
+
+    def test_extract_mcp_json_payload_parses_valid_json(self):
+        result = {
+            "content": [
+                {"type": "text", "text": '{"listOrder":{"data":[{"orderNumber":"1"}]}}'},
+            ],
+        }
+
+        assert _extract_mcp_json_payload(result) == {
+            "listOrder": {"data": [{"orderNumber": "1"}]},
+        }
+
+    def test_extract_mcp_json_payload_returns_empty_dict_for_plain_text(self):
+        result = {
+            "content": [
+                {"type": "text", "text": "type Query { listOrder: String! }"},
+            ],
+        }
+
+        assert _extract_mcp_json_payload(result) == {}
+
 
 class TestExtractChatCompletionContent:
     def test_normal_string_content(self):

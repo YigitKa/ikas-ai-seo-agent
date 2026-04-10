@@ -5,7 +5,12 @@ import type { StoreChatCategory } from './storeChatConstants';
 const ChatPanel = lazy(() => import('../ChatPanel'));
 
 /** Flat list of all store prompts for the ChatPanel starter state. */
-const ALL_STORE_PROMPTS = STORE_CHAT_CATEGORIES.flatMap((c) => c.prompts);
+const ALL_STORE_PROMPTS = STORE_CHAT_CATEGORIES.flatMap((category) => category.prompts);
+
+interface PendingStorePrompt {
+  id: string;
+  text: string;
+}
 
 interface StoreChatAdvisorProps {
   storeName?: string;
@@ -94,38 +99,37 @@ function CategoryCard({
 export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreChatAdvisorProps) {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [chatStarted, setChatStarted] = useState(false);
-
-  /** Ref to the sendMessage function exposed by ChatPanel's useChat.
-   *  We obtain it indirectly: when the user clicks a category prompt
-   *  BEFORE the chat is mounted, we queue it and send once mounted. */
-  const queuedPromptRef = useRef<string | null>(null);
-  const sendRef = useRef<((msg: string) => void) | null>(null);
+  const [pendingPrompt, setPendingPrompt] = useState<PendingStorePrompt | null>(null);
+  const nextPromptIdRef = useRef(0);
 
   const handlePromptClick = useCallback((template: string) => {
-    if (sendRef.current) {
-      // Chat already mounted — send directly
-      sendRef.current(template);
-    } else {
-      // Queue for when ChatPanel mounts
-      queuedPromptRef.current = template;
-    }
+    const promptId = `store-prompt-${nextPromptIdRef.current}`;
+    nextPromptIdRef.current += 1;
+    setPendingPrompt({ id: promptId, text: template });
     setChatStarted(true);
   }, []);
 
-  const handleClose = () => {
+  const handleBackToCategories = useCallback(() => {
+    setPendingPrompt(null);
+    setExpandedCategory(null);
+    setChatStarted(false);
+  }, []);
+
+  const handlePendingPromptConsumed = useCallback((promptId: string) => {
+    setPendingPrompt((current) => (current?.id === promptId ? null : current));
+  }, []);
+
+  const handleClose = useCallback(() => {
     onClose();
-    // Reset state after slide-out animation completes
-    setTimeout(() => {
+    window.setTimeout(() => {
       setChatStarted(false);
       setExpandedCategory(null);
-      queuedPromptRef.current = null;
-      sendRef.current = null;
+      setPendingPrompt(null);
     }, 350);
-  };
+  }, [onClose]);
 
   return (
     <>
-      {/* Backdrop */}
       <div
         className="fixed inset-0 z-40 transition-opacity duration-300"
         style={{
@@ -136,7 +140,6 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
         onClick={handleClose}
       />
 
-      {/* Slide-in panel */}
       <div
         className="fixed inset-y-0 right-0 z-50 flex flex-col"
         style={{
@@ -148,7 +151,6 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
           transition: 'transform 0.32s cubic-bezier(0.4,0,0.2,1)',
         }}
       >
-        {/* Panel header */}
         <div
           className="flex flex-shrink-0 items-center gap-3 px-4 py-3.5"
           style={{ borderBottom: '1px solid rgba(148,163,184,0.1)' }}
@@ -177,7 +179,7 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
 
           {chatStarted && (
             <button
-              onClick={() => setChatStarted(false)}
+              onClick={handleBackToCategories}
               aria-label="Kategorilere don"
               className="flex h-8 items-center gap-1.5 rounded-xl px-2.5 transition-all hover:bg-white/[0.06]"
               style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}
@@ -201,10 +203,8 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
           </button>
         </div>
 
-        {/* Content area */}
         <div className="relative min-h-0 flex-1 overflow-hidden">
           {!chatStarted ? (
-            /* Category cards grid */
             <div className="h-full overflow-y-auto p-4">
               <div className="mb-4">
                 <p
@@ -216,20 +216,19 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                {STORE_CHAT_CATEGORIES.map((cat) => (
+                {STORE_CHAT_CATEGORIES.map((category) => (
                   <CategoryCard
-                    key={cat.id}
-                    category={cat}
-                    isExpanded={expandedCategory === cat.id}
+                    key={category.id}
+                    category={category}
+                    isExpanded={expandedCategory === category.id}
                     onToggle={() =>
-                      setExpandedCategory((prev) => (prev === cat.id ? null : cat.id))
+                      setExpandedCategory((current) => (current === category.id ? null : category.id))
                     }
                     onPromptClick={handlePromptClick}
                   />
                 ))}
               </div>
 
-              {/* Direct chat button */}
               <button
                 onClick={() => setChatStarted(true)}
                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[12px] font-medium transition-all hover:brightness-110"
@@ -250,7 +249,6 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
               </button>
             </div>
           ) : (
-            /* Chat panel in store-wide scope */
             <Suspense
               fallback={
                 <div
@@ -265,6 +263,8 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
                 <ChatPanel
                   chatScope="store"
                   starterPrompts={ALL_STORE_PROMPTS}
+                  pendingMessage={pendingPrompt}
+                  onPendingMessageConsumed={handlePendingPromptConsumed}
                 />
               )}
             </Suspense>

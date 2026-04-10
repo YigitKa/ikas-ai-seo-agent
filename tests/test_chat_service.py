@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from core.agent.tools import APPLY_SEO_TO_IKAS_TOOL_NAME
+from core.clients.mcp import MCPError
 from core.chat import (
     ChatService,
     SAVE_SEO_SUGGESTION_TOOL_NAME,
@@ -95,6 +96,86 @@ def test_chat_service_has_mcp_with_token():
     config = _make_config(ikas_mcp_token="mcp_test_token")
     service = ChatService(config)
     assert service.has_mcp
+
+
+@pytest.mark.anyio
+async def test_initialize_mcp_without_token_returns_clear_message():
+    service = ChatService(_make_config(ikas_mcp_token=""))
+
+    success, message = await service.initialize_mcp()
+
+    assert success is False
+    assert "MCP token" in message
+    assert service.mcp_initialized is False
+
+
+@pytest.mark.anyio
+async def test_initialize_mcp_success_sets_tool_metadata(monkeypatch):
+    created_tokens: list[str] = []
+
+    class FakeMCP:
+        def __init__(self, token):
+            created_tokens.append(token)
+            self.tool_count = 3
+
+        async def initialize(self):
+            return {"serverInfo": {"name": "ikas"}}
+
+        async def list_tools(self):
+            return [{"name": "listOrder"}]
+
+        def get_tool_summaries(self):
+            return [{"name": "listOrder", "description": "Order query"}]
+
+    monkeypatch.setattr("core.chat.state.IkasMCPClient", FakeMCP)
+    service = ChatService(_make_config(ikas_mcp_token="mcp_test_token"))
+
+    success, message = await service.initialize_mcp()
+
+    assert success is True
+    assert "3 operasyon hazir" in message
+    assert created_tokens == ["mcp_test_token"]
+    assert service.mcp_initialized is True
+    assert service.mcp_tool_count == 3
+    assert service.mcp_tools == [{"name": "listOrder", "description": "Order query"}]
+
+
+@pytest.mark.anyio
+async def test_initialize_mcp_handles_mcp_error(monkeypatch):
+    class FakeMCP:
+        def __init__(self, token):
+            return None
+
+        async def initialize(self):
+            raise MCPError(-32000, "Unauthorized")
+
+    monkeypatch.setattr("core.chat.state.IkasMCPClient", FakeMCP)
+    service = ChatService(_make_config(ikas_mcp_token="mcp_test_token"))
+
+    success, message = await service.initialize_mcp()
+
+    assert success is False
+    assert "MCP hatasi" in message
+    assert service.mcp_initialized is False
+
+
+@pytest.mark.anyio
+async def test_initialize_mcp_handles_generic_exception(monkeypatch):
+    class FakeMCP:
+        def __init__(self, token):
+            return None
+
+        async def initialize(self):
+            raise RuntimeError("network down")
+
+    monkeypatch.setattr("core.chat.state.IkasMCPClient", FakeMCP)
+    service = ChatService(_make_config(ikas_mcp_token="mcp_test_token"))
+
+    success, message = await service.initialize_mcp()
+
+    assert success is False
+    assert "baglanti hatasi" in message
+    assert service.mcp_initialized is False
 
 
 def test_set_product_context():
@@ -600,6 +681,32 @@ def test_build_chat_tools_always_includes_save_suggestion_tool():
     assert any("öneri kaydetme" in instruction or "save_seo" in instruction for instruction in instructions)
 
 
+def test_build_chat_tools_includes_mcp_functions_when_ready():
+    service = ChatService(_make_config(ai_provider="lm-studio"))
+    service._mcp_initialized = True
+
+    class FakeMCP:
+        def get_tools_as_openai_functions(self):
+            return [{"type": "function", "function": {"name": "listOrder", "parameters": {"type": "object"}}}]
+
+        def get_tool_summaries(self):
+            return [{"name": "listOrder", "description": "Order query"}]
+
+    service._mcp = FakeMCP()
+
+    tools, instructions = service._build_chat_tools(  # type: ignore[attr-defined]
+        allow_mcp_tools=True,
+        guided_context="",
+        agent_type="operator",
+        include_save_seo_tool=False,
+    )
+
+    assert tools is not None
+    tool_names = [tool["function"]["name"] for tool in tools]
+    assert "listOrder" in tool_names
+    assert any("listOrder" in instruction for instruction in instructions)
+
+
 @pytest.mark.anyio
 async def test_send_message_local_passes_only_save_suggestion_tool_even_if_mcp_ready():
     config = _make_config(ai_provider="lm-studio", ai_thinking_mode_chat=False)
@@ -635,6 +742,197 @@ async def test_send_message_local_passes_only_save_suggestion_tool_even_if_mcp_r
         if msg["role"] == "system"
     ]
     assert any("/no_think" in content for content in system_messages)
+
+
+@pytest.mark.anyio
+async def test_send_message_store_recent_orders_uses_guided_mcp_and_skips_ai():
+    config = _make_config(ai_provider="lm-studio", ai_thinking_mode_chat=False)
+    service = ChatService(config)
+    service.set_store_context()
+    service._mcp_initialized = True
+    _stub_routing(service, True)
+    chat_called = False
+
+    class FakeMCP:
+        async def call_tool(self, name, args):
+            assert name == "listOrder"
+            assert args["variables"]["sort"] == "-orderedAt"
+            return {
+                "content": [{
+                    "type": "text",
+                    "text": json.dumps({
+                        "listOrder": {
+                            "data": [{
+                                "id": "ord-1",
+                                "orderNumber": "4001",
+                                "orderedAt": 1712311200000,
+                                "status": "CREATED",
+                                "orderPaymentStatus": "PAID",
+                                "totalPrice": 1499.5,
+                                "customer": {"fullName": "Ada Lovelace"},
+                                "orderLineItems": [],
+                            }],
+                        },
+                    }),
+                }],
+            }
+
+    async def fake_chat_completion(messages, tools):
+        nonlocal chat_called
+        chat_called = True
+        return "unexpected", "", [], {"model": "lm-studio-test"}
+
+    service._mcp = FakeMCP()
+    service._chat_completion = fake_chat_completion  # type: ignore[method-assign]
+
+    response = await service.send_message("Son siparisleri listele.")
+
+    assert response.error is False
+    assert "Son Siparisler" in response.content
+    assert "#4001" in response.content
+    assert response.meta["finish_reason"] == "guided_mcp"
+    assert chat_called is False
+
+
+@pytest.mark.anyio
+async def test_selected_product_guided_mcp_returns_live_snapshot():
+    service = ChatService(_make_config(ai_provider="lm-studio", ai_thinking_mode_chat=False))
+    service.set_product_context(_make_product(id="prod-1", name="Canli Urun"), _make_score())
+    service._mcp_initialized = True
+
+    class FakeMCP:
+        async def call_tool(self, name, args):
+            assert name == "listProduct"
+            return {
+                "content": [{
+                    "type": "text",
+                    "text": json.dumps({
+                        "listProduct": {
+                            "data": [{
+                                "id": "prod-1",
+                                "name": "Canli Urun",
+                                "totalStock": 12,
+                                "variants": [{
+                                    "sku": "SKU-1",
+                                    "stocks": [{"stockCount": 7}],
+                                    "prices": [{"sellPrice": 100, "discountPrice": 90, "currencyCode": "TRY"}],
+                                }],
+                            }],
+                        },
+                    }),
+                }],
+            }
+
+    service._mcp = FakeMCP()
+
+    guided = await service._maybe_run_guided_mcp_request("stok durumunu goster")
+
+    assert guided is not None
+    guided_context, tool_results, fallback = guided
+    assert "Canli Urun" in guided_context
+    assert "Toplam stok: 12" in guided_context
+    assert "Varyant 1" in guided_context
+    assert tool_results[0]["tool"] == "listProduct"
+    assert "Canli Urun" in fallback
+
+
+@pytest.mark.anyio
+async def test_send_message_store_pending_orders_merges_waiting_and_draft_results():
+    service = ChatService(_make_config(ai_provider="lm-studio", ai_thinking_mode_chat=False))
+    service.set_store_context()
+    service._mcp_initialized = True
+    _stub_routing(service, True)
+    seen_calls: list[dict[str, object]] = []
+
+    class FakeMCP:
+        async def call_tool(self, name, args):
+            assert name == "listOrder"
+            seen_calls.append(args["variables"])
+            variables = args["variables"]
+            if "orderPaymentStatus" in variables:
+                payload = {
+                    "listOrder": {
+                        "data": [{
+                            "id": "ord-1",
+                            "orderNumber": "5001",
+                            "orderedAt": 1712311200000,
+                            "status": "CREATED",
+                            "orderPaymentStatus": "WAITING",
+                            "totalPrice": 10.0,
+                            "customer": {"fullName": "Waiting Customer"},
+                            "orderLineItems": [],
+                        }],
+                    },
+                }
+            else:
+                payload = {
+                    "listOrder": {
+                        "data": [{
+                            "id": "ord-2",
+                            "orderNumber": "5002",
+                            "orderedAt": 1712311300000,
+                            "status": "DRAFT",
+                            "orderPaymentStatus": "WAITING",
+                            "totalPrice": 20.0,
+                            "customer": {"fullName": "Draft Customer"},
+                            "orderLineItems": [],
+                        }],
+                    },
+                }
+            return {"content": [{"type": "text", "text": json.dumps(payload)}]}
+
+    service._mcp = FakeMCP()
+
+    response = await service.send_message("Bekleyen veya onay bekleyen siparisleri goster.")
+
+    assert response.error is False
+    assert "Bekleyen Siparisler" in response.content
+    assert "#5001" in response.content
+    assert "#5002" in response.content
+    assert len(seen_calls) == 2
+    assert response.meta["finish_reason"] == "guided_mcp"
+
+
+@pytest.mark.anyio
+async def test_send_message_store_today_summary_uses_guided_mcp_filters():
+    service = ChatService(_make_config(ai_provider="lm-studio", ai_thinking_mode_chat=False))
+    service.set_store_context()
+    service._mcp_initialized = True
+    _stub_routing(service, True)
+    seen_variables: list[dict[str, object]] = []
+
+    class FakeMCP:
+        async def call_tool(self, name, args):
+            assert name == "listOrder"
+            seen_variables.append(args["variables"])
+            payload = {
+                "listOrder": {
+                    "hasNext": False,
+                    "data": [{
+                        "id": "ord-3",
+                        "orderNumber": "6001",
+                        "orderedAt": 1775811600000,
+                        "status": "CREATED",
+                        "orderPaymentStatus": "PAID",
+                        "totalPrice": 100.0,
+                        "customer": {"fullName": "Today Customer"},
+                        "orderLineItems": [],
+                    }],
+                },
+            }
+            return {"content": [{"type": "text", "text": json.dumps(payload)}]}
+
+    service._mcp = FakeMCP()
+
+    response = await service.send_message("Bugunun satis ozetini cikar.")
+
+    assert response.error is False
+    assert "Bugunun Satis Ozeti" in response.content
+    assert "Siparis adedi: 1" in response.content
+    assert len(seen_variables) == 1
+    assert seen_variables[0]["sort"] == "-orderedAt"
+    assert "orderedAt" in seen_variables[0]
+    assert response.meta["finish_reason"] == "guided_mcp"
 
 
 @pytest.mark.anyio
@@ -937,6 +1235,36 @@ async def test_execute_chat_tool_allows_apply_with_runtime_permission(monkeypatc
     assert parsed["ok"] is True
     assert parsed["data"]["product_id"] == "prod-1"
     assert called is True
+
+
+@pytest.mark.anyio
+async def test_execute_chat_tool_returns_plain_mcp_text_for_model_context():
+    service = ChatService(_make_config())
+    service._mcp_initialized = True
+
+    class FakeMCP:
+        async def call_tool(self, name, args):
+            assert name == "listOrder"
+            assert "query" in args
+            return {
+                "content": [{
+                    "type": "text",
+                    "text": '{"listOrder":{"data":[{"orderNumber":"7001"}]}}',
+                }],
+            }
+
+        def get_tool_names(self):
+            return ["listOrder"]
+
+    service._mcp = FakeMCP()
+
+    result_text, suggestion_saved = await service._execute_chat_tool(
+        "listOrder",
+        {"query": "query listOrder { listOrder { data { orderNumber } } }"},
+    )
+
+    assert suggestion_saved is None
+    assert result_text == '{"listOrder":{"data":[{"orderNumber":"7001"}]}}'
 
 
 @pytest.mark.anyio

@@ -112,3 +112,113 @@ def test_diagnostics_summary_flags_stuck_tasks(tmp_path):
     assert body["workers"]["stuck_count"] >= 1
     assert any(issue["reason_code"] == "worker_stuck" and issue["scope"] == "job" for issue in body["issues"])
     assert any(item["id"] == "stuck-task" and item["stuck"] for item in body["active_jobs"]["items"])
+
+
+def test_diagnostics_summary_reports_mcp_token_missing(tmp_path):
+    _setup_api_db(tmp_path, "diagnostics-mcp-missing.db")
+    manager = _DiagnosticsManager(AppConfig(
+        ikas_store_name="test-store",
+        ikas_client_id="client-id",
+        ikas_client_secret="client-secret",
+        ai_provider="none",
+        ikas_mcp_token="",
+    ))
+    _override_manager(manager)
+
+    client = TestClient(app)
+    try:
+        response = client.get("/api/diagnostics/summary")
+    finally:
+        _clear()
+
+    assert response.status_code == 200
+    mcp = response.json()["mcp"]
+    assert mcp["error_code"] == "mcp_token_missing"
+    assert mcp["status"] == "unknown"
+    assert mcp["has_token"] is False
+    assert "mcp_token_missing" in mcp["reason_codes"]
+
+
+def test_diagnostics_summary_reports_mcp_not_initialized(tmp_path):
+    _setup_api_db(tmp_path, "diagnostics-mcp-not-init.db")
+    manager = _DiagnosticsManager(AppConfig(
+        ikas_store_name="test-store",
+        ikas_client_id="client-id",
+        ikas_client_secret="client-secret",
+        ai_provider="none",
+        ikas_mcp_token="mcp_token",
+    ))
+    manager.chat_mcp_initialized = False
+    _override_manager(manager)
+
+    client = TestClient(app)
+    try:
+        response = client.get("/api/diagnostics/summary")
+    finally:
+        _clear()
+
+    assert response.status_code == 200
+    mcp = response.json()["mcp"]
+    assert mcp["error_code"] == "mcp_not_initialized"
+    assert mcp["status"] == "degraded"
+    assert mcp["has_token"] is True
+    assert "mcp_not_initialized" in mcp["reason_codes"]
+
+
+def test_diagnostics_summary_reports_empty_mcp_tool_list(tmp_path):
+    _setup_api_db(tmp_path, "diagnostics-mcp-empty-tools.db")
+    manager = _DiagnosticsManager(AppConfig(
+        ikas_store_name="test-store",
+        ikas_client_id="client-id",
+        ikas_client_secret="client-secret",
+        ai_provider="none",
+        ikas_mcp_token="mcp_token",
+    ))
+    manager.chat_mcp_initialized = True
+    manager.chat_mcp_tool_count = 0
+    manager.chat_mcp_tools = []
+    _override_manager(manager)
+
+    client = TestClient(app)
+    try:
+        response = client.get("/api/diagnostics/summary")
+    finally:
+        _clear()
+
+    assert response.status_code == 200
+    mcp = response.json()["mcp"]
+    assert mcp["error_code"] == "mcp_tool_list_empty"
+    assert mcp["status"] == "degraded"
+    assert mcp["initialized"] is True
+    assert "mcp_tool_list_empty" in mcp["reason_codes"]
+
+
+def test_diagnostics_summary_reports_mcp_ready_state(tmp_path):
+    _setup_api_db(tmp_path, "diagnostics-mcp-ready.db")
+    manager = _DiagnosticsManager(AppConfig(
+        ikas_store_name="test-store",
+        ikas_client_id="client-id",
+        ikas_client_secret="client-secret",
+        ai_provider="none",
+        ikas_mcp_token="mcp_token",
+    ))
+    manager.chat_mcp_initialized = True
+    manager.chat_mcp_tool_count = 2
+    manager.chat_mcp_tools = [
+        {"name": "listOrder", "description": "Order query"},
+        {"name": "listCustomer", "description": "Customer query"},
+    ]
+    _override_manager(manager)
+
+    client = TestClient(app)
+    try:
+        response = client.get("/api/diagnostics/summary")
+    finally:
+        _clear()
+
+    assert response.status_code == 200
+    mcp = response.json()["mcp"]
+    assert mcp["status"] == "healthy"
+    assert mcp["error_code"] is None
+    assert mcp["tool_count"] == 2
+    assert mcp["tool_names"] == ["listOrder", "listCustomer"]

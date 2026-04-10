@@ -122,7 +122,7 @@ class ChatServiceStreamingFlowMixin:
             mcp_available = bool(self._mcp_initialized and self._mcp)
             if allow_tools and mcp_available and not is_generate_request:
                 try:
-                    guided_result = await self._maybe_run_guided_mcp_request()
+                    guided_result = await self._maybe_run_guided_mcp_request(cleaned_message)
                 except Exception as exc:
                     logger.warning("Guided MCP request failed: %s", exc)
                     guided_result = None

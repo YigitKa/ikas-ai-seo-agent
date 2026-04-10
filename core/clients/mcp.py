@@ -358,17 +358,21 @@ class IkasMCPClient:
         self._operations = []
 
     @staticmethod
-    def _extract_json_text_payload(result: dict[str, Any]) -> dict[str, Any]:
+    def _extract_text_payload(result: dict[str, Any]) -> str:
         content = result.get("content")
         if not isinstance(content, list):
-            return {}
+            return ""
 
         text_parts = [
             str(item.get("text", ""))
             for item in content
             if isinstance(item, dict) and item.get("type") == "text"
         ]
-        text = "\n".join(part for part in text_parts if part).strip()
+        return "\n".join(part for part in text_parts if part).strip()
+
+    @staticmethod
+    def _extract_json_text_payload(result: dict[str, Any]) -> dict[str, Any]:
+        text = IkasMCPClient._extract_text_payload(result)
         if not text:
             return {}
 
@@ -419,7 +423,13 @@ class IkasMCPClient:
                 "name": "introspect",
                 "arguments": {"operationName": operation_name},
             })
-            payload = self._extract_json_text_payload(result) if isinstance(result, dict) else {}
+            payload: dict[str, Any] = {}
+            if isinstance(result, dict):
+                payload = self._extract_json_text_payload(result)
+                if not payload:
+                    schema_text = self._extract_text_payload(result)
+                    if schema_text:
+                        payload = {"schema_text": schema_text}
             self._introspect_cache[operation_name] = payload
             return payload
         except Exception as exc:
