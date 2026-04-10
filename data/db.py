@@ -261,6 +261,17 @@ ON score_change_log(product_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_score_change_log_job
 ON score_change_log(job_id);
+
+CREATE TABLE IF NOT EXISTS competitor_prices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id TEXT NOT NULL,
+    query TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_comp_prices_lookup
+ON competitor_prices(product_id, query, created_at DESC);
 """
 
 
@@ -2514,3 +2525,42 @@ async def get_operation_metrics(
         ) as cursor:
             rows = await cursor.fetchall()
     return [dict(row) for row in rows]
+
+
+# ── Competitor price cache ──────────────────────────────────────────────────
+
+
+async def save_competitor_prices(
+    product_id: str, query: str, result_json: str
+) -> None:
+    """Cache a competitor price research result as a JSON blob."""
+    async with connection() as conn:
+        await conn.execute(
+            "INSERT INTO competitor_prices (product_id, query, result_json, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (product_id, query, result_json, datetime.now().isoformat()),
+        )
+        await conn.commit()
+
+
+async def get_cached_competitor_prices(
+    product_id: str, query: str, max_age_hours: int = 24
+) -> dict[str, Any] | None:
+    """Return cached competitor price result if fresh enough, else None."""
+    from datetime import timedelta
+
+    cutoff = (datetime.now() - timedelta(hours=max_age_hours)).isoformat()
+    async with connection() as conn:
+        async with conn.execute(
+            "SELECT result_json FROM competitor_prices "
+            "WHERE product_id = ? AND query = ? AND created_at > ? "
+            "ORDER BY created_at DESC LIMIT 1",
+            (product_id, query, cutoff),
+        ) as cursor:
+            row = await cursor.fetchone()
+    if row is None:
+        return None
+    try:
+        return json.loads(row["result_json"])
+    except (json.JSONDecodeError, KeyError):
+        return None

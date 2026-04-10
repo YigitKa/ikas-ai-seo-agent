@@ -199,6 +199,33 @@ class AgentResult(BaseModel):
     suggestion_saved: dict[str, Any] | None = None
 
 
+class CompetitorPrice(BaseModel):
+    """Tek bir rakip urun sonucu."""
+    site_name: str
+    product_name: str
+    price: float
+    currency: str = "TRY"
+    url: str
+
+
+class CompetitorPriceReport(BaseModel):
+    """Rakip fiyat arastirma raporu."""
+    product_id: str
+    product_name: str
+    query_used: str
+    our_price: float | None = None
+    competitors: List[CompetitorPrice] = Field(default_factory=list)
+    lowest_price: float | None = None
+    highest_price: float | None = None
+    average_price: float | None = None
+    price_position: str = ""
+    price_difference_pct: float | None = None
+    recommendation: str = ""
+    competitor_count: int = 0
+    cached: bool = False
+    searched_at: datetime = Field(default_factory=datetime.now)
+
+
 class TaskError(BaseModel):
     code: str = ""
     message: str = ""
