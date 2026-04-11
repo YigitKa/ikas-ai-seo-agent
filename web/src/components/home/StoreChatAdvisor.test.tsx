@@ -73,6 +73,23 @@ describe('StoreChatAdvisor', () => {
     expect(latestChatPanelProps?.pendingMessage).toBeNull();
   });
 
+  it('toggles between drawer and full-screen modes', async () => {
+    const user = userEvent.setup();
+
+    render(<StoreChatAdvisor isOpen onClose={vi.fn()} />);
+
+    const panel = screen.getByTestId('store-chat-advisor-panel');
+    expect(panel).toHaveStyle({ width: 'min(640px, 95vw)' });
+
+    const fullscreenButton = screen.getByRole('button', { name: 'Tam ekran yap' });
+    expect(fullscreenButton).toHaveAttribute('aria-pressed', 'false');
+
+    await user.click(fullscreenButton);
+
+    expect(screen.getByRole('button', { name: 'Tam ekrandan cik' })).toHaveAttribute('aria-pressed', 'true');
+    expect(panel).toHaveStyle({ width: '100vw', left: '0px' });
+  });
+
   it('drops the old pending prompt when returning to categories and creates a new request for the next selection', async () => {
     const user = userEvent.setup();
 
@@ -104,6 +121,7 @@ describe('StoreChatAdvisor', () => {
     const onClose = vi.fn();
     const { rerender } = render(<StoreChatAdvisor isOpen onClose={onClose} />);
 
+    await user.click(screen.getByRole('button', { name: 'Tam ekran yap' }));
     await user.click(screen.getByRole('button', { name: /Siparisler/ }));
     await user.click(screen.getByRole('button', { name: 'Son siparisleri goster' }));
     await screen.findByTestId('mock-chat-panel');
@@ -120,5 +138,6 @@ describe('StoreChatAdvisor', () => {
     expect(screen.queryByTestId('mock-chat-panel')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Son siparisleri goster' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Serbest sohbete basla' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tam ekran yap' })).toHaveAttribute('aria-pressed', 'false');
   });
 });

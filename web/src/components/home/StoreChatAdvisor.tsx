@@ -99,6 +99,7 @@ function CategoryCard({
 export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreChatAdvisorProps) {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [chatStarted, setChatStarted] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState<PendingStorePrompt | null>(null);
   const nextPromptIdRef = useRef(0);
 
@@ -119,11 +120,16 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
     setPendingPrompt((current) => (current?.id === promptId ? null : current));
   }, []);
 
+  const handleToggleFullscreen = useCallback(() => {
+    setIsFullscreen((current) => !current);
+  }, []);
+
   const handleClose = useCallback(() => {
     onClose();
     window.setTimeout(() => {
       setChatStarted(false);
       setExpandedCategory(null);
+      setIsFullscreen(false);
       setPendingPrompt(null);
     }, 350);
   }, [onClose]);
@@ -141,14 +147,25 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
       />
 
       <div
-        className="fixed inset-y-0 right-0 z-50 flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-hidden={!isOpen}
+        aria-labelledby="store-chat-advisor-title"
+        data-testid="store-chat-advisor-panel"
+        className="fixed z-50 flex flex-col"
         style={{
-          width: 'min(640px, 95vw)',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: isFullscreen ? 0 : 'auto',
+          width: isFullscreen ? '100vw' : 'min(640px, 95vw)',
+          maxWidth: '100vw',
+          height: '100vh',
           background: 'linear-gradient(160deg, rgba(8,14,32,0.99), rgba(12,20,40,0.98))',
-          borderLeft: '1px solid rgba(148,163,184,0.14)',
-          boxShadow: '-12px 0 48px rgba(0,0,0,0.5)',
+          borderLeft: isFullscreen ? 'none' : '1px solid rgba(148,163,184,0.14)',
+          boxShadow: isFullscreen ? '0 0 0 rgba(0,0,0,0)' : '-12px 0 48px rgba(0,0,0,0.5)',
           transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
-          transition: 'transform 0.32s cubic-bezier(0.4,0,0.2,1)',
+          transition: 'transform 0.32s cubic-bezier(0.4,0,0.2,1), width 0.22s ease, left 0.22s ease',
         }}
       >
         <div
@@ -169,7 +186,11 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
           </div>
 
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+            <div
+              id="store-chat-advisor-title"
+              className="text-[13px] font-semibold"
+              style={{ color: 'var(--color-text-primary)' }}
+            >
               AI Magaza Asistani
             </div>
             <div className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
@@ -190,6 +211,32 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
               Kategoriler
             </button>
           )}
+
+          <button
+            onClick={handleToggleFullscreen}
+            aria-label={isFullscreen ? 'Tam ekrandan cik' : 'Tam ekran yap'}
+            aria-pressed={isFullscreen}
+            className="flex h-8 items-center gap-1.5 rounded-xl px-2.5 transition-all hover:bg-white/[0.06]"
+            style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}
+            title={isFullscreen ? 'Standart gorunume don' : 'Tam ekran gorunume gec'}
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              {isFullscreen ? (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 9H5V5m10 0h4v4m0 6v4h-4m-6 0H5v-4"
+                />
+              ) : (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M8 3H5a2 2 0 00-2 2v3m16 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M8 21H5a2 2 0 01-2-2v-3"
+                />
+              )}
+            </svg>
+            <span>{isFullscreen ? 'Daralt' : 'Tam ekran'}</span>
+          </button>
 
           <button
             onClick={handleClose}
