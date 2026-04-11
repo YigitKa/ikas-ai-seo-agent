@@ -33,6 +33,7 @@ const TITLE_MAP: Record<string, { kind: StoreOrderMessageKind; title: string }> 
 
 const ORDER_LINE_PATTERN = /^- #([^|]+)\|\s*([^|]+)\|\s*durum:\s*([^|]+)\|\s*odeme:\s*([^|]+)\|\s*toplam:\s*([^|]+)\|\s*musteri:\s*([^|]+)\|\s*urunler:\s*(.+)$/i;
 const EXTRA_ITEMS_PATTERN = /^\+\d+\s+urun\s+daha$/i;
+const ITEM_SEPARATOR_PATTERN = /\s*\|\|\s*/;
 
 export function normalizeStoreText(value: string): string {
   return value
@@ -71,7 +72,7 @@ function stripMarkdownWrapper(value: string): string {
 
 function parseOrderItems(itemSummary: string): { items: string[]; extraItemsText?: string } {
   const parts = itemSummary
-    .split(/\s*,\s*/)
+    .split(itemSummary.includes('||') ? ITEM_SEPARATOR_PATTERN : /\s*,\s*/)
     .map((part) => part.trim())
     .filter(Boolean);
 

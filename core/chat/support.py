@@ -464,7 +464,7 @@ def _format_store_order_entry(
     item_texts: list[str] = []
     order_line_items = order.get("orderLineItems", [])
     if isinstance(order_line_items, list):
-        for index, item in enumerate(order_line_items[:2], start=1):
+        for index, item in enumerate(order_line_items, start=1):
             if not isinstance(item, dict):
                 continue
             variant = item.get("variant", {})
@@ -479,10 +479,7 @@ def _format_store_order_entry(
                 item_texts.append(f"{label} x{_format_decimal(quantity)}")
             else:
                 item_texts.append(label)
-        extra_count = len(order_line_items) - len(item_texts)
-        if extra_count > 0:
-            item_texts.append(f"+{extra_count} urun daha")
-    item_summary = ", ".join(item_texts) if item_texts else "-"
+    item_summary = " || ".join(item_texts) if item_texts else "-"
 
     return (
         f"- #{order_number} | {ordered_at_text} | durum: {status} | odeme: {payment_status} "

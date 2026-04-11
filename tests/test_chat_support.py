@@ -160,6 +160,21 @@ class TestFormatStoreOrderEntry:
         assert "musteri: Ada Lovelace" in result
         assert "Demo Urun x2" in result
 
+    def test_keeps_all_order_items_in_single_entry(self):
+        result = _format_store_order_entry(
+            _make_order(orderLineItems=[
+                {"quantity": 1, "variant": {"name": "Tarantula 5 Litre", "sku": "SKU-1"}},
+                {"quantity": 1, "variant": {"name": "B-52 5 Litre", "sku": "SKU-2"}},
+                {"quantity": 1, "variant": {"name": "Rhino Skin 5 Litre", "sku": "SKU-3"}},
+            ]),
+            default_tz=timezone.utc,
+        )
+
+        assert "Tarantula 5 Litre x1" in result
+        assert "B-52 5 Litre x1" in result
+        assert "Rhino Skin 5 Litre x1" in result
+        assert "+1 urun daha" not in result
+
 
 class TestBuildRecentOrdersGuidedResponse:
     def test_includes_recent_order_lines(self):

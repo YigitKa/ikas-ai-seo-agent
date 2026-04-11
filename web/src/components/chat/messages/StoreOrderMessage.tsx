@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import type {
   StoreOrderEntry,
   StoreOrderMessageData,
   StoreOrderMetric,
 } from './storeOrderMessageParser';
 import { normalizeStoreText } from './storeOrderMessageParser';
+
+const COLLAPSED_ORDER_ITEM_LIMIT = 2;
 
 const KIND_META: Record<StoreOrderMessageData['kind'], {
   eyebrow: string;
@@ -305,15 +308,24 @@ function OrderTotal({ totalText }: { totalText: string }) {
 }
 
 function OrderItems({ order }: { order: StoreOrderEntry }) {
+  const [expanded, setExpanded] = useState(false);
+
   if (order.items.length === 0 && !order.extraItemsText) {
     return <span style={{ color: 'var(--color-text-secondary)' }}>Urun bilgisi yok</span>;
   }
 
+  const hasExpandableItems = order.items.length > COLLAPSED_ORDER_ITEM_LIMIT;
+  const visibleItems = expanded || !hasExpandableItems
+    ? order.items
+    : order.items.slice(0, COLLAPSED_ORDER_ITEM_LIMIT);
+  const hiddenItemCount = Math.max(order.items.length - COLLAPSED_ORDER_ITEM_LIMIT, 0);
+  const legacyExtraItemsText = hasExpandableItems ? null : order.extraItemsText;
+
   return (
     <div className="flex flex-wrap gap-2">
-      {order.items.map((item) => (
+      {visibleItems.map((item, index) => (
         <span
-          key={item}
+          key={`${item}-${index}`}
           className="rounded-full border px-2.5 py-1 text-[11px]"
           style={{
             background: 'rgba(255,255,255,0.04)',
@@ -324,7 +336,22 @@ function OrderItems({ order }: { order: StoreOrderEntry }) {
           {item}
         </span>
       ))}
-      {order.extraItemsText ? (
+      {hasExpandableItems ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          aria-expanded={expanded}
+          className="rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all hover:brightness-110"
+          style={{
+            background: expanded ? 'rgba(99, 102, 241, 0.18)' : 'rgba(125, 211, 252, 0.12)',
+            borderColor: expanded ? 'rgba(99, 102, 241, 0.28)' : 'rgba(125, 211, 252, 0.2)',
+            color: expanded ? '#c7d2fe' : '#bae6fd',
+          }}
+        >
+          {expanded ? 'Daralt' : `+${hiddenItemCount} urun daha`}
+        </button>
+      ) : null}
+      {legacyExtraItemsText ? (
         <span
           className="rounded-full border px-2.5 py-1 text-[11px] font-medium"
           style={{
@@ -333,7 +360,7 @@ function OrderItems({ order }: { order: StoreOrderEntry }) {
             color: '#bae6fd',
           }}
         >
-          {order.extraItemsText}
+          {legacyExtraItemsText}
         </span>
       ) : null}
     </div>
