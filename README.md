@@ -92,6 +92,49 @@ python -m pytest tests/ -v
 
 ## Yetenekler
 
+### 🏠 SEO Komuta Merkezi
+
+Uygulamaya girdiğinizde ilk gördüğünüz ekran — mağaza geneli SEO sağlığını, trend verilerini ve aksiyona geçilmesi gereken ürünleri tek bakışta sunan **merkezi dashboard**:
+
+```mermaid
+graph TD
+    HOME["🏠 Komuta Merkezi (/)"] --> HERO["🎯 Mağaza Skoru<br/><i>Animasyonlu skor çemberi<br/>skor deltası rozeti<br/>provider + ürün sayısı</i>"]
+    HOME --> PULSE["📊 Skor Nabzı<br/><i>SEO · GEO · AEO sütunları<br/>7 günlük sparkline trend</i>"]
+    HOME --> DIST["📉 Skor Dağılımı<br/><i>Ürünler skor aralığına göre<br/>interaktif stacked bar</i>"]
+    HOME --> ATTN["⚠️ Dikkat Gerekenler<br/><i>En düşük skorlu ürünler<br/>Son aktivite zaman çizelgesi</i>"]
+    HOME --> RADAR["🎯 Aksiyon Radar<br/><i>AI güdümlü öneri kartları<br/>Hızlı kazanımlar · Batch işleri</i>"]
+    HOME --> CHAT["💬 Mağaza Chat Danışmanı<br/><i>Ürün seçmeden mağaza geneli chat<br/>Store-level başlangıç prompt'ları</i>"]
+
+    style HOME fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
+    style HERO fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style PULSE fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0
+    style DIST fill:#0f172a,stroke:#f59e0b,color:#e2e8f0
+    style ATTN fill:#0f172a,stroke:#ef4444,color:#e2e8f0
+    style RADAR fill:#0f172a,stroke:#10b981,color:#e2e8f0
+    style CHAT fill:#0f172a,stroke:#3b82f6,color:#e2e8f0
+```
+
+- **Mağaza Hero** — `{mağazaAdı} SEO Komuta Merkezi` başlığı, animasyonlu skor çemberi, skor delta rozeti, provider bilgisi ve toplam ürün sayısı; detay raporlara doğrudan gezinti
+- **Skor Nabzı** — SEO / GEO / AEO pillar skorları ve 7 günlük mini sparkline trendi; tüm mağazanın anlık sağlığını tek satırda gösterir
+- **Skor Dağılım Barı** — ürünlerin skor aralıklarına göre dağılımını gösteren interaktif stacked bar; dilime tıklayarak listeyi filtreleyin
+- **Dikkat Gerektiren Ürünler** — en düşük skorlu ürünlerin listesi ve son operasyon aktivitesi zaman çizelgesi; doğrudan Çalışma Alanı'na hızlı giriş linkleri
+- **Aksiyon Radar** — AI güdümlü dinamik öneri kartları: hızlı kazanımlar, en zayıf pillar, momentum takibi, aktif batch işleri; karta tıklayarak ilgili akışa yönlendirme
+- **Mağaza Chat Danışmanı** — ürün seçmek zorunda kalmadan mağaza genelinde AI chat; store-level başlangıç prompt'ları ile sıfırdan başlatma
+- **Onboarding Akışı** — ilk kez kullananlar için 4 adımlı kurulum rehberi; tamamlandığında dashboard'a geçiş
+
+#### Batch Komuta Merkezi
+
+Toplu İşlemler (`/batch`) sayfası içinde ayrı bir komuta merkezi bölümü bulunur:
+
+| Bileşen | Açıklama |
+|---|---|
+| **Sistem Durumu** | Aktif iş varlığına göre gerçek zamanlı durum göstergesi |
+| **Metrik Kartları** | Toplam İşlem · İşlenen Ürün · Ort. Skor Artışı · Aktif İş |
+| **Aktif İş Bandı** | Gerçek zamanlı ilerleme istatistikleri ve aşama göstergesi |
+| **İş Geçmişi** | Son 8 batch işi; durum, ürün sayısı ve skor artışı özeti |
+
+---
+
 ### 🤖 Otonom SEO Optimizasyonu
 
 AI tek seferlik istek/cevap yapmıyor. **Tool calling** ile otonom bir döngü çalıştırıyor: skorla → yeniden yaz → doğrula → tekrarla. Her yeniden yazım kabul edilmeden önce rubriğe karşı kontrol ediliyor. İyileşme yoksa farklı bir yaklaşım deneniyor — alan başına 2, toplamda 8 iterasyona kadar.
