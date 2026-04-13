@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { themeColors } from '../../theme/colors';
 
 interface ModalProps {
   open: boolean;
@@ -24,7 +25,7 @@ export default function Modal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0, 0, 0, 0.6)', backdropFilter: 'blur(4px)' }}
+      style={{ background: themeColors.background.overlayDark, backdropFilter: 'blur(4px)' }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -32,9 +33,9 @@ export default function Modal({
       <div
         className={`relative mx-4 flex max-h-[85vh] w-full ${maxWidth} flex-col overflow-hidden rounded-2xl`}
         style={{
-          background: 'var(--color-bg-surface)',
-          border: '1px solid var(--color-border)',
-          boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)',
+          background: themeColors.background.surface,
+          border: `1px solid ${themeColors.border.base}`,
+          boxShadow: themeColors.shadow.modal,
         }}
       >
         {/* Header */}

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { themeColors } from '../../theme/colors';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,27 +38,27 @@ function toneStyles(tone: ToastTone): { border: string; iconColor: string; icon:
   switch (tone) {
     case 'success':
       return {
-        border: 'rgba(16, 185, 129, 0.35)',
-        iconColor: '#34d399',
+        border: themeColors.border.success,
+        iconColor: themeColors.icon.success,
         icon: 'M5 13l4 4L19 7',
       };
     case 'error':
       return {
-        border: 'rgba(239, 68, 68, 0.35)',
-        iconColor: '#f87171',
+        border: themeColors.border.danger,
+        iconColor: themeColors.icon.danger,
         icon: 'M6 18L18 6M6 6l12 12',
       };
     case 'warning':
       return {
-        border: 'rgba(245, 158, 11, 0.35)',
-        iconColor: '#fbbf24',
+        border: themeColors.border.warning,
+        iconColor: themeColors.icon.warning,
         icon: 'M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z',
       };
     case 'info':
     default:
       return {
-        border: 'rgba(99, 102, 241, 0.35)',
-        iconColor: '#818cf8',
+        border: themeColors.border.primary,
+        iconColor: themeColors.icon.primary,
         icon: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
       };
   }
@@ -73,7 +74,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number)
       role="alert"
       className="flex items-start gap-2.5 rounded-xl px-3.5 py-3 text-[13px] shadow-lg"
       style={{
-        background: 'rgba(17, 17, 24, 0.96)',
+        background: themeColors.background.toast,
         border: `1px solid ${style.border}`,
         color: 'var(--color-text-primary)',
         backdropFilter: 'blur(12px)',

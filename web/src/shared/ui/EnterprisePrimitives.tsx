@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { themeColors } from '../../theme/colors';
 
 function classNames(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
@@ -6,29 +7,29 @@ function classNames(...classes: Array<string | false | null | undefined>) {
 
 const TONE_STYLES: Record<'neutral' | 'primary' | 'success' | 'warning' | 'danger', CSSProperties> = {
   neutral: {
-    background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.78), rgba(30, 41, 59, 0.62))',
+    background: themeColors.gradient.panel,
     border: '1px solid rgba(148,163,184,0.24)',
-    color: 'var(--color-text-secondary)',
+    color: themeColors.text.secondary,
   },
   primary: {
     background: 'linear-gradient(135deg, rgba(37,99,235,0.48), rgba(79,70,229,0.38))',
     border: '1px solid rgba(96,165,250,0.42)',
-    color: '#e2e8f0',
+    color: themeColors.text.primary,
   },
   success: {
     background: 'rgba(16,185,129,0.16)',
     border: '1px solid rgba(16,185,129,0.35)',
-    color: '#a7f3d0',
+    color: themeColors.text.successSoft,
   },
   warning: {
     background: 'rgba(245,158,11,0.14)',
     border: '1px solid rgba(245,158,11,0.35)',
-    color: '#fde68a',
+    color: themeColors.text.warningSoft,
   },
   danger: {
     background: 'rgba(239,68,68,0.12)',
     border: '1px solid rgba(239,68,68,0.35)',
-    color: '#fecaca',
+    color: themeColors.text.dangerSoft,
   },
 };
 
@@ -109,9 +110,9 @@ export function EnterpriseNavButton({
         className,
       )}
       style={{
-        color: active ? '#e2e8f0' : 'var(--color-text-secondary)',
+        color: active ? themeColors.text.primary : themeColors.text.secondary,
         background: active
-          ? 'linear-gradient(135deg, rgba(30,64,175,0.54), rgba(67,56,202,0.54))'
+          ? themeColors.gradient.activeChip
           : 'rgba(15, 23, 42, 0.52)',
         border: active ? '1px solid rgba(125,211,252,0.34)' : '1px solid rgba(148,163,184,0.22)',
         boxShadow: active ? '0 12px 28px rgba(30,64,175,0.28)' : 'none',
