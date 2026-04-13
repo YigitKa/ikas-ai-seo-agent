@@ -101,12 +101,12 @@ export function ChatInput({
     : '{} ile hazir urun alanlarini mesaja ekleyebilirsin.';
 
   return (
-    <div className="px-4 py-3" style={{ borderTop: '1px solid rgba(148,163,184,0.16)' }}>
+    <div className="px-4 py-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
       <div
         className="flex items-end gap-2 rounded-[20px] border px-2.5 py-2"
         style={{
-          borderColor: 'rgba(148,163,184,0.2)',
-          background: 'rgba(15,23,42,0.66)',
+          borderColor: 'var(--color-border-subtle)',
+          background: 'var(--surface-raised)',
         }}
       >
         <div className="relative flex-1">
@@ -114,8 +114,8 @@ export function ChatInput({
             <div
               className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-xl"
               style={{
-                background: 'rgba(15, 23, 42, 0.98)',
-                border: '1px solid rgba(99, 102, 241, 0.22)',
+                background: 'var(--surface-code)',
+                border: '1px solid var(--color-border-primary)',
                 boxShadow: '0 14px 40px rgba(0, 0, 0, 0.34)',
               }}
             >
@@ -123,7 +123,7 @@ export function ChatInput({
                 className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em]"
                 style={{
                   color: 'var(--color-text-muted)',
-                  borderBottom: '1px solid rgba(255,255,255,0.06)',
+                  borderBottom: '1px solid var(--alpha-white-6)',
                 }}
               >
                 Parametreler
@@ -141,16 +141,16 @@ export function ChatInput({
                     style={{
                       background:
                         index === activeParamIndex
-                          ? 'rgba(99, 102, 241, 0.14)'
-                          : 'rgba(255,255,255,0.02)',
+                          ? 'var(--tint-primary-soft)'
+                          : 'var(--alpha-white-3)',
                       border:
                         index === activeParamIndex
-                          ? '1px solid rgba(99, 102, 241, 0.28)'
+                          ? '1px solid var(--color-border-primary)'
                           : '1px solid transparent',
                     }}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-[11px]" style={{ color: '#c7d2fe' }}>
+                      <span className="font-mono text-[11px]" style={{ color: 'var(--color-text-brand-soft)' }}>
                         {`{${option.key}}`}
                       </span>
                       <span className="text-[11px] font-medium text-white">
@@ -225,15 +225,15 @@ export function ChatInput({
             }
             className="min-h-[42px] w-full resize-none rounded-2xl px-3 py-2 text-[13px] outline-none transition-all"
             style={{
-              background: 'rgba(15,23,42,0.86)',
-              border: '1px solid rgba(148,163,184,0.2)',
+              background: 'var(--surface-panel)',
+              border: '1px solid var(--color-border-subtle)',
               color: 'var(--color-text-primary)',
               opacity: isAutoIntroActive ? 0.7 : 1,
               cursor: isAutoIntroActive ? 'not-allowed' : 'text',
             }}
             onFocus={(event) => (event.currentTarget.style.borderColor = 'rgba(99,102,241,0.7)')}
             onBlur={(event) => {
-              event.currentTarget.style.borderColor = 'rgba(148,163,184,0.2)';
+              event.currentTarget.style.borderColor = 'var(--color-border-subtle)';
               setParamTrigger(null);
             }}
           />
@@ -245,8 +245,8 @@ export function ChatInput({
           className={`flex min-h-[42px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-white transition-all hover:opacity-90 disabled:opacity-30 ${isLoading ? 'min-w-[62px]' : 'w-10'}`}
           style={{
             background: isLoading
-              ? 'linear-gradient(135deg, #ef4444, #f97316)'
-              : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              ? 'linear-gradient(135deg, var(--color-danger), var(--color-orange))'
+              : 'linear-gradient(135deg, var(--color-primary), var(--color-primary))',
           }}
           title={isLoading ? 'Aktif istegi durdur' : 'Mesaji gonder'}
         >

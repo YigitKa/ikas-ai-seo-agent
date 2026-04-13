@@ -62,7 +62,7 @@ export default function ThinkingBlock({
     <div
       className="rounded-lg px-3 py-2 text-xs"
       style={{
-        background: 'linear-gradient(145deg, rgba(34, 211, 238, 0.08), rgba(15, 23, 42, 0.88))',
+        background: 'linear-gradient(145deg, rgba(34, 211, 238, 0.08), var(--surface-panel))',
         border: '1px solid rgba(34, 211, 238, 0.22)',
       }}
     >

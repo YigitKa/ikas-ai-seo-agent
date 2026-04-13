@@ -17,23 +17,23 @@ const KIND_META: Record<StoreOrderMessageData['kind'], {
 }> = {
   recent_orders: {
     eyebrow: 'Siparis Akisi',
-    accent: '#7dd3fc',
+    accent: 'var(--color-text-info)',
     border: 'rgba(125, 211, 252, 0.18)',
     glow: 'rgba(56, 189, 248, 0.22)',
     subtitle: 'En yeni siparisler canli ikas verisiyle kartlara ayrildi.',
   },
   pending_orders: {
     eyebrow: 'Takip Listesi',
-    accent: '#fbbf24',
+    accent: 'var(--color-icon-warning)',
     border: 'rgba(251, 191, 36, 0.18)',
-    glow: 'rgba(245, 158, 11, 0.22)',
+    glow: 'var(--color-border-warning)',
     subtitle: 'Bekleyen odeme ve taslak siparisler one cikarildi.',
   },
   today_summary: {
     eyebrow: 'Gunluk Ozet',
-    accent: '#34d399',
+    accent: 'var(--color-icon-success)',
     border: 'rgba(52, 211, 153, 0.18)',
-    glow: 'rgba(16, 185, 129, 0.22)',
+    glow: 'var(--color-border-success)',
     subtitle: 'Bugune ait siparis sinyalleri tek bir gorunumde toplandi.',
   },
 };
@@ -111,33 +111,33 @@ function toneStyles(tone: Tone): { background: string; border: string; text: str
   switch (tone) {
     case 'info':
       return {
-        background: 'rgba(59, 130, 246, 0.14)',
-        border: 'rgba(96, 165, 250, 0.22)',
+        background: 'var(--tint-info-soft)',
+        border: 'var(--tint-info-soft)',
         text: '#bfdbfe',
       };
     case 'success':
       return {
-        background: 'rgba(16, 185, 129, 0.14)',
+        background: 'var(--tint-success-soft)',
         border: 'rgba(52, 211, 153, 0.22)',
         text: '#bbf7d0',
       };
     case 'warning':
       return {
-        background: 'rgba(245, 158, 11, 0.14)',
+        background: 'var(--tint-warning-soft)',
         border: 'rgba(251, 191, 36, 0.22)',
-        text: '#fde68a',
+        text: 'var(--color-text-warning-soft)',
       };
     case 'danger':
       return {
-        background: 'rgba(239, 68, 68, 0.14)',
+        background: 'var(--tint-danger-soft)',
         border: 'rgba(248, 113, 113, 0.22)',
-        text: '#fecaca',
+        text: 'var(--color-text-danger-soft)',
       };
     default:
       return {
-        background: 'rgba(148, 163, 184, 0.12)',
-        border: 'rgba(148, 163, 184, 0.18)',
-        text: '#cbd5e1',
+        background: 'var(--color-divider)',
+        border: 'var(--color-border-subtle)',
+        text: 'var(--color-text-secondary)',
       };
   }
 }
@@ -245,7 +245,7 @@ function StatChip({ metric }: { metric: StoreOrderMetric }) {
       style={{
         background: tone.background,
         borderColor: tone.border,
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)',
+        boxShadow: 'inset 0 1px 0 var(--alpha-white-3)',
       }}
     >
       <div
@@ -292,8 +292,8 @@ function OrderTotal({ totalText }: { totalText: string }) {
     <div
       className="rounded-2xl border px-3 py-2"
       style={{
-        background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.86), rgba(15, 23, 42, 0.56))',
-        borderColor: 'rgba(148, 163, 184, 0.16)',
+        background: 'linear-gradient(180deg, var(--surface-panel), var(--surface-raised))',
+        borderColor: 'var(--color-border-subtle)',
       }}
     >
       <div
@@ -328,8 +328,8 @@ function OrderItems({ order }: { order: StoreOrderEntry }) {
           key={`${item}-${index}`}
           className="rounded-full border px-2.5 py-1 text-[11px]"
           style={{
-            background: 'rgba(255,255,255,0.04)',
-            borderColor: 'rgba(148, 163, 184, 0.16)',
+            background: 'var(--alpha-white-4)',
+            borderColor: 'var(--color-border-subtle)',
             color: 'var(--color-text-primary)',
           }}
         >
@@ -343,9 +343,9 @@ function OrderItems({ order }: { order: StoreOrderEntry }) {
           aria-expanded={expanded}
           className="rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all hover:brightness-110"
           style={{
-            background: expanded ? 'rgba(99, 102, 241, 0.18)' : 'rgba(125, 211, 252, 0.12)',
-            borderColor: expanded ? 'rgba(99, 102, 241, 0.28)' : 'rgba(125, 211, 252, 0.2)',
-            color: expanded ? '#c7d2fe' : '#bae6fd',
+            background: expanded ? 'var(--tint-primary-soft)' : 'rgba(125, 211, 252, 0.12)',
+            borderColor: expanded ? 'var(--color-border-primary)' : 'rgba(125, 211, 252, 0.2)',
+            color: expanded ? 'var(--color-text-brand-soft)' : '#bae6fd',
           }}
         >
           {expanded ? 'Daralt' : `+${hiddenItemCount} urun daha`}
@@ -372,8 +372,8 @@ function OrderCard({ order }: { order: StoreOrderEntry }) {
     <article
       className="rounded-[20px] border p-4 transition-transform duration-200 hover:-translate-y-0.5"
       style={{
-        background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(15,23,42,0.32))',
-        borderColor: 'rgba(148, 163, 184, 0.16)',
+        background: 'linear-gradient(180deg, var(--alpha-white-3), var(--surface-card))',
+        borderColor: 'var(--color-border-subtle)',
         boxShadow: '0 14px 32px rgba(2, 6, 23, 0.22)',
       }}
       aria-label={`Siparis ${order.orderNumber}`}
@@ -384,9 +384,9 @@ function OrderCard({ order }: { order: StoreOrderEntry }) {
             <span
               className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold"
               style={{
-                background: 'rgba(255,255,255,0.05)',
-                borderColor: 'rgba(148, 163, 184, 0.16)',
-                color: '#e2e8f0',
+                background: 'var(--alpha-white-6)',
+                borderColor: 'var(--color-border-subtle)',
+                color: 'var(--color-text-primary)',
               }}
             >
               #{order.orderNumber}
@@ -409,8 +409,8 @@ function OrderCard({ order }: { order: StoreOrderEntry }) {
         <div
           className="flex items-start gap-2 rounded-2xl border px-3 py-2.5"
           style={{
-            background: 'rgba(15, 23, 42, 0.42)',
-            borderColor: 'rgba(148, 163, 184, 0.12)',
+            background: 'var(--surface-card)',
+            borderColor: 'var(--color-divider)',
           }}
         >
           <svg
@@ -436,8 +436,8 @@ function OrderCard({ order }: { order: StoreOrderEntry }) {
         <div
           className="rounded-2xl border px-3 py-2.5"
           style={{
-            background: 'rgba(15, 23, 42, 0.42)',
-            borderColor: 'rgba(148, 163, 184, 0.12)',
+            background: 'var(--surface-card)',
+            borderColor: 'var(--color-divider)',
           }}
         >
           <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'rgba(148, 163, 184, 0.7)' }}>
@@ -458,8 +458,8 @@ function EmptyState({ message }: { message: string }) {
       <div
         className="rounded-[20px] border border-dashed px-4 py-6 text-center"
         style={{
-          background: 'rgba(15, 23, 42, 0.34)',
-          borderColor: 'rgba(148, 163, 184, 0.18)',
+          background: 'var(--surface-card)',
+          borderColor: 'var(--color-border-subtle)',
         }}
       >
         <div className="text-sm font-semibold text-white">{message}</div>
@@ -479,7 +479,7 @@ export default function StoreOrderMessage({ data }: { data: StoreOrderMessageDat
     <section
       className="relative overflow-hidden rounded-[24px] border"
       style={{
-        background: 'linear-gradient(180deg, rgba(8, 47, 73, 0.2), rgba(15, 23, 42, 0.94))',
+        background: 'linear-gradient(180deg, rgba(8, 47, 73, 0.2), var(--surface-panel))',
         borderColor: meta.border,
         boxShadow: '0 22px 60px rgba(2, 6, 23, 0.38)',
       }}
@@ -496,14 +496,14 @@ export default function StoreOrderMessage({ data }: { data: StoreOrderMessageDat
       <div className="relative">
         <div
           className="border-b px-4 py-4"
-          style={{ borderColor: 'rgba(148, 163, 184, 0.14)' }}
+          style={{ borderColor: 'var(--color-divider)' }}
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-3">
               <div
                 className="flex h-11 w-11 items-center justify-center rounded-2xl border"
                 style={{
-                  background: 'rgba(15, 23, 42, 0.56)',
+                  background: 'var(--surface-raised)',
                   borderColor: meta.border,
                   color: meta.accent,
                 }}
@@ -529,7 +529,7 @@ export default function StoreOrderMessage({ data }: { data: StoreOrderMessageDat
             <div
               className="inline-flex items-center gap-2 self-start rounded-full border px-3 py-1.5 text-[11px] font-medium"
               style={{
-                background: 'rgba(15, 23, 42, 0.58)',
+                background: 'var(--surface-raised)',
                 borderColor: meta.border,
                 color: 'rgba(226, 232, 240, 0.82)',
               }}
@@ -546,7 +546,7 @@ export default function StoreOrderMessage({ data }: { data: StoreOrderMessageDat
         {metrics.length > 0 ? (
           <div
             className="grid gap-2 border-b px-4 py-3 sm:grid-cols-2 xl:grid-cols-4"
-            style={{ borderColor: 'rgba(148, 163, 184, 0.12)' }}
+            style={{ borderColor: 'var(--color-divider)' }}
           >
             {metrics.map((metric) => (
               <StatChip key={`${metric.label}-${metric.value}`} metric={metric} />
@@ -567,13 +567,13 @@ export default function StoreOrderMessage({ data }: { data: StoreOrderMessageDat
         {data.note ? (
           <div
             className="border-t px-4 py-3"
-            style={{ borderColor: 'rgba(148, 163, 184, 0.12)' }}
+            style={{ borderColor: 'var(--color-divider)' }}
           >
             <div
               className="rounded-2xl border px-3 py-2.5 text-[12px]"
               style={{
-                background: 'rgba(255,255,255,0.03)',
-                borderColor: 'rgba(148, 163, 184, 0.12)',
+                background: 'var(--alpha-white-3)',
+                borderColor: 'var(--color-divider)',
                 color: 'var(--color-text-secondary)',
               }}
             >

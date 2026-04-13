@@ -54,8 +54,8 @@ export default function ScorePulseRow({ summary, trends, isLoading }: ScorePulse
             key={pillar.key}
             className="enterprise-surface rounded-2xl px-4 py-3.5 transition-all duration-200 hover:-translate-y-0.5"
             style={{
-              background: 'linear-gradient(160deg, rgba(15,23,42,0.88), rgba(30,41,59,0.62))',
-              border: '1px solid rgba(148,163,184,0.14)',
+              background: 'linear-gradient(160deg, var(--surface-panel), var(--surface-raised))',
+              border: '1px solid var(--color-divider)',
             }}
           >
             <div className="flex items-center justify-between">
@@ -76,8 +76,8 @@ export default function ScorePulseRow({ summary, trends, isLoading }: ScorePulse
                 <span
                   className="rounded-full px-2.5 py-1 text-[12px] font-bold"
                   style={{
-                    background: delta > 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
-                    color: delta > 0 ? '#34d399' : '#f87171',
+                    background: delta > 0 ? 'var(--tint-success-soft)' : 'var(--tint-danger-soft)',
+                    color: delta > 0 ? 'var(--color-icon-success)' : 'var(--color-icon-danger)',
                   }}
                 >
                   {delta > 0 ? '+' : ''}{delta.toFixed(1)}

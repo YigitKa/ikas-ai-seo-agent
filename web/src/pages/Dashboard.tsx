@@ -207,8 +207,8 @@ export default function Dashboard() {
               <EnterpriseSurface
                 className="mb-3 flex items-center gap-2 px-4 py-2.5 text-sm"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(99,102,241,0.22), rgba(59,130,246,0.14))',
-                  border: '1px solid rgba(99,102,241,0.38)',
+                  background: 'linear-gradient(135deg, var(--color-border-primary), var(--tint-info-soft))',
+                  border: '1px solid var(--color-border-primary)',
                   color: 'var(--color-primary-light)',
                 }}
               >
@@ -265,20 +265,20 @@ export default function Dashboard() {
       {pendingClickId && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+          style={{ background: 'var(--color-overlay-dark)', backdropFilter: 'blur(4px)' }}
         >
           <EnterpriseSurface
             className="mx-4 w-full max-w-sm p-6"
             style={{
-              background: 'linear-gradient(180deg, rgba(15,23,42,0.95), rgba(2,6,23,0.92))',
-              border: '1px solid rgba(148,163,184,0.22)',
+              background: 'linear-gradient(180deg, var(--surface-code), var(--surface-code))',
+              border: '1px solid var(--color-border-strong)',
               boxShadow: '0 24px 48px rgba(2,6,23,0.65)',
             }}
           >
             <div className="mb-1 flex items-center gap-2">
               <svg
                 className="h-5 w-5 flex-shrink-0"
-                style={{ color: '#fbbf24' }}
+                style={{ color: 'var(--color-icon-warning)' }}
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"

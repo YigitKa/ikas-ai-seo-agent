@@ -35,8 +35,8 @@ export default function StoreHeroSection({ settings, summary, isLoading }: Store
     <section
       className="enterprise-surface rounded-2xl p-5 sm:p-6"
       style={{
-        background: 'linear-gradient(135deg, rgba(15,23,42,0.92), rgba(30,41,59,0.72))',
-        border: '1px solid rgba(148,163,184,0.14)',
+        background: 'linear-gradient(135deg, var(--surface-panel), var(--surface-raised))',
+        border: '1px solid var(--color-divider)',
       }}
     >
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -83,11 +83,11 @@ export default function StoreHeroSection({ settings, summary, isLoading }: Store
               <span
                 className="rounded-full px-2.5 py-1 text-xs font-bold"
                 style={{
-                  background: delta > 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-                  color: delta > 0 ? '#34d399' : '#f87171',
+                  background: delta > 0 ? 'var(--tint-success-soft)' : 'var(--tint-danger-soft)',
+                  color: delta > 0 ? 'var(--color-icon-success)' : 'var(--color-icon-danger)',
                   border: delta > 0
-                    ? '1px solid rgba(16,185,129,0.3)'
-                    : '1px solid rgba(239,68,68,0.3)',
+                    ? '1px solid var(--color-border-success)'
+                    : '1px solid var(--color-border-danger)',
                 }}
               >
                 {delta > 0 ? '+' : ''}{delta.toFixed(1)}

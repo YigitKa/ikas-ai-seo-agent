@@ -29,8 +29,8 @@ function ScoreBadge({ before, after }: { before: number | null; after: number | 
             <span
               className="rounded px-1.5 py-0.5 text-[10px] font-bold"
               style={{
-                background: delta > 0 ? 'rgba(34,197,94,0.15)' : delta < 0 ? 'rgba(239,68,68,0.15)' : 'rgba(100,116,139,0.15)',
-                color: delta > 0 ? '#22c55e' : delta < 0 ? '#ef4444' : '#94a3b8',
+                background: delta > 0 ? 'var(--tint-success-soft)' : delta < 0 ? 'var(--tint-danger-soft)' : 'var(--color-border-subtle)',
+                color: delta > 0 ? 'var(--color-success)' : delta < 0 ? 'var(--color-danger)' : 'var(--color-text-secondary)',
               }}
             >
               {delta > 0 ? '+' : ''}{delta}
@@ -53,7 +53,7 @@ function DiffRow({ label, before, after }: { label: string; before: string; afte
         <p
           className="rounded-lg px-2.5 py-2 text-[12px] leading-relaxed"
           style={{
-            background: 'rgba(255,255,255,0.03)',
+            background: 'var(--alpha-white-3)',
             border: '1px solid var(--color-border)',
             color: 'var(--color-text-secondary)',
             maxHeight: '80px',
@@ -70,8 +70,8 @@ function DiffRow({ label, before, after }: { label: string; before: string; afte
         <p
           className="rounded-lg px-2.5 py-2 text-[12px] leading-relaxed"
           style={{
-            background: changed ? 'rgba(99,102,241,0.06)' : 'rgba(255,255,255,0.03)',
-            border: changed ? '1px solid rgba(99,102,241,0.3)' : '1px solid var(--color-border)',
+            background: changed ? 'var(--tint-primary-bg)' : 'var(--alpha-white-3)',
+            border: changed ? '1px solid var(--color-border-primary)' : '1px solid var(--color-border)',
             color: changed ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
             maxHeight: '80px',
             overflow: 'hidden',
@@ -110,14 +110,14 @@ function ItemCard({
       className="rounded-xl p-4"
       style={{
         background: isApproved
-          ? 'rgba(34,197,94,0.04)'
+          ? 'var(--tint-success-bg)'
           : isRejected
-          ? 'rgba(239,68,68,0.04)'
+          ? 'var(--tint-danger-bg)'
           : 'var(--color-bg-surface)',
         border: isApproved
-          ? '1px solid rgba(34,197,94,0.25)'
+          ? '1px solid var(--color-border-success)'
           : isRejected
-          ? '1px solid rgba(239,68,68,0.25)'
+          ? '1px solid var(--color-border-danger)'
           : '1px solid var(--color-border)',
         opacity: isRejected ? 0.65 : 1,
       }}
@@ -133,7 +133,7 @@ function ItemCard({
         {isProcessing && (
           <span
             className="flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold"
-            style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8' }}
+            style={{ background: 'var(--tint-primary-soft)', color: 'var(--color-primary-light)' }}
           >
             <span className="h-3 w-3 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
             AI İşliyor...
@@ -145,7 +145,7 @@ function ItemCard({
               type="button"
               onClick={() => decide('approved')}
               className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
-              style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)' }}
+              style={{ background: 'linear-gradient(135deg, var(--color-success), var(--color-success))' }}
             >
               Taslağı Onayla
             </button>
@@ -154,8 +154,8 @@ function ItemCard({
               onClick={() => decide('rejected')}
               className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors hover:bg-[var(--color-bg-hover)]"
               style={{
-                border: '1px solid rgba(239,68,68,0.3)',
-                color: '#ef4444',
+                border: '1px solid var(--color-border-danger)',
+                color: 'var(--color-danger)',
               }}
             >
               Reddet
@@ -165,7 +165,7 @@ function ItemCard({
         {isApproved && (
           <span
             className="rounded-full px-3 py-1 text-[11px] font-semibold"
-            style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
+            style={{ background: 'var(--tint-success-soft)', color: 'var(--color-success)' }}
           >
             Onaylandı
           </span>
@@ -173,7 +173,7 @@ function ItemCard({
         {isRejected && (
           <span
             className="rounded-full px-3 py-1 text-[11px] font-semibold"
-            style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}
+            style={{ background: 'var(--tint-danger-soft)', color: 'var(--color-danger)' }}
           >
             Reddedildi
           </span>
@@ -213,8 +213,8 @@ function ItemCard({
         <div
           className="mt-2 flex items-center gap-2 rounded-lg px-4 py-3"
           style={{
-            background: 'rgba(99,102,241,0.06)',
-            border: '1px solid rgba(99,102,241,0.15)',
+            background: 'var(--tint-primary-bg)',
+            border: '1px solid var(--tint-primary-soft)',
           }}
         >
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
@@ -228,8 +228,8 @@ function ItemCard({
       {noSuggestion && (
         <p className="mt-2 rounded-lg px-3 py-2 text-[12px]" style={{
           background: 'rgba(100,116,139,0.08)',
-          border: '1px solid rgba(100,116,139,0.2)',
-          color: '#94a3b8',
+          border: '1px solid var(--color-border-subtle)',
+          color: 'var(--color-text-secondary)',
         }}>
           AI bu ürün için öneri oluşturamadı.
         </p>
@@ -237,9 +237,9 @@ function ItemCard({
 
       {(item.status === 'failed' || item.status === 'skipped') && (
         <p className="mt-2 rounded-lg px-3 py-2 text-[12px]" style={{
-          background: 'rgba(239,68,68,0.08)',
-          border: '1px solid rgba(239,68,68,0.2)',
-          color: '#ef4444',
+          background: 'var(--tint-danger-bg)',
+          border: '1px solid var(--tint-danger-soft)',
+          color: 'var(--color-danger)',
         }}>
           {item.skip_reason || 'İşlem başarısız'}
         </p>
@@ -279,7 +279,7 @@ export default function CalibrationReview({ job, items, onDecision, onConfirmRun
           </div>
           <div className="text-right">
             <p className="text-[24px] font-bold tabular-nums" style={{
-              color: confidencePct >= 70 ? '#22c55e' : confidencePct >= 50 ? '#f59e0b' : '#ef4444',
+              color: confidencePct >= 70 ? 'var(--color-success)' : confidencePct >= 50 ? 'var(--color-warning)' : 'var(--color-danger)',
             }}>
               %{confidencePct}
             </p>
@@ -327,7 +327,7 @@ export default function CalibrationReview({ job, items, onDecision, onConfirmRun
             onClick={() => setShowConfirm(true)}
             disabled={!canConfirm || isMutating}
             className="rounded-lg px-5 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-            style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
+            style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-primary))' }}
           >
             {isMutating ? 'Başlatılıyor...' : 'Toplu İşlemi Başlat'}
           </button>

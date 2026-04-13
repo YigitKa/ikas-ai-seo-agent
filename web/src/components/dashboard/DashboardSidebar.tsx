@@ -49,10 +49,10 @@ export default function DashboardSidebar({
     <aside
       className="enterprise-panel-divider flex w-[320px] flex-col xl:w-[336px]"
       style={{
-        background: 'linear-gradient(180deg, rgba(2,6,23,0.92), rgba(15,23,42,0.88))',
+        background: 'linear-gradient(180deg, var(--surface-code), var(--surface-panel))',
       }}
     >
-      <div className="px-3 py-3" style={{ borderBottom: '1px solid rgba(148,163,184,0.16)' }}>
+      <div className="px-3 py-3" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
         <div className="mb-3 flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div
@@ -117,9 +117,9 @@ export default function DashboardSidebar({
                 onClick={() => onFilterChange(tabKey)}
                 className={`min-w-0 rounded-lg px-2 py-1.5 text-[11px] font-medium leading-tight transition-all duration-200 ${active ? '' : 'hover:text-[var(--color-text-secondary)]'}`}
                 style={{
-                  background: active ? 'linear-gradient(135deg, rgba(30,64,175,0.42), rgba(67,56,202,0.3))' : 'rgba(15,23,42,0.35)',
-                  border: active ? '1px solid rgba(96,165,250,0.36)' : '1px solid rgba(148,163,184,0.12)',
-                  color: active ? '#dbeafe' : 'var(--color-text-muted)',
+                  background: active ? 'linear-gradient(135deg, rgba(30,64,175,0.42), rgba(67,56,202,0.3))' : 'var(--surface-card)',
+                  border: active ? '1px solid rgba(96,165,250,0.36)' : '1px solid var(--color-divider)',
+                  color: active ? 'var(--color-text-info)' : 'var(--color-text-muted)',
                 }}
               >
                 {FILTER_LABELS[tabKey]}
@@ -177,7 +177,7 @@ export default function DashboardSidebar({
         <div
           className="flex items-center justify-between px-3 py-2 text-xs"
           style={{
-            borderTop: '1px solid rgba(148,163,184,0.16)',
+            borderTop: '1px solid var(--color-border-subtle)',
             color: 'var(--color-text-muted)',
           }}
         >

@@ -71,8 +71,8 @@ function LoadingBubble({
     <div
       className="mr-6 rounded-2xl px-4 py-3"
       style={{
-        background: 'linear-gradient(180deg, rgba(30,41,59,0.75), rgba(15,23,42,0.8))',
-        border: '1px solid rgba(148,163,184,0.2)',
+        background: 'linear-gradient(180deg, var(--surface-raised), var(--surface-panel))',
+        border: '1px solid var(--color-border-subtle)',
       }}
     >
       <div className="flex items-center gap-2">

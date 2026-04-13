@@ -12,7 +12,7 @@ import CostCard from './CostCard';
 const FAILED_RESPONSE_MARKER = 'Model nihai cevap uretmedi';
 
 export function getRoleMeta(role: ChatMessage['role'], assistantLabel: string) {
-  if (role === 'user') return { label: 'Sen', color: '#c7d2fe' };
+  if (role === 'user') return { label: 'Sen', color: 'var(--color-text-brand-soft)' };
   if (role === 'assistant') return { label: assistantLabel, color: 'var(--color-text-muted)' };
   return { label: 'Akis', color: 'var(--color-text-muted)' };
 }
@@ -77,15 +77,15 @@ function MessageBubble({
             className="rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed shadow-sm"
             style={{
               background: isUser
-                ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(79, 70, 229, 0.18))'
+                ? 'linear-gradient(135deg, var(--color-border-primary), var(--tint-primary-soft))'
                 : isSystem
-                  ? 'rgba(148, 163, 184, 0.08)'
-                  : 'linear-gradient(160deg, rgba(30,41,59,0.66), rgba(15,23,42,0.7))',
+                  ? 'var(--color-divider)'
+                  : 'linear-gradient(160deg, var(--surface-raised), var(--surface-raised))',
               border: isSystem
                 ? 'none'
-                : `1px solid ${isUser ? 'rgba(99, 102, 241, 0.35)' : 'rgba(148, 163, 184, 0.22)'}`,
+                : `1px solid ${isUser ? 'var(--color-border-primary)' : 'var(--color-border-strong)'}`,
               color: isUser
-                ? '#c7d2fe'
+                ? 'var(--color-text-brand-soft)'
                 : isSystem
                   ? 'var(--color-text-muted)'
                   : 'var(--color-text-primary)',
@@ -111,9 +111,9 @@ function MessageBubble({
             onClick={onRetry}
             className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors"
             style={{
-              background: 'rgba(245, 158, 11, 0.12)',
-              border: '1px solid rgba(245, 158, 11, 0.28)',
-              color: '#fcd34d',
+              background: 'var(--tint-warning-soft)',
+              border: '1px solid var(--color-border-warning)',
+              color: 'var(--color-text-warning-soft)',
             }}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -132,9 +132,9 @@ function MessageBubble({
               key={metric.key}
               className="rounded-full px-2.5 py-1 text-[10px] font-medium"
               style={{
-                background: 'rgba(255,255,255,0.04)',
+                background: 'var(--alpha-white-4)',
                 color: 'var(--color-text-muted)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                border: '1px solid var(--alpha-white-8)',
               }}
             >
               {metric.label}: {metric.value}

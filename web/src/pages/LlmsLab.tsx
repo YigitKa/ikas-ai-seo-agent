@@ -64,7 +64,7 @@ function ProductPill({
       </div>
       <div
         className="h-2 w-2 rounded-full"
-        style={{ background: glow.replace('0.28', '0.9') ?? '#22c55e' }}
+        style={{ background: glow.replace('0.28', '0.9') ?? 'var(--color-success)' }}
       />
     </div>
   );
@@ -213,11 +213,11 @@ export default function LlmsLab() {
       <div className="px-5 pb-10">
 
         <section className="mt-8 grid gap-4 md:grid-cols-4">
-          <StatCard label="Toplam urun" value={counts?.total_products ?? '—'} accent="#e2e8f0" />
+          <StatCard label="Toplam urun" value={counts?.total_products ?? '—'} accent="var(--color-text-primary)" />
           <StatCard
             label="Ozetlendi"
             value={counts?.processed ?? 0}
-            accent="#34d399"
+            accent="var(--color-icon-success)"
             onClick={() => {
               setListMode('processed');
               processedQ.refetch();
@@ -226,13 +226,13 @@ export default function LlmsLab() {
           <StatCard
             label="Bekleyen"
             value={counts?.unprocessed ?? 0}
-            accent="#fbbf24"
+            accent="var(--color-icon-warning)"
             onClick={() => {
               setListMode('pending');
               pendingQ.refetch();
             }}
           />
-          <StatCard label="Hata" value={counts?.failed ?? 0} accent="#f472b6" />
+          <StatCard label="Hata" value={counts?.failed ?? 0} accent="var(--color-icon-danger)" />
         </section>
 
         <section className="mt-8 grid gap-6 md:grid-cols-2">
@@ -266,12 +266,12 @@ export default function LlmsLab() {
               <ProductPill
                 title={status.current.product_name}
                 subtitle={status.current.category ?? 'Kategori yok'}
-                glow="rgba(34,197,94,0.28)"
+                glow="var(--color-border-success)"
               />
             ) : (
               <div
                 className="rounded-xl px-4 py-6 text-[13px]"
-                style={{ border: '1px dashed rgba(148,163,184,0.2)', color: 'var(--color-text-muted)' }}
+                style={{ border: '1px dashed var(--color-border-subtle)', color: 'var(--color-text-muted)' }}
               >
                 Su an calisan bir parca yok. {jobStatus === 'running' ? 'Siradaki urun bekleniyor.' : 'Is baslat veya devam et.'}
               </div>
@@ -302,7 +302,7 @@ export default function LlmsLab() {
               {!status?.unprocessed?.length && (
                 <div
                   className="rounded-xl px-4 py-6 text-[13px]"
-                  style={{ border: '1px dashed rgba(148,163,184,0.2)', color: 'var(--color-text-muted)' }}
+                  style={{ border: '1px dashed var(--color-border-subtle)', color: 'var(--color-text-muted)' }}
                 >
                   Tum urunler icin ozet var. Yeni eklenen urunler burada belirecek.
                 </div>
@@ -326,8 +326,8 @@ export default function LlmsLab() {
                 onClick={() => { setListMode('processed'); processedQ.refetch(); }}
                 className="rounded-xl px-3 py-1.5 text-[13px] font-medium transition-all duration-200"
                 style={listMode === 'processed'
-                  ? { background: 'linear-gradient(135deg, rgba(30,64,175,0.54), rgba(67,56,202,0.54))', border: '1px solid rgba(125,211,252,0.34)', color: '#e2e8f0' }
-                  : { background: 'rgba(15,23,42,0.52)', border: '1px solid rgba(148,163,184,0.22)', color: 'var(--color-text-secondary)' }}
+                  ? { background: 'linear-gradient(135deg, rgba(30,64,175,0.54), rgba(67,56,202,0.54))', border: '1px solid rgba(125,211,252,0.34)', color: 'var(--color-text-primary)' }
+                  : { background: 'var(--surface-card)', border: '1px solid var(--color-border-strong)', color: 'var(--color-text-secondary)' }}
               >
                 Tum ozetleri goster
               </button>
@@ -336,8 +336,8 @@ export default function LlmsLab() {
                 onClick={() => { setListMode('pending'); pendingQ.refetch(); }}
                 className="rounded-xl px-3 py-1.5 text-[13px] font-medium transition-all duration-200"
                 style={listMode === 'pending'
-                  ? { background: 'rgba(245,158,11,0.22)', border: '1px solid rgba(245,158,11,0.5)', color: '#fde68a' }
-                  : { background: 'rgba(15,23,42,0.52)', border: '1px solid rgba(148,163,184,0.22)', color: 'var(--color-text-secondary)' }}
+                  ? { background: 'var(--color-border-warning)', border: '1px solid rgba(245,158,11,0.5)', color: 'var(--color-text-warning-soft)' }
+                  : { background: 'var(--surface-card)', border: '1px solid var(--color-border-strong)', color: 'var(--color-text-secondary)' }}
               >
                 Bekleyenleri goster
               </button>
@@ -346,8 +346,8 @@ export default function LlmsLab() {
                 onClick={() => setListMode('recent')}
                 className="rounded-xl px-3 py-1.5 text-[13px] font-medium transition-all duration-200"
                 style={listMode === 'recent'
-                  ? { background: 'linear-gradient(135deg, rgba(30,64,175,0.54), rgba(67,56,202,0.54))', border: '1px solid rgba(125,211,252,0.34)', color: '#e2e8f0' }
-                  : { background: 'rgba(15,23,42,0.52)', border: '1px solid rgba(148,163,184,0.22)', color: 'var(--color-text-secondary)' }}
+                  ? { background: 'linear-gradient(135deg, rgba(30,64,175,0.54), rgba(67,56,202,0.54))', border: '1px solid rgba(125,211,252,0.34)', color: 'var(--color-text-primary)' }
+                  : { background: 'var(--surface-card)', border: '1px solid var(--color-border-strong)', color: 'var(--color-text-secondary)' }}
               >
                 Son eklenenler
               </button>
@@ -371,7 +371,7 @@ export default function LlmsLab() {
                   </div>
                   <span
                     className="rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-wide"
-                    style={{ background: 'rgba(16,185,129,0.16)', border: '1px solid rgba(16,185,129,0.35)', color: '#a7f3d0' }}
+                    style={{ background: 'var(--tint-success-soft)', border: '1px solid var(--color-border-success)', color: 'var(--color-text-success-soft)' }}
                   >
                     Hazir
                   </span>
@@ -389,7 +389,7 @@ export default function LlmsLab() {
                     onClick={() => regenMut.mutate(entry.product_id)}
                     disabled={regenTarget === entry.product_id || regenMut.isPending}
                     className="rounded-full px-3 py-1 text-[11px] font-semibold transition hover:-translate-y-0.5 disabled:opacity-50"
-                    style={{ border: '1px solid rgba(16,185,129,0.4)', color: '#a7f3d0' }}
+                    style={{ border: '1px solid var(--color-border-success)', color: 'var(--color-text-success-soft)' }}
                   >
                     {regenTarget === entry.product_id ? 'Yeniden üretiliyor...' : 'Yeniden üret'}
                   </button>
@@ -399,7 +399,7 @@ export default function LlmsLab() {
             {listMode !== 'pending' && !( (listMode === 'processed' ? processedQ.data?.items?.length : status?.latest_processed?.length) ) && (
               <div
                 className="rounded-xl px-4 py-6 text-[13px]"
-                style={{ border: '1px dashed rgba(148,163,184,0.2)', color: 'var(--color-text-muted)' }}
+                style={{ border: '1px dashed var(--color-border-subtle)', color: 'var(--color-text-muted)' }}
               >
                 Henuz kaydedilmis ozet yok. Islem baslayinca sonuclar burada gorunecek.
               </div>
@@ -425,7 +425,7 @@ export default function LlmsLab() {
             {listMode === 'pending' && pendingQ.isFetching && (
               <div
                 className="md:col-span-2 rounded-xl px-4 py-6 text-center text-[13px]"
-                style={{ border: '1px dashed rgba(245,158,11,0.3)', color: 'var(--color-warning)' }}
+                style={{ border: '1px dashed var(--color-border-warning)', color: 'var(--color-warning)' }}
               >
                 Bekleyenler yukleniyor...
               </div>
@@ -434,7 +434,7 @@ export default function LlmsLab() {
             {listMode === 'processed' && processedQ.isFetching && (
               <div
                 className="md:col-span-2 rounded-xl px-4 py-6 text-center text-[13px]"
-                style={{ border: '1px dashed rgba(148,163,184,0.25)', color: 'var(--color-text-secondary)' }}
+                style={{ border: '1px dashed var(--color-border-strong)', color: 'var(--color-text-secondary)' }}
               >
                 Tum ozetler yukleniyor...
               </div>

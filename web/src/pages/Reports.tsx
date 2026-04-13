@@ -18,19 +18,19 @@ import type { DailyStoreTrend, ReportSummary, TopImprover } from '../types';
 type DateRange = 7 | 30 | 90 | 365;
 
 const C = {
-  primary: '#60a5fa',
-  success: '#34d399',
-  warning: '#fbbf24',
-  danger: '#f87171',
-  purple: '#a78bfa',
-  cyan: '#22d3ee',
-  pink: '#f472b6',
-  orange: '#fb923c',
-  grid: 'rgba(148,163,184,0.08)',
-  border: 'rgba(148,163,184,0.12)',
+  primary: 'var(--color-icon-info)',
+  success: 'var(--color-icon-success)',
+  warning: 'var(--color-icon-warning)',
+  danger: 'var(--color-icon-danger)',
+  purple: 'var(--color-primary-light)',
+  cyan: 'var(--color-accent-light)',
+  pink: 'var(--color-icon-danger)',
+  orange: 'var(--color-orange)',
+  grid: 'var(--color-divider)',
+  border: 'var(--color-divider)',
   muted: 'rgba(148,163,184,0.5)',
-  dimmed: 'rgba(148,163,184,0.3)',
-  text: '#e2e8f0',
+  dimmed: 'var(--color-border-strong)',
+  text: 'var(--color-text-primary)',
 };
 
 const OP_LABELS: Record<string, string> = {
@@ -77,12 +77,12 @@ function defaultRange(): { start: string; end: string } {
 
 const tooltipStyle = {
   contentStyle: {
-    background: 'rgba(2,6,23,0.96)',
+    background: 'var(--surface-code)',
     border: `1px solid ${C.border}`,
     borderRadius: 10,
     color: C.text,
     fontSize: 11,
-    boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+    boxShadow: '0 8px 32px var(--color-overlay)',
   },
 };
 
@@ -119,7 +119,7 @@ function KpiCard({ label, value, sub, color, icon }: {
 
 function DeltaBadge({ value, size = 'sm' }: { value: number; size?: 'sm' | 'lg' }) {
   const color = value > 0 ? C.success : value < 0 ? C.danger : C.muted;
-  const bg = value > 0 ? 'rgba(52,211,153,0.12)' : value < 0 ? 'rgba(248,113,113,0.12)' : 'rgba(148,163,184,0.08)';
+  const bg = value > 0 ? 'rgba(52,211,153,0.12)' : value < 0 ? 'rgba(248,113,113,0.12)' : 'var(--color-divider)';
   const fontSize = size === 'lg' ? 14 : 11;
   return (
     <span
@@ -263,7 +263,7 @@ function ScoreDistributionChart({ data }: { data: Array<{ bucket: string; count:
               <div key={d.bucket} className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: BUCKET_COLORS[d.bucket] ?? C.muted }} />
                 <span className="text-[11px] font-medium w-12" style={{ color: C.text }}>{d.bucket}</span>
-                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(148,163,184,0.06)' }}>
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-divider)' }}>
                   <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: BUCKET_COLORS[d.bucket] ?? C.muted }} />
                 </div>
                 <span className="text-[10px] tabular-nums font-bold w-8 text-right" style={{ color: C.text }}>{d.count}</span>
@@ -291,7 +291,7 @@ function OperationMetricsCard({ data }: { data: Array<{ operation: string; total
           const color = OP_COLORS[op.operation] ?? C.muted;
           const rate = op.success_rate ?? 0;
           return (
-            <div key={op.operation} className="rounded-xl p-4" style={{ background: 'rgba(15,23,42,0.5)', border: `1px solid ${C.border}` }}>
+            <div key={op.operation} className="rounded-xl p-4" style={{ background: 'var(--surface-card)', border: `1px solid ${C.border}` }}>
               <div className="flex items-center gap-2 mb-3">
                 <span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
                 <span className="text-xs font-bold uppercase tracking-wide" style={{ color }}>{label}</span>
@@ -303,7 +303,7 @@ function OperationMetricsCard({ data }: { data: Array<{ operation: string; total
                   <span className="text-[9px] uppercase tracking-wider" style={{ color: C.muted }}>Basari Orani</span>
                   <span className="text-[11px] font-bold tabular-nums" style={{ color: rate >= 70 ? C.success : rate >= 40 ? C.warning : C.danger }}>{rate}%</span>
                 </div>
-                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(148,163,184,0.06)' }}>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-divider)' }}>
                   <div className="h-full rounded-full transition-all" style={{ width: `${rate}%`, background: rate >= 70 ? C.success : rate >= 40 ? C.warning : C.danger }} />
                 </div>
               </div>
@@ -407,14 +407,14 @@ function StoreTrendChart({ data, range, onRangeChange }: {
     <EnterpriseSurface className="p-5">
       <div className="flex items-center justify-between mb-4">
         <SectionTitle>Magaza Skor Trendi</SectionTitle>
-        <div className="flex gap-0.5 rounded-lg p-0.5" style={{ background: 'rgba(148,163,184,0.06)' }}>
+        <div className="flex gap-0.5 rounded-lg p-0.5" style={{ background: 'var(--color-divider)' }}>
           {ranges.map(r => (
             <button
               key={r}
               onClick={() => onRangeChange(r)}
               className="px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all"
               style={{
-                background: r === range ? 'rgba(96,165,250,0.2)' : 'transparent',
+                background: r === range ? 'var(--tint-info-soft)' : 'transparent',
                 color: r === range ? C.primary : C.muted,
               }}
             >
@@ -468,7 +468,7 @@ function TopImproversCard({ improvers }: { improvers: TopImprover[] }) {
               <span
                 className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
                 style={{
-                  background: i < 3 ? 'rgba(52,211,153,0.15)' : 'rgba(148,163,184,0.08)',
+                  background: i < 3 ? 'rgba(52,211,153,0.15)' : 'var(--color-divider)',
                   color: i < 3 ? C.success : C.muted,
                 }}
               >
@@ -478,7 +478,7 @@ function TopImproversCard({ improvers }: { improvers: TopImprover[] }) {
                 <div className="text-[11px] truncate font-medium" style={{ color: C.text }}>
                   {item.product_name}
                 </div>
-                <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(148,163,184,0.06)' }}>
+                <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: 'var(--color-divider)' }}>
                   <div
                     className="h-full rounded-full"
                     style={{
@@ -534,7 +534,7 @@ function SubScoreChart({ summary }: { summary: ReportSummary }) {
           <XAxis type="number" tick={{ fill: C.muted, fontSize: 10 }} stroke={C.grid} />
           <YAxis type="category" dataKey="name" tick={{ fill: C.muted, fontSize: 10 }} stroke="transparent" width={65} />
           <Tooltip {...tooltipStyle} />
-          <Bar dataKey="ilk" name="Ilk" fill="rgba(148,163,184,0.15)" radius={[0, 3, 3, 0]} barSize={10} />
+          <Bar dataKey="ilk" name="Ilk" fill="var(--color-border-subtle)" radius={[0, 3, 3, 0]} barSize={10} />
           <Bar dataKey="son" name="Son" fill={C.primary} radius={[0, 3, 3, 0]} barSize={10} />
         </BarChart>
       </ResponsiveContainer>
@@ -561,7 +561,7 @@ function ProductDrillDown({ improvers, range }: { improvers: TopImprover[]; rang
         value={selected ?? ''}
         onChange={e => setSelected(e.target.value || null)}
         className="w-full px-3 py-2 rounded-lg text-xs mb-4"
-        style={{ background: 'rgba(15,23,42,0.8)', border: `1px solid ${C.border}`, color: C.text }}
+        style={{ background: 'var(--surface-panel)', border: `1px solid ${C.border}`, color: C.text }}
       >
         <option value="">Urun secin...</option>
         {improvers.map(p => (
@@ -761,7 +761,7 @@ export default function Reports() {
   const overallSuccessRate = totalOps > 0 ? Math.round(totalImproved / totalOps * 100) : 0;
 
   return (
-    <div className="flex h-screen flex-col" style={{ background: 'var(--color-bg-base, #020617)' }}>
+    <div className="flex h-screen flex-col" style={{ background: 'var(--color-bg-base, var(--color-bg-base))' }}>
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <AppHeader
         title="SEO Analitik"
@@ -792,7 +792,7 @@ export default function Reports() {
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
                 className="rounded-md px-2 py-2 text-[11px]"
-                style={{ background: 'rgba(15,23,42,0.8)', border: `1px solid ${C.border}`, color: C.text }}
+                style={{ background: 'var(--surface-panel)', border: `1px solid ${C.border}`, color: C.text }}
               />
               <span className="text-[10px]" style={{ color: C.dimmed }}>-</span>
               <input
@@ -800,13 +800,13 @@ export default function Reports() {
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
                 className="rounded-md px-2 py-2 text-[11px]"
-                style={{ background: 'rgba(15,23,42,0.8)', border: `1px solid ${C.border}`, color: C.text }}
+                style={{ background: 'var(--surface-panel)', border: `1px solid ${C.border}`, color: C.text }}
               />
               <select
                 value={opFilter}
                 onChange={e => setOpFilter(e.target.value)}
                 className="rounded-md px-2 py-2 text-[11px]"
-                style={{ background: 'rgba(15,23,42,0.8)', border: `1px solid ${C.border}`, color: C.text }}
+                style={{ background: 'var(--surface-panel)', border: `1px solid ${C.border}`, color: C.text }}
               >
                 <option value="">Tum Islemler</option>
                 <option value="apply">Tekil</option>
@@ -836,7 +836,7 @@ export default function Reports() {
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
               className="px-2 py-1 rounded-md text-[10px]"
-              style={{ background: 'rgba(15,23,42,0.8)', border: `1px solid ${C.border}`, color: C.text }}
+              style={{ background: 'var(--surface-panel)', border: `1px solid ${C.border}`, color: C.text }}
             />
             <span className="text-[10px]" style={{ color: C.dimmed }}>—</span>
             <input
@@ -844,13 +844,13 @@ export default function Reports() {
               value={endDate}
               onChange={e => setEndDate(e.target.value)}
               className="px-2 py-1 rounded-md text-[10px]"
-              style={{ background: 'rgba(15,23,42,0.8)', border: `1px solid ${C.border}`, color: C.text }}
+              style={{ background: 'var(--surface-panel)', border: `1px solid ${C.border}`, color: C.text }}
             />
             <select
               value={opFilter}
               onChange={e => setOpFilter(e.target.value)}
               className="px-2 py-1 rounded-md text-[10px]"
-              style={{ background: 'rgba(15,23,42,0.8)', border: `1px solid ${C.border}`, color: C.text }}
+              style={{ background: 'var(--surface-panel)', border: `1px solid ${C.border}`, color: C.text }}
             >
               <option value="">Tum Islemler</option>
               <option value="apply">Tekil</option>

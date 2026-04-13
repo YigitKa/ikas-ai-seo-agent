@@ -18,8 +18,8 @@ export default function ActionRadarSection({ actions }: ActionRadarSectionProps)
           key={card.id}
           className="enterprise-surface rounded-2xl p-4 transition-all duration-300 hover:-translate-y-0.5"
           style={{
-            background: 'linear-gradient(160deg, rgba(15,23,42,0.88), rgba(30,41,59,0.62))',
-            border: '1px solid rgba(148,163,184,0.14)',
+            background: 'linear-gradient(160deg, var(--surface-panel), var(--surface-raised))',
+            border: '1px solid var(--color-divider)',
             animationDelay: `${idx * 100}ms`,
           }}
         >
@@ -29,20 +29,20 @@ export default function ActionRadarSection({ actions }: ActionRadarSectionProps)
               style={{
                 background:
                   card.tone === 'success'
-                    ? 'rgba(16,185,129,0.12)'
+                    ? 'var(--tint-success-soft)'
                     : card.tone === 'warning'
-                      ? 'rgba(245,158,11,0.12)'
+                      ? 'var(--tint-warning-soft)'
                       : card.tone === 'danger'
-                        ? 'rgba(239,68,68,0.12)'
-                        : 'rgba(99,102,241,0.12)',
+                        ? 'var(--tint-danger-soft)'
+                        : 'var(--tint-primary-soft)',
                 color:
                   card.tone === 'success'
-                    ? '#34d399'
+                    ? 'var(--color-icon-success)'
                     : card.tone === 'warning'
-                      ? '#fbbf24'
+                      ? 'var(--color-icon-warning)'
                       : card.tone === 'danger'
-                        ? '#f87171'
-                        : '#a5b4fc',
+                        ? 'var(--color-icon-danger)'
+                        : 'var(--color-primary-light)',
               }}
             >
               <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>

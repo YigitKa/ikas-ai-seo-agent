@@ -273,8 +273,8 @@ export default function ChatPanel({
     <div
       className="enterprise-surface flex h-full flex-col overflow-hidden rounded-2xl"
       style={{
-        background: "linear-gradient(180deg, rgba(15,23,42,0.92), rgba(2,6,23,0.95))",
-        border: "1px solid rgba(148,163,184,0.2)",
+        background: "linear-gradient(180deg, var(--surface-panel), var(--surface-code))",
+        border: "1px solid var(--color-border-subtle)",
         boxShadow: "0 24px 52px rgba(2, 6, 23, 0.52)",
       }}
     >

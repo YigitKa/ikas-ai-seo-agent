@@ -55,10 +55,10 @@ export function getFieldStatusText(pct: number): string {
 }
 
 export function getStatusBadgeStyle(pct: number): { background: string; color: string } {
-  if (pct >= 80) return { background: 'rgba(16, 185, 129, 0.15)', color: themeColors.icon.success };
-  if (pct >= 60) return { background: 'rgba(245, 158, 11, 0.15)', color: themeColors.icon.warning };
-  if (pct >= 40) return { background: 'rgba(249, 115, 22, 0.15)', color: '#fb923c' };
-  return { background: 'rgba(239, 68, 68, 0.15)', color: themeColors.icon.danger };
+  if (pct >= 80) return { background: 'var(--tint-success-soft)', color: themeColors.icon.success };
+  if (pct >= 60) return { background: 'var(--tint-warning-soft)', color: themeColors.icon.warning };
+  if (pct >= 40) return { background: 'var(--tint-warning-soft)', color: 'var(--color-orange)' };
+  return { background: 'var(--tint-danger-soft)', color: themeColors.icon.danger };
 }
 
 export function explainIssue(issue: string): string {

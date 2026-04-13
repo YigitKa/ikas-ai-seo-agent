@@ -34,11 +34,11 @@ function CategoryCard({
       className="rounded-xl transition-all"
       style={{
         background: isExpanded
-          ? 'rgba(99,102,241,0.08)'
-          : 'rgba(148,163,184,0.06)',
+          ? 'var(--tint-primary-bg)'
+          : 'var(--color-divider)',
         border: isExpanded
-          ? '1px solid rgba(99,102,241,0.2)'
-          : '1px solid rgba(148,163,184,0.12)',
+          ? '1px solid var(--tint-primary-soft)'
+          : '1px solid var(--color-divider)',
       }}
     >
       <button
@@ -162,19 +162,19 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
           maxWidth: '100vw',
           height: '100vh',
           background: 'linear-gradient(160deg, rgba(8,14,32,0.99), rgba(12,20,40,0.98))',
-          borderLeft: isFullscreen ? 'none' : '1px solid rgba(148,163,184,0.14)',
-          boxShadow: isFullscreen ? '0 0 0 rgba(0,0,0,0)' : '-12px 0 48px rgba(0,0,0,0.5)',
+          borderLeft: isFullscreen ? 'none' : '1px solid var(--color-divider)',
+          boxShadow: isFullscreen ? '0 0 0 rgba(0,0,0,0)' : '-12px 0 48px var(--color-overlay-dark)',
           transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
           transition: 'transform 0.32s cubic-bezier(0.4,0,0.2,1), width 0.22s ease, left 0.22s ease',
         }}
       >
         <div
           className="flex flex-shrink-0 items-center gap-3 px-4 py-3.5"
-          style={{ borderBottom: '1px solid rgba(148,163,184,0.1)' }}
+          style={{ borderBottom: '1px solid var(--color-divider)' }}
         >
           <div
             className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl"
-            style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc' }}
+            style={{ background: 'var(--tint-primary-soft)', color: 'var(--color-primary-light)' }}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
               <path
@@ -280,9 +280,9 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
                 onClick={() => setChatStarted(true)}
                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[12px] font-medium transition-all hover:brightness-110"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(99,102,241,0.18), rgba(139,92,246,0.14))',
-                  border: '1px solid rgba(99,102,241,0.25)',
-                  color: '#c7d2fe',
+                  background: 'linear-gradient(135deg, var(--tint-primary-soft), rgba(139,92,246,0.14))',
+                  border: '1px solid var(--color-border-primary)',
+                  color: 'var(--color-text-brand-soft)',
                 }}
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>

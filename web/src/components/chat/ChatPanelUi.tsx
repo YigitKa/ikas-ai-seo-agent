@@ -9,28 +9,28 @@ export interface ChatStatusItem {
 export function ChatStatusDeck({ items }: { items: ChatStatusItem[] }) {
   const palette = {
     neutral: {
-      surface: 'rgba(148, 163, 184, 0.08)',
-      border: '1px solid rgba(148, 163, 184, 0.14)',
+      surface: 'var(--color-divider)',
+      border: '1px solid var(--color-divider)',
       labelColor: 'var(--color-text-secondary)',
       valueColor: 'var(--color-text-primary)',
-      glow: 'rgba(148, 163, 184, 0.08)',
-      dot: '#94a3b8',
+      glow: 'var(--color-divider)',
+      dot: 'var(--color-text-secondary)',
     },
     success: {
-      surface: 'rgba(16, 185, 129, 0.12)',
-      border: '1px solid rgba(16, 185, 129, 0.18)',
+      surface: 'var(--tint-success-soft)',
+      border: '1px solid var(--tint-success-soft)',
       labelColor: 'rgba(167, 243, 208, 0.82)',
-      valueColor: '#d1fae5',
-      glow: 'rgba(16, 185, 129, 0.1)',
-      dot: '#34d399',
+      valueColor: 'var(--color-text-success-soft)',
+      glow: 'var(--tint-success-soft)',
+      dot: 'var(--color-icon-success)',
     },
     warn: {
-      surface: 'rgba(245, 158, 11, 0.12)',
-      border: '1px solid rgba(245, 158, 11, 0.18)',
+      surface: 'var(--tint-warning-soft)',
+      border: '1px solid var(--tint-warning-soft)',
       labelColor: 'rgba(253, 230, 138, 0.86)',
-      valueColor: '#fef3c7',
-      glow: 'rgba(245, 158, 11, 0.1)',
-      dot: '#fbbf24',
+      valueColor: 'var(--color-text-warning-soft)',
+      glow: 'var(--tint-warning-soft)',
+      dot: 'var(--color-icon-warning)',
     },
   } as const;
 
@@ -74,9 +74,9 @@ export function ReconnectingBanner() {
     <div
       className="mx-3 mt-3 flex items-center gap-2 rounded-xl px-4 py-2 text-[12px] font-medium"
       style={{
-        background: 'rgba(245, 158, 11, 0.08)',
-        border: '1px solid rgba(245, 158, 11, 0.24)',
-        color: '#fbbf24',
+        background: 'var(--tint-warning-bg)',
+        border: '1px solid var(--color-border-warning)',
+        color: 'var(--color-icon-warning)',
       }}
     >
       <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -104,16 +104,16 @@ export function StarterStateCard({
     <div
       className="rounded-2xl p-4 text-center shadow-lg"
       style={{
-        background: 'linear-gradient(160deg, rgba(99, 102, 241, 0.14), rgba(17, 24, 39, 0.22))',
-        border: '1px solid rgba(99, 102, 241, 0.22)',
+        background: 'linear-gradient(160deg, var(--tint-primary-soft), rgba(17, 24, 39, 0.22))',
+        border: '1px solid var(--color-border-primary)',
         boxShadow: '0 14px 30px rgba(14, 21, 48, 0.28)',
       }}
     >
       <div
         className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl"
         style={{
-          background: 'rgba(99, 102, 241, 0.12)',
-          color: '#c7d2fe',
+          background: 'var(--tint-primary-soft)',
+          color: 'var(--color-text-brand-soft)',
         }}
       >
         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
@@ -138,9 +138,9 @@ export function StarterStateCard({
             disabled={disabled}
             className="rounded-full px-3 py-1.5 text-[11px] font-medium transition-all hover:opacity-90 disabled:opacity-40"
             style={{
-              background: 'rgba(99, 102, 241, 0.12)',
-              color: '#c7d2fe',
-              border: '1px solid rgba(99, 102, 241, 0.2)',
+              background: 'var(--tint-primary-soft)',
+              color: 'var(--color-text-brand-soft)',
+              border: '1px solid var(--tint-primary-soft)',
             }}
           >
             {prompt.label}

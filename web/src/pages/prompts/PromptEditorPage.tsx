@@ -42,8 +42,8 @@ function getGroupIcon(label: string) {
 }
 
 const TYPE_BADGE: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  system: { label: 'SYSTEM', color: '#a78bfa', bg: 'rgba(167,139,250,0.10)', border: 'rgba(167,139,250,0.25)' },
-  user: { label: 'USER', color: '#34d399', bg: 'rgba(52,211,153,0.10)', border: 'rgba(52,211,153,0.25)' },
+  system: { label: 'SYSTEM', color: 'var(--color-primary-light)', bg: 'rgba(167,139,250,0.10)', border: 'rgba(167,139,250,0.25)' },
+  user: { label: 'USER', color: 'var(--color-icon-success)', bg: 'rgba(52,211,153,0.10)', border: 'rgba(52,211,153,0.25)' },
 };
 
 function promptType(key: string): 'system' | 'user' {
@@ -258,7 +258,7 @@ export default function PromptEditorPage() {
       <aside
         className="flex h-full w-[280px] flex-shrink-0 flex-col"
         style={{
-          background: 'linear-gradient(180deg, rgba(11,17,32,0.98), rgba(2,6,23,0.98))',
+          background: 'linear-gradient(180deg, var(--surface-code), var(--surface-code))',
           borderRight: '1px solid var(--color-border)',
         }}
       >
@@ -300,7 +300,7 @@ export default function PromptEditorPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full rounded-xl py-2.5 pl-9 pr-3 text-xs outline-none transition duration-200"
               style={{
-                background: 'rgba(255,255,255,0.04)',
+                background: 'var(--alpha-white-4)',
                 border: '1px solid var(--color-border)',
                 color: 'var(--color-text-primary)',
               }}
@@ -326,7 +326,7 @@ export default function PromptEditorPage() {
                   }
                   className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-all duration-150 hover:brightness-125"
                   style={{
-                    background: isExpanded ? 'rgba(99,102,241,0.08)' : 'transparent',
+                    background: isExpanded ? 'var(--tint-primary-bg)' : 'transparent',
                     color: 'var(--color-text-secondary)',
                   }}
                 >
@@ -364,7 +364,7 @@ export default function PromptEditorPage() {
                           className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-all duration-150"
                           style={{
                             background: isActive
-                              ? 'linear-gradient(135deg, rgba(99,102,241,0.18), rgba(79,70,229,0.12))'
+                              ? 'linear-gradient(135deg, var(--tint-primary-soft), var(--tint-primary-soft))'
                               : 'transparent',
                             borderLeft: isActive ? '2px solid var(--color-primary)' : '2px solid transparent',
                             marginLeft: '-1px',
@@ -409,10 +409,10 @@ export default function PromptEditorPage() {
             className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[13px] font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
             style={{
               background: hasDirty
-                ? 'linear-gradient(135deg, rgba(99,102,241,0.5), rgba(79,70,229,0.45))'
-                : 'rgba(255,255,255,0.04)',
-              border: hasDirty ? '1px solid rgba(99,102,241,0.5)' : '1px solid var(--color-border)',
-              color: hasDirty ? '#e2e8f0' : 'var(--color-text-muted)',
+                ? 'linear-gradient(135deg, var(--color-border-primary), var(--color-border-primary))'
+                : 'var(--alpha-white-4)',
+              border: hasDirty ? '1px solid var(--color-border-primary)' : '1px solid var(--color-border)',
+              color: hasDirty ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
             }}
           >
             {saveMut.isPending ? (
@@ -429,7 +429,7 @@ export default function PromptEditorPage() {
             <button
               onClick={handleDiscard}
               className="flex w-full items-center justify-center gap-2 rounded-xl py-2 text-[12px] transition-all duration-200"
-              style={{ color: 'var(--color-text-muted)', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)' }}
+              style={{ color: 'var(--color-text-muted)', background: 'var(--alpha-white-3)', border: '1px solid var(--color-border)' }}
             >
               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -448,7 +448,7 @@ export default function PromptEditorPage() {
             <div
               className="flex items-center justify-between px-5 py-3"
               style={{
-                background: 'linear-gradient(180deg, rgba(11,17,32,0.95), rgba(2,6,23,0.88))',
+                background: 'linear-gradient(180deg, var(--surface-code), var(--surface-code))',
                 borderBottom: '1px solid var(--color-border)',
               }}
             >
@@ -472,7 +472,7 @@ export default function PromptEditorPage() {
                 {dirtyKeys.has(activeKey) && (
                   <span
                     className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                    style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', color: '#fbbf24' }}
+                    style={{ background: 'var(--tint-warning-soft)', border: '1px solid var(--color-border-warning)', color: 'var(--color-icon-warning)' }}
                   >
                     Kaydedilmemis
                   </span>
@@ -484,8 +484,8 @@ export default function PromptEditorPage() {
                   onClick={() => setShowPreview(!showPreview)}
                   className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all duration-200"
                   style={{
-                    background: showPreview ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)',
-                    border: showPreview ? '1px solid rgba(99,102,241,0.3)' : '1px solid var(--color-border)',
+                    background: showPreview ? 'var(--tint-primary-soft)' : 'var(--alpha-white-4)',
+                    border: showPreview ? '1px solid var(--color-border-primary)' : '1px solid var(--color-border)',
                     color: showPreview ? 'var(--color-primary-light)' : 'var(--color-text-secondary)',
                   }}
                 >
@@ -500,9 +500,9 @@ export default function PromptEditorPage() {
                   disabled={resetMut.isPending}
                   className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all duration-200"
                   style={{
-                    background: 'rgba(239,68,68,0.08)',
-                    border: '1px solid rgba(239,68,68,0.2)',
-                    color: '#fca5a5',
+                    background: 'var(--tint-danger-bg)',
+                    border: '1px solid var(--tint-danger-soft)',
+                    color: 'var(--color-text-danger-soft)',
                   }}
                 >
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -549,7 +549,7 @@ export default function PromptEditorPage() {
                     <div
                       className="flex items-center justify-between px-4 py-1.5"
                       style={{
-                        background: 'rgba(11,17,32,0.95)',
+                        background: 'var(--surface-code)',
                         borderTop: '1px solid var(--color-border)',
                       }}
                     >
@@ -565,7 +565,7 @@ export default function PromptEditorPage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
+                        <span className="rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider" style={{ background: 'var(--alpha-white-4)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
                           {PROMPT_FILE_NAMES[activeKey] ?? `${activeKey}.txt`}
                         </span>
                         <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>UTF-8</span>
@@ -582,7 +582,7 @@ export default function PromptEditorPage() {
                       <div
                         className="flex items-center gap-2 px-4 py-2"
                         style={{
-                          background: 'rgba(11,17,32,0.95)',
+                          background: 'var(--surface-code)',
                           borderBottom: '1px solid var(--color-border)',
                         }}
                       >
@@ -606,7 +606,7 @@ export default function PromptEditorPage() {
               <aside
                 className="flex h-full w-[260px] flex-shrink-0 flex-col overflow-y-auto"
                 style={{
-                  background: 'linear-gradient(180deg, rgba(11,17,32,0.98), rgba(2,6,23,0.98))',
+                  background: 'linear-gradient(180deg, var(--surface-code), var(--surface-code))',
                   borderLeft: '1px solid var(--color-border)',
                 }}
               >
@@ -636,7 +636,7 @@ export default function PromptEditorPage() {
                             className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-all duration-150 hover:brightness-125"
                             style={{
                               background: 'rgba(6,182,212,0.06)',
-                              border: '1px solid rgba(6,182,212,0.15)',
+                              border: '1px solid var(--tint-accent-soft)',
                             }}
                           >
                             <span className="flex-1 font-mono text-[11px]" style={{ color: 'var(--color-accent-light)' }}>
@@ -654,14 +654,14 @@ export default function PromptEditorPage() {
                     ) : current.runtime_variables?.length > 0 ? (
                       <div
                         className="rounded-lg px-3 py-2.5 text-[11px]"
-                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}
+                        style={{ background: 'var(--alpha-white-3)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}
                       >
                         Yalnizca runtime degiskenleri kullanir (asagiya bkz).
                       </div>
                     ) : (
                       <div
                         className="rounded-lg px-3 py-2.5 text-[11px]"
-                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}
+                        style={{ background: 'var(--alpha-white-3)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}
                       >
                         Bu prompt degisken kullanmiyor.
                       </div>
@@ -680,14 +680,14 @@ export default function PromptEditorPage() {
                             key={v}
                             className="flex items-center gap-2 rounded-lg px-2.5 py-2"
                             style={{
-                              background: 'rgba(245,158,11,0.06)',
-                              border: '1px solid rgba(245,158,11,0.15)',
+                              background: 'var(--tint-warning-bg)',
+                              border: '1px solid var(--tint-warning-soft)',
                             }}
                           >
-                            <svg className="h-3 w-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: '#fbbf24' }}>
+                            <svg className="h-3 w-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: 'var(--color-icon-warning)' }}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                             </svg>
-                            <span className="font-mono text-[11px]" style={{ color: '#fbbf24' }}>
+                            <span className="font-mono text-[11px]" style={{ color: 'var(--color-icon-warning)' }}>
                               {`{${v}}`}
                             </span>
                           </div>
@@ -734,7 +734,7 @@ export default function PromptEditorPage() {
                     onClick={() => setConfirmReset(activeKey)}
                     disabled={resetMut.isPending}
                     className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[11px] transition-all duration-200 disabled:opacity-40"
-                    style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', color: '#fca5a5' }}
+                    style={{ background: 'var(--tint-danger-bg)', border: '1px solid var(--tint-danger-soft)', color: 'var(--color-text-danger-soft)' }}
                   >
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -745,7 +745,7 @@ export default function PromptEditorPage() {
                     onClick={() => setConfirmReset('__all__')}
                     disabled={resetMut.isPending}
                     className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[11px] transition-all duration-200 disabled:opacity-40"
-                    style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.1)', color: 'var(--color-text-muted)' }}
+                    style={{ background: 'var(--tint-danger-bg)', border: '1px solid var(--tint-danger-soft)', color: 'var(--color-text-muted)' }}
                   >
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -765,7 +765,7 @@ export default function PromptEditorPage() {
             <div className="flex flex-col items-center gap-4 text-center">
               <div
                 className="flex h-16 w-16 items-center justify-center rounded-2xl"
-                style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)' }}
+                style={{ background: 'var(--tint-primary-bg)', border: '1px solid var(--tint-primary-soft)' }}
               >
                 <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} style={{ color: 'var(--color-primary-light)' }}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -812,10 +812,10 @@ const PROMPT_FILE_NAMES: Record<string, string> = {
 /* ─── Layering Order Panel ────────────────────────────────────────────────── */
 
 const FLOW_COLORS: Record<string, { accent: string; bg: string; border: string }> = {
-  chat: { accent: '#818cf8', bg: 'rgba(129,140,248,0.06)', border: 'rgba(129,140,248,0.18)' },
-  rewrite: { accent: '#34d399', bg: 'rgba(52,211,153,0.06)', border: 'rgba(52,211,153,0.18)' },
-  batch: { accent: '#fbbf24', bg: 'rgba(251,191,36,0.06)', border: 'rgba(251,191,36,0.18)' },
-  product_rewrite: { accent: '#f472b6', bg: 'rgba(244,114,182,0.06)', border: 'rgba(244,114,182,0.18)' },
+  chat: { accent: 'var(--color-primary-light)', bg: 'rgba(129,140,248,0.06)', border: 'rgba(129,140,248,0.18)' },
+  rewrite: { accent: 'var(--color-icon-success)', bg: 'rgba(52,211,153,0.06)', border: 'rgba(52,211,153,0.18)' },
+  batch: { accent: 'var(--color-icon-warning)', bg: 'rgba(251,191,36,0.06)', border: 'rgba(251,191,36,0.18)' },
+  product_rewrite: { accent: 'var(--color-icon-danger)', bg: 'rgba(244,114,182,0.06)', border: 'rgba(244,114,182,0.18)' },
 };
 
 function LayeringOrderPanel({
@@ -891,7 +891,7 @@ function LayeringOrderPanel({
                           <div
                             className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold flex-shrink-0"
                             style={{
-                              background: isEditable ? colors.border : 'rgba(255,255,255,0.06)',
+                              background: isEditable ? colors.border : 'var(--alpha-white-6)',
                               color: isEditable ? colors.accent : 'var(--color-text-muted)',
                               border: `1.5px solid ${isEditable ? colors.accent : 'rgba(255,255,255,0.1)'}`,
                             }}
@@ -899,7 +899,7 @@ function LayeringOrderPanel({
                             {layer.order}
                           </div>
                           {!isLast && (
-                            <div className="flex-1 w-px my-0.5" style={{ background: 'rgba(255,255,255,0.08)', minHeight: '8px' }} />
+                            <div className="flex-1 w-px my-0.5" style={{ background: 'var(--alpha-white-8)', minHeight: '8px' }} />
                           )}
                         </div>
 
@@ -908,8 +908,8 @@ function LayeringOrderPanel({
                           <div
                             className={`rounded-xl px-3.5 py-2.5 ${isEditable ? 'cursor-pointer transition-all duration-150 hover:brightness-125' : ''}`}
                             style={{
-                              background: isEditable ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)',
-                              border: isEditable ? `1px solid ${colors.border}` : '1px solid rgba(255,255,255,0.05)',
+                              background: isEditable ? 'var(--alpha-white-4)' : 'var(--alpha-white-3)',
+                              border: isEditable ? `1px solid ${colors.border}` : '1px solid var(--alpha-white-6)',
                             }}
                             onClick={() => isEditable && layer.prompt_key && onSelectPrompt(layer.prompt_key)}
                           >
@@ -920,7 +920,7 @@ function LayeringOrderPanel({
                               {isEditable && (
                                 <span
                                   className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
-                                  style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)', color: '#a78bfa' }}
+                                  style={{ background: 'var(--tint-primary-soft)', border: '1px solid var(--color-border-primary)', color: 'var(--color-primary-light)' }}
                                 >
                                   Duzenlenebilir
                                 </span>
@@ -928,7 +928,7 @@ function LayeringOrderPanel({
                               {!isEditable && (
                                 <span
                                   className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
-                                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--color-text-muted)' }}
+                                  style={{ background: 'var(--alpha-white-4)', border: '1px solid var(--alpha-white-8)', color: 'var(--color-text-muted)' }}
                                 >
                                   Dinamik
                                 </span>
@@ -1044,8 +1044,8 @@ function HighlightedPreview({ text, variables }: { text: string; variables: stri
               key={i}
               className="rounded px-1 py-0.5"
               style={{
-                background: 'rgba(6,182,212,0.12)',
-                border: '1px solid rgba(6,182,212,0.25)',
+                background: 'var(--tint-accent-soft)',
+                border: '1px solid var(--tint-accent-soft)',
                 color: 'var(--color-accent-light)',
               }}
             >
@@ -1059,9 +1059,9 @@ function HighlightedPreview({ text, variables }: { text: string; variables: stri
               key={i}
               className="rounded px-1 py-0.5"
               style={{
-                background: 'rgba(245,158,11,0.12)',
-                border: '1px solid rgba(245,158,11,0.25)',
-                color: '#fbbf24',
+                background: 'var(--tint-warning-soft)',
+                border: '1px solid var(--color-border-warning)',
+                color: 'var(--color-icon-warning)',
               }}
             >
               {part.content}

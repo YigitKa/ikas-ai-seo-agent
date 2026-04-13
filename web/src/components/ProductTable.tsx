@@ -11,7 +11,7 @@ function scoreBadge(score: number | undefined | null) {
     return (
       <span
         className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold"
-        style={{ color: 'var(--color-text-muted)', background: 'rgba(255,255,255,0.04)' }}
+        style={{ color: 'var(--color-text-muted)', background: 'var(--alpha-white-4)' }}
       >
         -
       </span>
@@ -20,17 +20,17 @@ function scoreBadge(score: number | undefined | null) {
   let bg: string;
   let color: string;
   if (score >= 80) {
-    bg = 'rgba(16, 185, 129, 0.12)';
-    color = '#34d399';
+    bg = 'var(--tint-success-soft)';
+    color = 'var(--color-icon-success)';
   } else if (score >= 60) {
-    bg = 'rgba(245, 158, 11, 0.12)';
-    color = '#fbbf24';
+    bg = 'var(--tint-warning-soft)';
+    color = 'var(--color-icon-warning)';
   } else if (score >= 40) {
-    bg = 'rgba(249, 115, 22, 0.12)';
-    color = '#fb923c';
+    bg = 'var(--tint-warning-soft)';
+    color = 'var(--color-orange)';
   } else {
-    bg = 'rgba(239, 68, 68, 0.12)';
-    color = '#f87171';
+    bg = 'var(--tint-danger-soft)';
+    color = 'var(--color-icon-danger)';
   }
 
   return (

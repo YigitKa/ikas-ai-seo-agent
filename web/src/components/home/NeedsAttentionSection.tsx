@@ -25,7 +25,7 @@ function ScoreBadge({ score, delay = 0 }: { score: number; delay?: number }) {
   return (
     <div className="relative flex-shrink-0" style={{ width: BADGE_SIZE, height: BADGE_SIZE }}>
       <svg width={BADGE_SIZE} height={BADGE_SIZE} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={BADGE_SIZE / 2} cy={BADGE_SIZE / 2} r={RADIUS} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={STROKE} />
+        <circle cx={BADGE_SIZE / 2} cy={BADGE_SIZE / 2} r={RADIUS} fill="none" stroke="var(--alpha-white-8)" strokeWidth={STROKE} />
         <circle
           cx={BADGE_SIZE / 2} cy={BADGE_SIZE / 2} r={RADIUS} fill="none"
           stroke={color} strokeWidth={STROKE} strokeLinecap="round"
@@ -54,7 +54,7 @@ export default function NeedsAttentionSection({ lowProducts, isLoading }: NeedsA
     return (
       <div
         className="enterprise-surface animate-pulse rounded-2xl"
-        style={{ minHeight: 300, background: 'rgba(15,23,42,0.6)' }}
+        style={{ minHeight: 300, background: 'var(--surface-raised)' }}
       />
     );
   }
@@ -65,14 +65,14 @@ export default function NeedsAttentionSection({ lowProducts, isLoading }: NeedsA
     <div
       className="enterprise-surface overflow-hidden rounded-2xl"
       style={{
-        background: 'linear-gradient(160deg, rgba(15,23,42,0.88), rgba(30,41,59,0.62))',
-        border: '1px solid rgba(148,163,184,0.14)',
+        background: 'linear-gradient(160deg, var(--surface-panel), var(--surface-raised))',
+        border: '1px solid var(--color-divider)',
       }}
     >
       {/* Header */}
       <div
         className="flex items-center justify-between px-4 py-3"
-        style={{ borderBottom: '1px solid rgba(148,163,184,0.08)' }}
+        style={{ borderBottom: '1px solid var(--color-divider)' }}
       >
         <div className="flex items-center gap-2.5">
           <span className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
@@ -82,9 +82,9 @@ export default function NeedsAttentionSection({ lowProducts, isLoading }: NeedsA
             <span
               className="rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums"
               style={{
-                background: 'rgba(239,68,68,0.12)',
-                color: '#f87171',
-                border: '1px solid rgba(239,68,68,0.2)',
+                background: 'var(--tint-danger-soft)',
+                color: 'var(--color-icon-danger)',
+                border: '1px solid var(--tint-danger-soft)',
               }}
             >
               {totalCount}
@@ -95,7 +95,7 @@ export default function NeedsAttentionSection({ lowProducts, isLoading }: NeedsA
           <button
             onClick={() => navigate('/workspace')}
             className="flex items-center gap-1 text-[12px] font-medium transition-opacity hover:opacity-70"
-            style={{ color: '#a5b4fc' }}
+            style={{ color: 'var(--color-primary-light)' }}
           >
             Tumunu Incele
             <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -110,7 +110,7 @@ export default function NeedsAttentionSection({ lowProducts, isLoading }: NeedsA
         <div className="flex items-center gap-3 px-4 py-5">
           <svg
             className="h-5 w-5 flex-shrink-0"
-            style={{ color: '#34d399' }}
+            style={{ color: 'var(--color-icon-success)' }}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -118,12 +118,12 @@ export default function NeedsAttentionSection({ lowProducts, isLoading }: NeedsA
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span className="text-[13px]" style={{ color: '#34d399' }}>
+          <span className="text-[13px]" style={{ color: 'var(--color-icon-success)' }}>
             Tum urunleriniz iyi durumda!
           </span>
         </div>
       ) : (
-        <div className="divide-y" style={{ borderColor: 'rgba(148,163,184,0.06)' }}>
+        <div className="divide-y" style={{ borderColor: 'var(--color-divider)' }}>
           {items.map((item, idx) => {
             const score = item.score?.total_score ?? 0;
             const topIssue = item.score?.issues?.[0];
@@ -156,9 +156,9 @@ export default function NeedsAttentionSection({ lowProducts, isLoading }: NeedsA
                   onClick={() => navigate(`/workspace?product=${item.product.id}`)}
                   className="flex-shrink-0 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-all hover:brightness-110"
                   style={{
-                    background: 'rgba(99,102,241,0.1)',
-                    color: '#a5b4fc',
-                    border: '1px solid rgba(99,102,241,0.18)',
+                    background: 'var(--tint-primary-soft)',
+                    color: 'var(--color-primary-light)',
+                    border: '1px solid var(--tint-primary-soft)',
                   }}
                 >
                   Incele

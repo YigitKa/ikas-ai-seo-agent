@@ -287,7 +287,7 @@ export default function BatchOperations() {
           <div
             className="inline-flex flex-wrap items-center gap-1 rounded-2xl px-2 py-2"
             style={{
-              background: 'linear-gradient(180deg, rgba(15,23,42,0.72), rgba(15,23,42,0.42))',
+              background: 'linear-gradient(180deg, var(--surface-raised), var(--surface-card))',
               border: '1px solid var(--color-border-light)',
             }}
           >
@@ -301,9 +301,9 @@ export default function BatchOperations() {
               <span
                 className="flex h-6 w-6 items-center justify-center rounded-lg"
                 style={{
-                  background: 'rgba(99,102,241,0.12)',
-                  border: '1px solid rgba(99,102,241,0.16)',
-                  color: '#a5b4fc',
+                  background: 'var(--tint-primary-soft)',
+                  border: '1px solid var(--tint-primary-soft)',
+                  color: 'var(--color-primary-light)',
                 }}
               >
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -333,7 +333,7 @@ export default function BatchOperations() {
               <span
                 className="rounded-full px-2.5 py-1 text-[11px] font-medium"
                 style={{
-                  background: 'rgba(255,255,255,0.06)',
+                  background: 'var(--alpha-white-6)',
                   border: '1px solid var(--color-border-light)',
                   color: 'var(--color-text-secondary)',
                 }}
@@ -358,9 +358,9 @@ export default function BatchOperations() {
                 <span
                   className="rounded-full px-2.5 py-1 text-[11px] font-medium"
                   style={{
-                    background: 'rgba(99,102,241,0.14)',
-                    border: '1px solid rgba(99,102,241,0.22)',
-                    color: '#c7d2fe',
+                    background: 'var(--tint-primary-soft)',
+                    border: '1px solid var(--color-border-primary)',
+                    color: 'var(--color-text-brand-soft)',
                   }}
                 >
                   {currentViewLabel}
@@ -386,7 +386,7 @@ export default function BatchOperations() {
                   {[
                     { label: 'Toplam İş', value: defaultStats.total_jobs },
                     { label: 'İşlenen Ürün', value: defaultStats.total_processed },
-                    { label: 'Ort. Skor Artışı', value: `+${defaultStats.avg_score_improvement.toFixed(1)}`, color: '#22c55e' },
+                    { label: 'Ort. Skor Artışı', value: `+${defaultStats.avg_score_improvement.toFixed(1)}`, color: 'var(--color-success)' },
                   ].map(({ label, value, color }) => (
                     <div
                       key={label}
@@ -408,10 +408,10 @@ export default function BatchOperations() {
               {defaultStats.active_job && (
                 <div
                   className="flex items-center justify-between rounded-xl px-5 py-3"
-                  style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.25)' }}
+                  style={{ background: 'var(--tint-primary-bg)', border: '1px solid var(--color-border-primary)' }}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: '#6366f1' }} />
+                    <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: 'var(--color-primary)' }} />
                     <span className="text-[13px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
                       Aktif bir iş çalışıyor
                     </span>
@@ -428,7 +428,7 @@ export default function BatchOperations() {
                       else setView('analyzing');
                     }}
                     className="rounded-lg px-3 py-1 text-[12px] font-medium"
-                    style={{ color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}
+                    style={{ color: 'var(--color-primary-light)', border: '1px solid var(--color-border-primary)' }}
                   >
                     Görüntüle
                   </button>

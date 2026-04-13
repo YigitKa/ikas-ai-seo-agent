@@ -6,6 +6,8 @@ import {
   useNavigationType,
 } from 'react-router-dom';
 import { EnterpriseNavButton, EnterprisePill } from './EnterprisePrimitives';
+import ThemeToggle from '../../theme/ThemeToggle';
+import { themeColors } from '../../theme/colors';
 
 function classNames(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
@@ -39,9 +41,9 @@ function BrandMark() {
       <div
         className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[18px] text-sm font-bold text-white"
         style={{
-          background: 'linear-gradient(135deg, #0f172a, #1d4ed8)',
-          border: '1px solid rgba(96,165,250,0.34)',
-          boxShadow: '0 18px 36px rgba(29,78,216,0.22)',
+          background: themeColors.gradient.hero,
+          border: `1px solid ${themeColors.border.info}`,
+          boxShadow: themeColors.shadow.hero,
         }}
       >
         AI
@@ -83,9 +85,9 @@ function HistoryButton({
       disabled={disabled}
       className="inline-flex h-8 w-8 items-center justify-center rounded-xl transition-all duration-200 hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40"
       style={{
-        background: 'rgba(15, 23, 42, 0.72)',
-        border: '1px solid rgba(148,163,184,0.22)',
-        color: 'var(--color-text-secondary)',
+        background: themeColors.background.raised,
+        border: `1px solid ${themeColors.border.strong}`,
+        color: themeColors.text.secondary,
       }}
     >
       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -143,8 +145,8 @@ function MetaCard({ item }: { item: AppHeaderMeta }) {
     <div
       className="min-w-[150px] max-w-[240px] rounded-xl px-3 py-2"
       style={{
-        background: 'rgba(15,23,42,0.52)',
-        border: '1px solid rgba(148,163,184,0.18)',
+        background: themeColors.background.card,
+        border: `1px solid ${themeColors.border.subtle}`,
       }}
     >
       <div
@@ -203,9 +205,8 @@ export default function AppHeader({
     <header
       className="flex-shrink-0 border-b"
       style={{
-        background:
-          'linear-gradient(180deg, rgba(2,6,23,0.96), rgba(2,6,23,0.82))',
-        borderColor: 'rgba(148,163,184,0.14)',
+        background: themeColors.gradient.surface,
+        borderColor: themeColors.border.divider,
       }}
     >
       <div className={wrapperClassName}>
@@ -217,7 +218,7 @@ export default function AppHeader({
 
               <div
                 className="hidden h-5 w-px md:block"
-                style={{ background: 'rgba(148,163,184,0.18)' }}
+                style={{ background: themeColors.border.subtle }}
               />
 
               <div className="flex items-center gap-2">
@@ -249,9 +250,9 @@ export default function AppHeader({
               <span
                 className="rounded-full px-2.5 py-1 text-[9px] tabular-nums"
                 style={{
-                  background: 'rgba(15,23,42,0.72)',
-                  border: '1px solid rgba(148,163,184,0.18)',
-                  color: 'var(--color-text-muted)',
+                  background: themeColors.background.raised,
+                  border: `1px solid ${themeColors.border.subtle}`,
+                  color: themeColors.text.muted,
                 }}
               >
                 build{' '}
@@ -262,6 +263,8 @@ export default function AppHeader({
                   minute: '2-digit',
                 })}
               </span>
+
+              <ThemeToggle />
             </div>
           </div>
 

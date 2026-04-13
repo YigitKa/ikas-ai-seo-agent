@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react';
 import type { ScoreDistributionBucket } from '../../types';
 
 const BUCKET_COLORS: Record<string, string> = {
-  '90-100': '#10b981',
-  '80-89': '#06b6d4',
+  '90-100': 'var(--color-success)',
+  '80-89': 'var(--color-accent)',
   '70-79': '#3b82f6',
-  '60-69': '#f59e0b',
-  '50-59': '#f97316',
-  '0-49': '#ef4444',
+  '60-69': 'var(--color-warning)',
+  '50-59': 'var(--color-orange)',
+  '0-49': 'var(--color-danger)',
 };
 
 const BUCKET_ORDER = ['90-100', '80-89', '70-79', '60-69', '50-59', '0-49'];
@@ -42,8 +42,8 @@ export default function ScoreDistributionBar({ distribution, isLoading }: ScoreD
     <div
       className="enterprise-surface rounded-2xl p-4"
       style={{
-        background: 'linear-gradient(160deg, rgba(15,23,42,0.88), rgba(30,41,59,0.62))',
-        border: '1px solid rgba(148,163,184,0.14)',
+        background: 'linear-gradient(160deg, var(--surface-panel), var(--surface-raised))',
+        border: '1px solid var(--color-divider)',
       }}
     >
       <div className="mb-2 flex items-center justify-between">
@@ -56,7 +56,7 @@ export default function ScoreDistributionBar({ distribution, isLoading }: ScoreD
       </div>
 
       {/* Stacked bar */}
-      <div className="relative flex h-7 overflow-hidden rounded-full" style={{ background: 'rgba(15,23,42,0.6)' }}>
+      <div className="relative flex h-7 overflow-hidden rounded-full" style={{ background: 'var(--surface-raised)' }}>
         {buckets.map((b) => {
           const pct = (b.count / total) * 100;
           if (pct === 0) return null;
@@ -80,8 +80,8 @@ export default function ScoreDistributionBar({ distribution, isLoading }: ScoreD
                 <div
                   className="absolute bottom-full left-1/2 z-10 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-medium shadow-lg"
                   style={{
-                    background: 'rgba(15,23,42,0.95)',
-                    border: '1px solid rgba(148,163,184,0.2)',
+                    background: 'var(--surface-code)',
+                    border: '1px solid var(--color-border-subtle)',
                     color: 'var(--color-text-primary)',
                   }}
                 >

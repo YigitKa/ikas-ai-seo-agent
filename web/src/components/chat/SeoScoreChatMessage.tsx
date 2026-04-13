@@ -71,9 +71,9 @@ const PREVIEW_CLAMP_STYLE = {
 const CTA_PATTERNS = ['hemen', 'simdi', 'incele', 'kesfet', 'buy', 'discover', 'shop now'];
 
 const FIELD_SECTION_ACCENTS: Record<SectionKey, string> = {
-  seo: '#8b5cf6',
-  geo: '#06b6d4',
-  aeo: '#34d399',
+  seo: 'var(--color-primary)',
+  geo: 'var(--color-accent)',
+  aeo: 'var(--color-icon-success)',
 };
 
 const CATEGORIES: readonly CategoryDefinition[] = [
@@ -227,7 +227,7 @@ function getCategoryCardStyle(accent: string): {
   boxShadow: string;
 } {
   return {
-    background: `radial-gradient(circle at top right, ${accent}1f, transparent 36%), linear-gradient(180deg, rgba(15,23,42,0.96), rgba(15,23,42,0.84))`,
+    background: `radial-gradient(circle at top right, ${accent}1f, transparent 36%), linear-gradient(180deg, var(--surface-code), var(--surface-panel))`,
     border: `1px solid ${accent}30`,
     boxShadow: `0 16px 30px ${accent}14`,
   };
@@ -239,7 +239,7 @@ function getSoftCardStyle(accent: string): {
   boxShadow: string;
 } {
   return {
-    background: 'linear-gradient(180deg, rgba(15,23,42,0.86), rgba(15,23,42,0.72))',
+    background: 'linear-gradient(180deg, var(--surface-panel), var(--surface-raised))',
     border: `1px solid ${accent}24`,
     boxShadow: `0 12px 28px ${accent}10`,
   };
@@ -634,12 +634,12 @@ function resolveFieldForIssue(issue: string): FieldDefinition | undefined {
 
 function resolveIssueTone(issue: string): string {
   if (/bos|yok|eksik|tanimlanmamis|cok kisa|cok uzun/i.test(issue)) {
-    return '#f87171';
+    return 'var(--color-icon-danger)';
   }
   if (/biraz|orta|az/i.test(issue)) {
-    return '#fbbf24';
+    return 'var(--color-icon-warning)';
   }
-  return '#fb923c';
+  return 'var(--color-orange)';
 }
 
 function CategoryCard({
@@ -712,7 +712,7 @@ function CategoryCard({
 
       <div
         className="relative mt-3 rounded-2xl px-3 py-2 text-[11px] leading-5"
-        style={{ background: 'rgba(15,23,42,0.52)', border: `1px solid ${cat.accent}1f`, color: '#dbeafe' }}
+        style={{ background: 'var(--surface-card)', border: `1px solid ${cat.accent}1f`, color: 'var(--color-text-info)' }}
       >
         <span className="font-semibold" style={{ color: cat.accent }}>
           Odak:
@@ -741,7 +741,7 @@ function HeroMetricCard({
       className="score-field-enter rounded-2xl px-3.5 py-3"
       style={{
         animationDelay: `${260 + index * 60}ms`,
-        background: `linear-gradient(180deg, ${accent}14, rgba(15,23,42,0.68))`,
+        background: `linear-gradient(180deg, ${accent}14, var(--surface-raised))`,
         border: `1px solid ${accent}26`,
       }}
     >
@@ -772,8 +772,8 @@ function ProductSnapshotCard({ product }: { product?: Product | null }) {
       className="score-section-enter relative overflow-hidden rounded-[28px] p-4"
       style={{
         animationDelay: '140ms',
-        background: 'linear-gradient(180deg, rgba(15,23,42,0.96), rgba(15,23,42,0.82))',
-        border: '1px solid rgba(148,163,184,0.16)',
+        background: 'linear-gradient(180deg, var(--surface-code), var(--surface-panel))',
+        border: '1px solid var(--color-border-subtle)',
         boxShadow: '0 16px 38px rgba(2, 6, 23, 0.32)',
       }}
     >
@@ -785,7 +785,7 @@ function ProductSnapshotCard({ product }: { product?: Product | null }) {
             src={primaryImage}
             alt={title}
             className="rounded-2xl object-cover"
-            style={{ height: 72, width: 72, border: '1px solid rgba(255,255,255,0.08)' }}
+            style={{ height: 72, width: 72, border: '1px solid var(--alpha-white-8)' }}
           />
         ) : (
           <div
@@ -793,9 +793,9 @@ function ProductSnapshotCard({ product }: { product?: Product | null }) {
             style={{
               height: 72,
               width: 72,
-              background: 'linear-gradient(135deg, rgba(99,102,241,0.18), rgba(6,182,212,0.14))',
-              border: '1px solid rgba(148,163,184,0.16)',
-              color: '#93c5fd',
+              background: 'linear-gradient(135deg, var(--tint-primary-soft), var(--tint-accent-soft))',
+              border: '1px solid var(--color-border-subtle)',
+              color: 'var(--color-text-info)',
             }}
           >
             <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -810,14 +810,14 @@ function ProductSnapshotCard({ product }: { product?: Product | null }) {
           <div className="flex flex-wrap items-center gap-2">
             <span
               className="rounded-full px-2.5 py-1 text-[10px] font-semibold"
-              style={{ background: 'rgba(99,102,241,0.16)', color: '#a5b4fc' }}
+              style={{ background: 'var(--tint-primary-soft)', color: 'var(--color-primary-light)' }}
             >
               Canli gorunum
             </span>
             {product?.category ? (
               <span
                 className="rounded-full px-2.5 py-1 text-[10px] font-semibold"
-                style={{ background: 'rgba(6,182,212,0.14)', color: '#67e8f9' }}
+                style={{ background: 'var(--tint-accent-soft)', color: '#67e8f9' }}
               >
                 {product.category}
               </span>
@@ -827,10 +827,10 @@ function ProductSnapshotCard({ product }: { product?: Product | null }) {
             {title}
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
-            <span className="rounded-full px-2 py-1 text-[10px] font-medium" style={{ background: 'rgba(52,211,153,0.12)', color: '#6ee7b7' }}>
+            <span className="rounded-full px-2 py-1 text-[10px] font-medium" style={{ background: 'rgba(52,211,153,0.12)', color: 'var(--color-text-success-soft)' }}>
               {(product?.tags?.length ?? 0)} etiket
             </span>
-            <span className="rounded-full px-2 py-1 text-[10px] font-medium" style={{ background: 'rgba(148,163,184,0.12)', color: '#cbd5e1' }}>
+            <span className="rounded-full px-2 py-1 text-[10px] font-medium" style={{ background: 'var(--color-divider)', color: 'var(--color-text-secondary)' }}>
               {formatPrice(product?.price)}
             </span>
           </div>
@@ -840,14 +840,14 @@ function ProductSnapshotCard({ product }: { product?: Product | null }) {
       <div className="relative mt-4 space-y-2.5">
         {[
           { label: 'Urun adi', value: title, accent: FIELD_SECTION_ACCENTS.seo },
-          { label: 'Meta title', value: metaTitle, accent: '#f59e0b' },
-          { label: 'Meta desc', value: metaDescription, accent: metaDescription === 'Meta description girilmemis' ? '#f87171' : '#34d399' },
+          { label: 'Meta title', value: metaTitle, accent: 'var(--color-warning)' },
+          { label: 'Meta desc', value: metaDescription, accent: metaDescription === 'Meta description girilmemis' ? 'var(--color-icon-danger)' : 'var(--color-icon-success)' },
         ].map((item) => (
           <div
             key={item.label}
             className="rounded-2xl px-3.5 py-3"
             style={{
-              background: 'rgba(15,23,42,0.54)',
+              background: 'var(--surface-raised)',
               border: `1px solid ${item.accent}24`,
             }}
           >
@@ -902,7 +902,7 @@ function PriorityCard({ item, index }: { item: FieldCardData; index: number }) {
         </div>
         <div
           className="rounded-2xl px-3 py-2 text-right"
-          style={{ background: 'rgba(15,23,42,0.54)', border: `1px solid ${item.accent}1e` }}
+          style={{ background: 'var(--surface-raised)', border: `1px solid ${item.accent}1e` }}
         >
           <div className="text-[10px] uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-muted)' }}>
             Oncelik
@@ -924,9 +924,9 @@ function PriorityCard({ item, index }: { item: FieldCardData; index: number }) {
       <div
         className="relative mt-3 rounded-2xl px-3 py-2.5 text-[12px] leading-5"
         style={{
-          background: 'rgba(15,23,42,0.5)',
+          background: 'var(--surface-card)',
           border: `1px solid ${item.accent}18`,
-          color: '#dbeafe',
+          color: 'var(--color-text-info)',
         }}
       >
         <span className="font-semibold" style={{ color: item.accent }}>
@@ -969,7 +969,7 @@ function FieldDetailCard({ item, index }: { item: FieldCardData; index: number }
 
         <div
           className="min-w-[112px] rounded-2xl px-3 py-2"
-          style={{ background: 'rgba(15,23,42,0.56)', border: `1px solid ${item.accent}24` }}
+          style={{ background: 'var(--surface-raised)', border: `1px solid ${item.accent}24` }}
         >
           <div className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-muted)' }}>
             Skor
@@ -992,7 +992,7 @@ function FieldDetailCard({ item, index }: { item: FieldCardData; index: number }
       <div
         className="relative mt-4 rounded-[22px] px-3.5 py-3.5"
         style={{
-          background: 'rgba(15,23,42,0.56)',
+          background: 'var(--surface-raised)',
           border: `1px solid ${item.accent}1e`,
         }}
       >
@@ -1007,7 +1007,7 @@ function FieldDetailCard({ item, index }: { item: FieldCardData; index: number }
             <span
               key={`${item.field.key}-${metric}`}
               className="rounded-full px-2.5 py-1 text-[10px] font-medium"
-              style={{ background: 'rgba(148,163,184,0.12)', color: '#cbd5e1' }}
+              style={{ background: 'var(--color-divider)', color: 'var(--color-text-secondary)' }}
             >
               {metric}
             </span>
@@ -1018,7 +1018,7 @@ function FieldDetailCard({ item, index }: { item: FieldCardData; index: number }
       <div className="relative mt-4 grid gap-3 xl:grid-cols-[1.08fr_0.92fr]">
         <div
           className="rounded-[22px] px-3.5 py-3.5"
-          style={{ background: 'rgba(15,23,42,0.54)', border: '1px solid rgba(148,163,184,0.12)' }}
+          style={{ background: 'var(--surface-raised)', border: '1px solid var(--color-divider)' }}
         >
           <div className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-muted)' }}>
             Neden bu skor?
@@ -1026,7 +1026,7 @@ function FieldDetailCard({ item, index }: { item: FieldCardData; index: number }
           <div className="mt-2 space-y-2.5">
             {item.issues.length > 0 ? (
               item.issues.slice(0, 2).map((issue) => (
-                <div key={`${item.field.key}-${issue}`} className="rounded-2xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.02)' }}>
+                <div key={`${item.field.key}-${issue}`} className="rounded-2xl px-3 py-2.5" style={{ background: 'var(--alpha-white-3)' }}>
                   <div className="text-[12px] font-semibold leading-5 text-white">{issue}</div>
                   <div className="mt-1 text-[11px] leading-5" style={{ color: 'var(--color-text-secondary)' }}>
                     {explainIssue(issue)}
@@ -1043,7 +1043,7 @@ function FieldDetailCard({ item, index }: { item: FieldCardData; index: number }
 
         <div
           className="rounded-[22px] px-3.5 py-3.5"
-          style={{ background: 'rgba(15,23,42,0.54)', border: '1px solid rgba(148,163,184,0.12)' }}
+          style={{ background: 'var(--surface-raised)', border: '1px solid var(--color-divider)' }}
         >
           <div className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-muted)' }}>
             Siradaki aksiyon
@@ -1054,7 +1054,7 @@ function FieldDetailCard({ item, index }: { item: FieldCardData; index: number }
                 <div
                   key={`${item.field.key}-${suggestion}`}
                   className="rounded-2xl px-3 py-2.5 text-[12px] leading-5"
-                  style={{ background: `${item.accent}12`, border: `1px solid ${item.accent}20`, color: '#e2e8f0' }}
+                  style={{ background: `${item.accent}12`, border: `1px solid ${item.accent}20`, color: 'var(--color-text-primary)' }}
                 >
                   {suggestion}
                 </div>
@@ -1089,7 +1089,7 @@ function IssueCard({
       className="score-field-enter rounded-[24px] px-4 py-4"
       style={{
         animationDelay: `${index * 45}ms`,
-        background: 'linear-gradient(180deg, rgba(15,23,42,0.84), rgba(15,23,42,0.74))',
+        background: 'linear-gradient(180deg, var(--surface-panel), var(--surface-raised))',
         border: `1px solid ${accent}24`,
       }}
     >
@@ -1131,7 +1131,7 @@ function IssueCard({
               <div className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: accent }}>
                 Onerilen aksiyon
               </div>
-              <div className="mt-1 text-[12px] leading-5" style={{ color: '#e2e8f0' }}>
+              <div className="mt-1 text-[12px] leading-5" style={{ color: 'var(--color-text-primary)' }}>
                 {suggestion}
               </div>
             </div>
@@ -1205,11 +1205,11 @@ function SeoScoreChatMessage({
           onClick={() => setExpanded((prev) => !prev)}
           className="rounded-full px-2.5 py-1 text-[10px] font-semibold transition-all hover:-translate-y-0.5"
           style={{
-            background: expanded ? 'rgba(148,163,184,0.12)' : 'rgba(59,130,246,0.14)',
+            background: expanded ? 'var(--color-divider)' : 'var(--tint-info-soft)',
             border: expanded
-              ? '1px solid rgba(148,163,184,0.18)'
-              : '1px solid rgba(59,130,246,0.24)',
-            color: expanded ? 'var(--color-text-secondary)' : '#93c5fd',
+              ? '1px solid var(--color-border-subtle)'
+              : '1px solid var(--tint-info-soft)',
+            color: expanded ? 'var(--color-text-secondary)' : 'var(--color-text-info)',
           }}
         >
           {expanded ? 'Detayi gizle' : 'Detayi ac'}
@@ -1219,8 +1219,8 @@ function SeoScoreChatMessage({
       <div
         className="relative overflow-hidden rounded-[28px]"
         style={{
-          background: 'linear-gradient(180deg, rgba(17,24,39,0.98), rgba(15,23,42,0.92))',
-          border: '1px solid rgba(148,163,184,0.16)',
+          background: 'linear-gradient(180deg, rgba(17,24,39,0.98), var(--surface-panel))',
+          border: '1px solid var(--color-border-subtle)',
           boxShadow: '0 22px 48px rgba(2, 6, 23, 0.38)',
         }}
       >
@@ -1233,8 +1233,8 @@ function SeoScoreChatMessage({
               className="score-section-enter relative overflow-hidden rounded-[28px] px-4 py-4"
               style={{
                 animationDelay: '0ms',
-                background: 'linear-gradient(135deg, rgba(30,41,59,0.74), rgba(15,23,42,0.92))',
-                border: '1px solid rgba(148,163,184,0.16)',
+                background: 'linear-gradient(135deg, var(--surface-raised), var(--surface-panel))',
+                border: '1px solid var(--color-border-subtle)',
               }}
             >
               <div className="score-glow-drift absolute -right-6 -top-10 h-28 w-28 rounded-full bg-violet-500/15 blur-3xl" />
@@ -1265,10 +1265,10 @@ function SeoScoreChatMessage({
                 <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={getCategoryHintStyle(weakestCategory.accent)}>
                   Ilk odak: {weakestCategory.label} {weakestCategory.value}/100
                 </span>
-                <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={{ background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.22)', color: '#f87171' }}>
+                <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={{ background: 'var(--tint-danger-soft)', border: '1px solid var(--color-border-danger)', color: 'var(--color-icon-danger)' }}>
                   {score.issues.length} acik issue
                 </span>
-                <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={{ background: 'rgba(59,130,246,0.14)', border: '1px solid rgba(59,130,246,0.22)', color: '#93c5fd' }}>
+                <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={{ background: 'var(--tint-info-soft)', border: '1px solid var(--tint-info-soft)', color: 'var(--color-text-info)' }}>
                   {score.suggestions.length} hazir aksiyon
                 </span>
               </div>
@@ -1283,7 +1283,7 @@ function SeoScoreChatMessage({
                     key={item.field.key}
                     className="rounded-[22px] px-3.5 py-3"
                     style={{
-                      background: 'rgba(15,23,42,0.52)',
+                      background: 'var(--surface-card)',
                       border: `1px solid ${item.accent}22`,
                     }}
                   >
@@ -1301,7 +1301,7 @@ function SeoScoreChatMessage({
                     <p className="mt-2 text-[12px] leading-5" style={{ color: 'var(--color-text-secondary)' }}>
                       {item.issues[0] || item.field.description}
                     </p>
-                    <p className="mt-2 text-[11px] leading-5" style={{ color: '#e2e8f0' }}>
+                    <p className="mt-2 text-[11px] leading-5" style={{ color: 'var(--color-text-primary)' }}>
                       {item.suggestions[0] || 'Bu alani guclendirmek icin icerigi ve meta sinyallerini zenginlestir.'}
                     </p>
                   </div>
@@ -1325,10 +1325,10 @@ function SeoScoreChatMessage({
         </div>
 
         {expanded ? (
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ borderTop: '1px solid var(--alpha-white-6)' }}>
             <div
               className="px-4 py-4"
-              style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+              style={{ borderBottom: '1px solid var(--alpha-white-6)' }}
             >
               <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
                 <div>
@@ -1351,7 +1351,7 @@ function SeoScoreChatMessage({
 
             <div
               className="px-4 py-4"
-              style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+              style={{ borderBottom: '1px solid var(--alpha-white-6)' }}
             >
               <div className="score-section-enter mb-3" style={{ animationDelay: '320ms' }}>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-muted)' }}>
@@ -1372,7 +1372,7 @@ function SeoScoreChatMessage({
             <div
               className="px-4 py-4"
               style={{
-                borderBottom: score.issues.length > 0 ? '1px solid rgba(255,255,255,0.05)' : undefined,
+                borderBottom: score.issues.length > 0 ? '1px solid var(--alpha-white-6)' : undefined,
               }}
             >
               <div className="score-section-enter mb-3" style={{ animationDelay: '420ms' }}>
@@ -1400,7 +1400,7 @@ function SeoScoreChatMessage({
                     </span>
                     <span
                       className="rounded-full px-2.5 py-1 text-[10px] font-semibold"
-                      style={{ background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.22)', color: '#f87171' }}
+                      style={{ background: 'var(--tint-danger-soft)', border: '1px solid var(--color-border-danger)', color: 'var(--color-icon-danger)' }}
                     >
                       {score.issues.length} sorun acik gorunumde
                     </span>
