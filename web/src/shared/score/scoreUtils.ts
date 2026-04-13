@@ -1,3 +1,5 @@
+import { themeColors } from '../../theme/colors';
+
 // ── Score color & status helpers (single source of truth) ────────────────────
 
 export const SUMMARY_FIELDS = [
@@ -39,10 +41,10 @@ export function getScoreColor(pct: number): string {
 }
 
 export function getScoreGradient(pct: number): string {
-  if (pct >= 80) return 'linear-gradient(135deg, #10b981, #06b6d4)';
-  if (pct >= 60) return 'linear-gradient(135deg, #f59e0b, #f97316)';
-  if (pct >= 40) return 'linear-gradient(135deg, #f97316, #ef4444)';
-  return 'linear-gradient(135deg, #ef4444, #dc2626)';
+  if (pct >= 80) return 'linear-gradient(135deg, var(--color-success), var(--color-accent))';
+  if (pct >= 60) return 'linear-gradient(135deg, var(--color-warning), var(--color-orange))';
+  if (pct >= 40) return 'linear-gradient(135deg, var(--color-orange), var(--color-danger))';
+  return themeColors.gradient.danger;
 }
 
 export function getFieldStatusText(pct: number): string {
@@ -53,10 +55,10 @@ export function getFieldStatusText(pct: number): string {
 }
 
 export function getStatusBadgeStyle(pct: number): { background: string; color: string } {
-  if (pct >= 80) return { background: 'rgba(16, 185, 129, 0.15)', color: '#34d399' };
-  if (pct >= 60) return { background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' };
+  if (pct >= 80) return { background: 'rgba(16, 185, 129, 0.15)', color: themeColors.icon.success };
+  if (pct >= 60) return { background: 'rgba(245, 158, 11, 0.15)', color: themeColors.icon.warning };
   if (pct >= 40) return { background: 'rgba(249, 115, 22, 0.15)', color: '#fb923c' };
-  return { background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' };
+  return { background: 'rgba(239, 68, 68, 0.15)', color: themeColors.icon.danger };
 }
 
 export function explainIssue(issue: string): string {

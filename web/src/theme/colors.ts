@@ -1,0 +1,55 @@
+export const themeColors = {
+  text: {
+    primary: 'var(--color-text-primary)',
+    secondary: 'var(--color-text-secondary)',
+    muted: 'var(--color-text-muted)',
+    inverse: '#ffffff',
+    brandSoft: '#c7d2fe',
+    info: '#93c5fd',
+    successSoft: '#a7f3d0',
+    warningSoft: '#fde68a',
+    dangerSoft: '#fecaca',
+  },
+  background: {
+    base: 'var(--color-bg-base)',
+    surface: 'var(--color-bg-surface)',
+    elevated: 'var(--color-bg-elevated)',
+    glass: 'var(--glass-bg)',
+    overlayDark: 'rgba(0, 0, 0, 0.6)',
+    toast: 'rgba(17, 17, 24, 0.96)',
+    white6: 'rgba(255,255,255,0.06)',
+    white4: 'rgba(255,255,255,0.04)',
+    white3: 'rgba(255,255,255,0.03)',
+  },
+  border: {
+    base: 'var(--color-border)',
+    light: 'var(--color-border-light)',
+    white8: 'rgba(255,255,255,0.08)',
+    white12: 'rgba(255,255,255,0.12)',
+    success: 'rgba(16, 185, 129, 0.35)',
+    warning: 'rgba(245, 158, 11, 0.35)',
+    danger: 'rgba(239, 68, 68, 0.35)',
+    primary: 'rgba(99, 102, 241, 0.35)',
+  },
+  icon: {
+    success: '#34d399',
+    warning: '#fbbf24',
+    danger: '#f87171',
+    primary: '#818cf8',
+  },
+  gradient: {
+    primary: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+    danger: 'linear-gradient(135deg, #ef4444, #dc2626)',
+    panel: 'linear-gradient(135deg, rgba(15, 23, 42, 0.78), rgba(30, 41, 59, 0.62))',
+    activeChip: 'linear-gradient(135deg, rgba(30,64,175,0.54), rgba(67,56,202,0.54))',
+    hero: 'linear-gradient(135deg, #0f172a, #1d4ed8)',
+  },
+  shadow: {
+    primarySm: '0 4px 12px rgba(99, 102, 241, 0.3)',
+    dangerSm: '0 4px 12px rgba(239, 68, 68, 0.3)',
+    modal: '0 25px 50px rgba(0, 0, 0, 0.5)',
+    hero: '0 18px 36px rgba(29,78,216,0.22)',
+  },
+} as const;
+
+export type ThemeColors = typeof themeColors;

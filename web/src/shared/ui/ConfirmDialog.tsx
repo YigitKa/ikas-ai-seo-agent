@@ -1,4 +1,5 @@
 import Modal from './Modal';
+import { themeColors } from '../../theme/colors';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -23,8 +24,8 @@ export default function ConfirmDialog({
 }: ConfirmDialogProps) {
   const confirmStyle =
     variant === 'danger'
-      ? { background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: 'white', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)' }
-      : { background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: 'white', boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)' };
+      ? { background: themeColors.gradient.danger, color: themeColors.text.inverse, boxShadow: themeColors.shadow.dangerSm }
+      : { background: themeColors.gradient.primary, color: themeColors.text.inverse, boxShadow: themeColors.shadow.primarySm };
 
   return (
     <Modal
@@ -39,9 +40,9 @@ export default function ConfirmDialog({
             onClick={onCancel}
             className="rounded-xl px-5 py-2.5 text-sm font-medium transition-all hover:opacity-80"
             style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              color: 'var(--color-text-secondary)',
+              background: themeColors.background.white6,
+              border: `1px solid ${themeColors.border.white12}`,
+              color: themeColors.text.secondary,
             }}
           >
             {cancelLabel}
