@@ -87,7 +87,7 @@ export default function CircularScore({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="rgba(255,255,255,0.06)"
+          stroke="var(--alpha-white-6)"
           strokeWidth={strokeWidth}
           className={animated ? undefined : 'score-ring-track'}
         />

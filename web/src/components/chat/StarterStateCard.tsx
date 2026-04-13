@@ -15,16 +15,16 @@ export function StarterStateCard({
     <div
       className="rounded-2xl p-4 text-center shadow-lg"
       style={{
-        background: 'linear-gradient(160deg, rgba(99, 102, 241, 0.14), rgba(17, 24, 39, 0.22))',
-        border: '1px solid rgba(99, 102, 241, 0.22)',
+        background: 'linear-gradient(160deg, var(--tint-primary-soft), rgba(17, 24, 39, 0.22))',
+        border: '1px solid var(--color-border-primary)',
         boxShadow: '0 14px 30px rgba(14, 21, 48, 0.28)',
       }}
     >
       <div
         className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl"
         style={{
-          background: 'rgba(99, 102, 241, 0.12)',
-          color: '#c7d2fe',
+          background: 'var(--tint-primary-soft)',
+          color: 'var(--color-text-brand-soft)',
         }}
       >
         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
@@ -49,9 +49,9 @@ export function StarterStateCard({
             disabled={disabled}
             className="rounded-full px-3 py-1.5 text-[11px] font-medium transition-all hover:opacity-90 disabled:opacity-40"
             style={{
-              background: 'rgba(99, 102, 241, 0.12)',
-              color: '#c7d2fe',
-              border: '1px solid rgba(99, 102, 241, 0.2)',
+              background: 'var(--tint-primary-soft)',
+              color: 'var(--color-text-brand-soft)',
+              border: '1px solid var(--tint-primary-soft)',
             }}
           >
             {prompt.label}

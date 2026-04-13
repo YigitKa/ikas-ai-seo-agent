@@ -13,27 +13,27 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_BG: Record<string, string> = {
-  analyzing: 'rgba(245,158,11,0.15)',
-  analyzed: 'rgba(99,102,241,0.15)',
-  running: 'rgba(34,197,94,0.15)',
-  completed: 'rgba(99,102,241,0.15)',
-  completed_with_errors: 'rgba(245,158,11,0.15)',
-  failed: 'rgba(239,68,68,0.15)',
-  cancelled: 'rgba(100,116,139,0.15)',
-  idle: 'rgba(100,116,139,0.15)',
-  paused: 'rgba(99,102,241,0.15)',
+  analyzing: 'var(--tint-warning-soft)',
+  analyzed: 'var(--tint-primary-soft)',
+  running: 'var(--tint-success-soft)',
+  completed: 'var(--tint-primary-soft)',
+  completed_with_errors: 'var(--tint-warning-soft)',
+  failed: 'var(--tint-danger-soft)',
+  cancelled: 'var(--color-border-subtle)',
+  idle: 'var(--color-border-subtle)',
+  paused: 'var(--tint-primary-soft)',
 };
 
 const STATUS_TEXT: Record<string, string> = {
-  analyzing: '#f59e0b',
-  analyzed: '#818cf8',
-  running: '#22c55e',
-  completed: '#818cf8',
-  completed_with_errors: '#f59e0b',
-  failed: '#ef4444',
-  cancelled: '#94a3b8',
-  idle: '#94a3b8',
-  paused: '#818cf8',
+  analyzing: 'var(--color-warning)',
+  analyzed: 'var(--color-primary-light)',
+  running: 'var(--color-success)',
+  completed: 'var(--color-primary-light)',
+  completed_with_errors: 'var(--color-warning)',
+  failed: 'var(--color-danger)',
+  cancelled: 'var(--color-text-secondary)',
+  idle: 'var(--color-text-secondary)',
+  paused: 'var(--color-primary-light)',
 };
 
 interface Props {
@@ -65,7 +65,7 @@ function ScoreDelta({
   return (
     <span
       className="font-semibold tabular-nums"
-      style={{ color: delta > 0 ? '#22c55e' : delta < 0 ? '#ef4444' : 'var(--color-text-muted)' }}
+      style={{ color: delta > 0 ? 'var(--color-success)' : delta < 0 ? 'var(--color-danger)' : 'var(--color-text-muted)' }}
     >
       {projected && <span style={{ color: 'var(--color-text-muted)' }}>Tahmini </span>}
       {before.toFixed(0)} {'->'} {after.toFixed(0)}
@@ -139,7 +139,7 @@ export default function BatchHistory({ jobs, onSelect, onDelete }: Props) {
                   type="button"
                   onClick={() => onSelect(job.id, job.status)}
                   className="rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors hover:bg-[var(--color-bg-hover)]"
-                  style={{ color: 'var(--color-primary-light)', border: '1px solid rgba(99,102,241,0.25)' }}
+                  style={{ color: 'var(--color-primary-light)', border: '1px solid var(--color-border-primary)' }}
                 >
                   Detay
                 </button>
@@ -147,8 +147,8 @@ export default function BatchHistory({ jobs, onSelect, onDelete }: Props) {
                   <button
                     type="button"
                     onClick={() => onDelete(job.id)}
-                    className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors hover:bg-[rgba(239,68,68,0.1)]"
-                    style={{ color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}
+                    className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors hover:bg-[var(--tint-danger-soft)]"
+                    style={{ color: 'var(--color-danger)', border: '1px solid var(--tint-danger-soft)' }}
                     title="Sil"
                   >
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

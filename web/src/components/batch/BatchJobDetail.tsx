@@ -15,15 +15,15 @@ const ITEM_STATUS_LABELS: Record<string, string> = {
 };
 
 const ITEM_STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  applied: { bg: 'rgba(34,197,94,0.15)', text: '#22c55e' },
-  approved: { bg: 'rgba(99,102,241,0.15)', text: '#818cf8' },
-  analyzed: { bg: 'rgba(245,158,11,0.15)', text: '#f59e0b' },
-  skipped: { bg: 'rgba(245,158,11,0.15)', text: '#f59e0b' },
-  failed: { bg: 'rgba(239,68,68,0.15)', text: '#ef4444' },
-  rolled_back: { bg: 'rgba(100,116,139,0.15)', text: '#94a3b8' },
-  pending: { bg: 'rgba(100,116,139,0.1)', text: '#94a3b8' },
-  processing: { bg: 'rgba(99,102,241,0.15)', text: '#818cf8' },
-  rejected: { bg: 'rgba(239,68,68,0.12)', text: '#ef4444' },
+  applied: { bg: 'var(--tint-success-soft)', text: 'var(--color-success)' },
+  approved: { bg: 'var(--tint-primary-soft)', text: 'var(--color-primary-light)' },
+  analyzed: { bg: 'var(--tint-warning-soft)', text: 'var(--color-warning)' },
+  skipped: { bg: 'var(--tint-warning-soft)', text: 'var(--color-warning)' },
+  failed: { bg: 'var(--tint-danger-soft)', text: 'var(--color-danger)' },
+  rolled_back: { bg: 'var(--color-border-subtle)', text: 'var(--color-text-secondary)' },
+  pending: { bg: 'rgba(100,116,139,0.1)', text: 'var(--color-text-secondary)' },
+  processing: { bg: 'var(--tint-primary-soft)', text: 'var(--color-primary-light)' },
+  rejected: { bg: 'var(--tint-danger-soft)', text: 'var(--color-danger)' },
 };
 
 type ItemFilter = 'all' | 'processing' | 'failed' | 'skipped' | 'approved' | 'applied';
@@ -98,8 +98,8 @@ function ScoreDeltaCell({ before, after }: { before: number | null; after: numbe
         <span
           className="rounded px-1 py-0.5 text-[10px] font-bold"
           style={{
-            background: delta > 0 ? 'rgba(34,197,94,0.15)' : delta < 0 ? 'rgba(239,68,68,0.15)' : 'rgba(100,116,139,0.12)',
-            color: delta > 0 ? '#22c55e' : delta < 0 ? '#ef4444' : '#94a3b8',
+            background: delta > 0 ? 'var(--tint-success-soft)' : delta < 0 ? 'var(--tint-danger-soft)' : 'var(--color-border-subtle)',
+            color: delta > 0 ? 'var(--color-success)' : delta < 0 ? 'var(--color-danger)' : 'var(--color-text-secondary)',
           }}
         >
           {delta > 0 ? '+' : ''}{delta}
@@ -148,8 +148,8 @@ function EventCard({ event }: { event: BatchFeedbackEvent }) {
     <div
       className="rounded-xl px-3 py-2.5"
       style={{
-        background: 'rgba(15,23,42,0.28)',
-        border: '1px solid rgba(148,163,184,0.14)',
+        background: 'var(--surface-card)',
+        border: '1px solid var(--color-divider)',
       }}
     >
       <div className="flex items-start justify-between gap-3">
@@ -250,8 +250,8 @@ export default function BatchJobDetail({ job, items, onRollbackItem, onRollbackA
             disabled={isRollingBack}
             className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors hover:bg-[var(--color-bg-hover)] disabled:opacity-40"
             style={{
-              border: '1px solid rgba(239,68,68,0.3)',
-              color: '#ef4444',
+              border: '1px solid var(--color-border-danger)',
+              color: 'var(--color-danger)',
             }}
           >
             Tum Islemi Geri Al
@@ -274,13 +274,13 @@ export default function BatchJobDetail({ job, items, onRollbackItem, onRollbackA
           label="Son Hata"
           value={lastError?.product_name || (lastError ? 'Is Hatasi' : 'Hata yok')}
           sub={lastError?.user_message || lastError?.reason_code || job.error || null}
-          highlight={lastError ? '#ef4444' : undefined}
+          highlight={lastError ? 'var(--color-danger)' : undefined}
         />
         <SummaryCard
           label="Son Atlama"
           value={lastSkipped?.product_name || 'Atlama yok'}
           sub={lastSkipped?.user_message || lastSkipped?.reason_code || null}
-          highlight={lastSkipped ? '#f59e0b' : undefined}
+          highlight={lastSkipped ? 'var(--color-warning)' : undefined}
         />
         <SummaryCard
           label="Durum"
@@ -293,14 +293,14 @@ export default function BatchJobDetail({ job, items, onRollbackItem, onRollbackA
         <div
           className="rounded-xl p-4"
           style={{
-            background: 'rgba(239,68,68,0.08)',
-            border: '1px solid rgba(239,68,68,0.22)',
+            background: 'var(--tint-danger-bg)',
+            border: '1px solid var(--color-border-danger)',
           }}
         >
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: '#fca5a5' }}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-danger-soft)' }}>
             Is Hatasi
           </p>
-          <p className="mt-2 text-[12px]" style={{ color: '#fecaca' }}>
+          <p className="mt-2 text-[12px]" style={{ color: 'var(--color-text-danger-soft)' }}>
             {job.error}
           </p>
         </div>
@@ -309,12 +309,12 @@ export default function BatchJobDetail({ job, items, onRollbackItem, onRollbackA
       <div className="grid grid-cols-4 gap-4">
         <SummaryCard label={successLabel} value={`${feedback.summary_counts.succeeded}`} />
         <SummaryCard label="Atlanan Urun" value={`${feedback.summary_counts.skipped}`} sub={lastSkipped?.user_message || 'Son atlama nedeni burada gorunur'} />
-        <SummaryCard label="Hatali Urun" value={`${feedback.summary_counts.failed}`} sub={lastError?.user_message || job.error || 'Son hata burada gorunur'} highlight={feedback.summary_counts.failed > 0 || job.status === 'failed' ? '#ef4444' : undefined} />
+        <SummaryCard label="Hatali Urun" value={`${feedback.summary_counts.failed}`} sub={lastError?.user_message || job.error || 'Son hata burada gorunur'} highlight={feedback.summary_counts.failed > 0 || job.status === 'failed' ? 'var(--color-danger)' : undefined} />
         <SummaryCard
           label={scoreLabel}
           value={avgDelta === null ? '-' : avgDelta > 0 ? `+${avgDelta.toFixed(1)}` : avgDelta.toFixed(1)}
           sub={scoreSub}
-          highlight={avgDelta !== null && !projectedScore && avgDelta > 0 ? '#22c55e' : undefined}
+          highlight={avgDelta !== null && !projectedScore && avgDelta > 0 ? 'var(--color-success)' : undefined}
         />
       </div>
 
@@ -335,9 +335,9 @@ export default function BatchJobDetail({ job, items, onRollbackItem, onRollbackA
                 key={hint}
                 className="rounded-full px-3 py-1 text-[11px]"
                 style={{
-                  background: 'rgba(148,163,184,0.12)',
+                  background: 'var(--color-divider)',
                   color: 'var(--color-text-secondary)',
-                  border: '1px solid rgba(148,163,184,0.16)',
+                  border: '1px solid var(--color-border-subtle)',
                 }}
               >
                 {hint}
@@ -395,15 +395,15 @@ export default function BatchJobDetail({ job, items, onRollbackItem, onRollbackA
                 key={`${group.label}:${group.count}`}
                 className="rounded-xl px-3 py-2.5"
                 style={{
-                  background: 'rgba(15,23,42,0.28)',
-                  border: '1px solid rgba(148,163,184,0.14)',
+                  background: 'var(--surface-card)',
+                  border: '1px solid var(--color-divider)',
                 }}
               >
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-[12px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
                     {group.label}
                   </p>
-                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: 'rgba(148,163,184,0.12)', color: 'var(--color-text-secondary)' }}>
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: 'var(--color-divider)', color: 'var(--color-text-secondary)' }}>
                     {group.count}
                   </span>
                 </div>
@@ -441,9 +441,9 @@ export default function BatchJobDetail({ job, items, onRollbackItem, onRollbackA
                   onClick={() => setItemFilter(filter.id)}
                   className="rounded-full px-3 py-1 text-[11px] font-medium transition-colors"
                   style={{
-                    background: active ? 'rgba(99,102,241,0.16)' : 'rgba(148,163,184,0.08)',
-                    color: active ? '#c7d2fe' : 'var(--color-text-secondary)',
-                    border: active ? '1px solid rgba(99,102,241,0.28)' : '1px solid rgba(148,163,184,0.14)',
+                    background: active ? 'var(--tint-primary-soft)' : 'var(--color-divider)',
+                    color: active ? 'var(--color-text-brand-soft)' : 'var(--color-text-secondary)',
+                    border: active ? '1px solid var(--color-border-primary)' : '1px solid var(--color-divider)',
                   }}
                 >
                   {filter.label} ({filterCounts[filter.id]})
@@ -502,8 +502,8 @@ export default function BatchJobDetail({ job, items, onRollbackItem, onRollbackA
                           disabled={isRollingBack}
                           className="rounded px-2.5 py-1 text-[11px] font-medium transition-colors hover:bg-[var(--color-bg-hover)] disabled:opacity-40"
                           style={{
-                            border: '1px solid rgba(239,68,68,0.25)',
-                            color: '#ef4444',
+                            border: '1px solid var(--color-border-danger)',
+                            color: 'var(--color-danger)',
                           }}
                         >
                           Onceki Surume Don

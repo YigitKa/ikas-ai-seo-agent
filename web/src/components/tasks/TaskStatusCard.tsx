@@ -36,12 +36,12 @@ export default function TaskStatusCard({
   const heartbeatLabel = formatHeartbeat(heartbeatAt);
   const tone =
     status === 'running' || status === 'analyzing'
-      ? '#22c55e'
+      ? 'var(--color-success)'
       : status === 'failed' || status === 'completed_with_errors'
-        ? '#f97316'
+        ? 'var(--color-orange)'
         : status === 'cancelled' || status === 'stopped'
-          ? '#ef4444'
-          : '#94a3b8';
+          ? 'var(--color-danger)'
+          : 'var(--color-text-secondary)';
 
   return (
     <div
@@ -75,7 +75,7 @@ export default function TaskStatusCard({
 
       <div
         className="mt-4 h-2.5 overflow-hidden rounded-full"
-        style={{ background: 'rgba(148,163,184,0.12)' }}
+        style={{ background: 'var(--color-divider)' }}
       >
         <div
           className="h-full rounded-full transition-all duration-300"
@@ -93,8 +93,8 @@ export default function TaskStatusCard({
               key={stat.label}
               className="rounded-full px-3 py-1"
               style={{
-                background: 'rgba(15,23,42,0.48)',
-                border: '1px solid rgba(148,163,184,0.18)',
+                background: 'var(--surface-card)',
+                border: '1px solid var(--color-border-subtle)',
                 color: 'var(--color-text-secondary)',
               }}
             >
@@ -115,9 +115,9 @@ export default function TaskStatusCard({
         <div
           className="mt-4 rounded-xl px-3 py-2 text-[12px]"
           style={{
-            background: 'rgba(239,68,68,0.08)',
-            border: '1px solid rgba(239,68,68,0.22)',
-            color: '#fecaca',
+            background: 'var(--tint-danger-bg)',
+            border: '1px solid var(--color-border-danger)',
+            color: 'var(--color-text-danger-soft)',
           }}
         >
           {errorMessage}

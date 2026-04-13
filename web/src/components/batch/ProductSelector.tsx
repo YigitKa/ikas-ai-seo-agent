@@ -186,9 +186,9 @@ function ScoreChip({
       <span
         className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold"
         style={{
-          background: 'rgba(148, 163, 184, 0.14)',
+          background: 'var(--color-divider)',
           color: 'var(--color-text-muted)',
-          border: '1px solid rgba(148, 163, 184, 0.16)',
+          border: '1px solid var(--color-border-subtle)',
         }}
       >
         <span>{label}</span>
@@ -205,7 +205,7 @@ function ScoreChip({
       style={{
         background: badgeStyle.background,
         color: badgeStyle.color,
-        border: '1px solid rgba(255,255,255,0.06)',
+        border: '1px solid var(--alpha-white-6)',
       }}
     >
       <span>{label}</span>
@@ -228,7 +228,7 @@ function Toggle({
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className="relative h-6 w-11 rounded-full transition-colors"
-      style={{ background: checked ? '#6366f1' : 'rgba(255,255,255,0.12)' }}
+      style={{ background: checked ? 'var(--color-primary)' : 'var(--alpha-white-12)' }}
     >
       <span
         className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
@@ -414,11 +414,11 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
                 color: 'var(--color-text-primary)',
               }}
             >
-              <option value="" style={{ background: '#0f172a', color: '#e5e7eb' }}>
+              <option value="" style={{ background: 'var(--color-bg-surface)', color: 'var(--color-text-primary)' }}>
                 Tüm Kategoriler
               </option>
               {categories.map((category) => (
-                <option key={category} value={category} style={{ background: '#0f172a', color: '#e5e7eb' }}>
+                <option key={category} value={category} style={{ background: 'var(--color-bg-surface)', color: 'var(--color-text-primary)' }}>
                   {category}
                 </option>
               ))}
@@ -448,8 +448,8 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
         <div
           className="mt-4 flex flex-col gap-3 rounded-xl px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
           style={{
-            background: 'rgba(59, 130, 246, 0.08)',
-            border: '1px solid rgba(59, 130, 246, 0.22)',
+            background: 'var(--tint-info-bg)',
+            border: '1px solid var(--tint-info-soft)',
           }}
         >
           <div>
@@ -500,9 +500,9 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
                           onClick={() => setFieldThreshold(field.thresholdKey, 100)}
                           className="rounded-lg px-2 py-1 text-[10px] font-medium"
                           style={{
-                            background: 'rgba(99,102,241,0.12)',
-                            border: '1px solid rgba(99,102,241,0.22)',
-                          color: '#a5b4fc',
+                            background: 'var(--tint-primary-soft)',
+                            border: '1px solid var(--color-border-primary)',
+                          color: 'var(--color-primary-light)',
                         }}
                       >
                         Temizle
@@ -521,7 +521,7 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
                         onChange={(event) => setFieldThreshold(field.thresholdKey, Number(event.target.value || 100))}
                         className="w-20 rounded-lg px-2.5 py-1.5 text-[12px]"
                         style={{
-                          background: 'rgba(255,255,255,0.04)',
+                          background: 'var(--alpha-white-4)',
                           border: '1px solid var(--color-border)',
                           color: 'var(--color-text-primary)',
                         }}
@@ -574,9 +574,9 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
                   }}
                   className="rounded-full px-3 py-1.5 text-[12px] font-medium transition"
                   style={{
-                    background: active ? 'rgba(99,102,241,0.15)' : 'var(--color-bg-primary)',
-                    border: `1px solid ${active ? 'rgba(99,102,241,0.4)' : 'var(--color-border)'}`,
-                    color: active ? '#a5b4fc' : 'var(--color-text-muted)',
+                    background: active ? 'var(--tint-primary-soft)' : 'var(--color-bg-primary)',
+                    border: `1px solid ${active ? 'var(--color-border-primary)' : 'var(--color-border)'}`,
+                    color: active ? 'var(--color-primary-light)' : 'var(--color-text-muted)',
                   }}
                 >
                   {active ? '✓ ' : ''}
@@ -672,9 +672,9 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
               <span
                 className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold"
                 style={{
-                  background: 'rgba(59,130,246,0.16)',
-                  color: '#93c5fd',
-                  border: '1px solid rgba(59,130,246,0.22)',
+                  background: 'var(--tint-info-soft)',
+                  color: 'var(--color-text-info)',
+                  border: '1px solid var(--tint-info-soft)',
                 }}
               >
                 EN Eksik
@@ -698,7 +698,7 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
                   }}
                 >
                   {sortOptions.map((option) => (
-                    <option key={option.key} value={option.key} style={{ background: '#0f172a', color: '#e5e7eb' }}>
+                    <option key={option.key} value={option.key} style={{ background: 'var(--color-bg-surface)', color: 'var(--color-text-primary)' }}>
                       {option.label}
                     </option>
                   ))}
@@ -730,7 +730,7 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
                   }}
                 >
                   {PAGE_SIZE_OPTIONS.map((size) => (
-                    <option key={size} value={size} style={{ background: '#0f172a', color: '#e5e7eb' }}>
+                    <option key={size} value={size} style={{ background: 'var(--color-bg-surface)', color: 'var(--color-text-primary)' }}>
                       {size}
                     </option>
                   ))}
@@ -765,7 +765,7 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
                   className="cursor-pointer px-4 py-3 transition hover:bg-white/[0.02]"
                   style={{
                     borderBottom: '1px solid var(--color-border)',
-                    background: selected ? 'rgba(99,102,241,0.08)' : 'transparent',
+                    background: selected ? 'var(--tint-primary-bg)' : 'transparent',
                   }}
                   onClick={() => toggle(product.id)}
                 >
@@ -788,9 +788,9 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
                             <span
                               className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold"
                               style={{
-                                background: 'rgba(59,130,246,0.14)',
-                                color: '#93c5fd',
-                                border: '1px solid rgba(59,130,246,0.2)',
+                                background: 'var(--tint-info-soft)',
+                                color: 'var(--color-text-info)',
+                                border: '1px solid var(--tint-info-soft)',
                               }}
                             >
                               EN boş
@@ -853,9 +853,9 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
       {isDryRun && (
         <div
           className="rounded-lg p-3"
-          style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}
+          style={{ background: 'var(--tint-warning-bg)', border: '1px solid var(--color-border-warning)' }}
         >
-          <p className="text-[12px] font-semibold" style={{ color: '#f59e0b' }}>
+          <p className="text-[12px] font-semibold" style={{ color: 'var(--color-warning)' }}>
             Güvenli Mod (DRY_RUN) Aktif
           </p>
           <p className="mt-0.5 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
@@ -868,7 +868,7 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
         disabled={disabled || selectedIds.size === 0}
         onClick={() => onStartAnalysis(Array.from(selectedIds))}
         className="w-full rounded-xl py-3.5 text-[14px] font-semibold text-white transition disabled:opacity-40"
-        style={{ background: '#6366f1' }}
+        style={{ background: 'var(--color-primary)' }}
       >
         {selectedIds.size > 0 ? `${selectedIds.size} Ürünü Analiz Et` : 'Ürün Seçin'}
       </button>

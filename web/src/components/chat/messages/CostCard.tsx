@@ -20,7 +20,7 @@ export default function CostCard({
   return (
     <div
       className="mr-6 rounded-xl p-3"
-      style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)' }}
+      style={{ background: 'var(--alpha-white-3)', border: '1px solid var(--alpha-white-8)' }}
     >
       <div className="space-y-1.5 text-[12px] leading-5">
         {cost != null && cost > 0 ? (

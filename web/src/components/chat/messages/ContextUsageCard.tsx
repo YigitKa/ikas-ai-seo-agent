@@ -16,7 +16,7 @@ export default function ContextUsageCard({
   return (
     <div
       className="mr-6 rounded-xl p-3"
-      style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)' }}
+      style={{ background: 'var(--alpha-white-3)', border: '1px solid var(--alpha-white-8)' }}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1.5 text-[12px] leading-5">
@@ -34,12 +34,12 @@ export default function ContextUsageCard({
           <div
             className="relative h-11 w-11 rounded-full"
             style={{
-              background: `conic-gradient(#60a5fa ${usage.usedPercent}%, rgba(255,255,255,0.08) 0)`,
+              background: `conic-gradient(var(--color-icon-info) ${usage.usedPercent}%, var(--alpha-white-8) 0)`,
             }}
           >
             <div
               className="absolute inset-[4px] flex items-center justify-center rounded-full text-[10px] font-semibold"
-              style={{ background: 'var(--color-bg-surface)', color: '#93c5fd' }}
+              style={{ background: 'var(--color-bg-surface)', color: 'var(--color-text-info)' }}
             >
               {Math.round(usage.usedPercent)}%
             </div>

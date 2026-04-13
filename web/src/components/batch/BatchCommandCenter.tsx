@@ -26,25 +26,25 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  idle: 'rgba(100,116,139,0.2)',
-  analyzing: 'rgba(245,158,11,0.18)',
-  analyzed: 'rgba(99,102,241,0.18)',
-  running: 'rgba(34,197,94,0.18)',
-  paused: 'rgba(99,102,241,0.18)',
-  completed: 'rgba(34,197,94,0.18)',
-  failed: 'rgba(239,68,68,0.18)',
-  cancelled: 'rgba(100,116,139,0.2)',
+  idle: 'var(--color-border-subtle)',
+  analyzing: 'var(--tint-warning-soft)',
+  analyzed: 'var(--tint-primary-soft)',
+  running: 'var(--color-border-success)',
+  paused: 'var(--tint-primary-soft)',
+  completed: 'var(--color-border-success)',
+  failed: 'var(--tint-danger-soft)',
+  cancelled: 'var(--color-border-subtle)',
 };
 
 const STATUS_TEXT: Record<string, string> = {
-  idle: '#94a3b8',
-  analyzing: '#f59e0b',
-  analyzed: '#818cf8',
-  running: '#22c55e',
-  paused: '#818cf8',
-  completed: '#22c55e',
-  failed: '#ef4444',
-  cancelled: '#94a3b8',
+  idle: 'var(--color-text-secondary)',
+  analyzing: 'var(--color-warning)',
+  analyzed: 'var(--color-primary-light)',
+  running: 'var(--color-success)',
+  paused: 'var(--color-primary-light)',
+  completed: 'var(--color-success)',
+  failed: 'var(--color-danger)',
+  cancelled: 'var(--color-text-secondary)',
 };
 
 interface Props {
@@ -109,7 +109,7 @@ export default function BatchCommandCenter({
   const isAnalyzing = activeJob?.status === 'analyzing';
   const isRunning = activeJob?.status === 'running';
   const isActive = isAnalyzing || isRunning;
-  const bannerAccent = isAnalyzing ? '#f59e0b' : '#22c55e';
+  const bannerAccent = isAnalyzing ? 'var(--color-warning)' : 'var(--color-success)';
 
   return (
     <div className="space-y-5">
@@ -117,10 +117,10 @@ export default function BatchCommandCenter({
         <div
           className="rounded-xl p-4"
           style={{
-            background: isAnalyzing ? 'rgba(245,158,11,0.06)' : 'rgba(34,197,94,0.06)',
+            background: isAnalyzing ? 'var(--tint-warning-bg)' : 'var(--tint-success-bg)',
             border: isAnalyzing
-              ? '1px solid rgba(245,158,11,0.25)'
-              : '1px solid rgba(34,197,94,0.25)',
+              ? '1px solid var(--color-border-warning)'
+              : '1px solid var(--color-border-success)',
           }}
         >
           <div className="flex items-center justify-between">
@@ -128,7 +128,7 @@ export default function BatchCommandCenter({
               <div
                 className="flex h-9 w-9 items-center justify-center rounded-lg"
                 style={{
-                  background: isAnalyzing ? 'rgba(245,158,11,0.15)' : 'rgba(34,197,94,0.15)',
+                  background: isAnalyzing ? 'var(--tint-warning-soft)' : 'var(--tint-success-soft)',
                 }}
               >
                 <svg
@@ -164,7 +164,7 @@ export default function BatchCommandCenter({
                       {activeJob.avg_score_after.toFixed(0)}
                       <span
                         style={{
-                          color: activeJob.avg_score_after > activeJob.avg_score_before ? '#22c55e' : '#ef4444',
+                          color: activeJob.avg_score_after > activeJob.avg_score_before ? 'var(--color-success)' : 'var(--color-danger)',
                           fontWeight: 600,
                         }}
                       >
@@ -185,8 +185,8 @@ export default function BatchCommandCenter({
               className="rounded-lg px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
               style={{
                 background: isAnalyzing
-                  ? 'linear-gradient(135deg, #f59e0b, #d97706)'
-                  : 'linear-gradient(135deg, #22c55e, #16a34a)',
+                  ? 'linear-gradient(135deg, var(--color-warning), #d97706)'
+                  : 'linear-gradient(135deg, var(--color-success), var(--color-success))',
               }}
             >
               {isAnalyzing ? 'Analizi Gor' : 'Ilerlemeyi Gor'}

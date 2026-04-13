@@ -59,8 +59,8 @@ export default function MarkdownMessage({ content }: { content: string }) {
               <div
                 className="mb-3 rounded-lg p-3 text-[12px] leading-relaxed"
                 style={{
-                  background: 'rgba(255,255,255,0.03)',
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  background: 'var(--alpha-white-3)',
+                  border: '1px solid var(--alpha-white-8)',
                   color: 'var(--color-text-primary)',
                 }}
               >
@@ -101,7 +101,7 @@ export default function MarkdownMessage({ content }: { content: string }) {
           return (
             <code
               className="rounded px-1.5 py-0.5 text-[12px]"
-              style={{ background: 'rgba(255,255,255,0.06)', color: '#c7d2fe' }}
+              style={{ background: 'var(--alpha-white-6)', color: 'var(--color-text-brand-soft)' }}
             >
               {children}
             </code>
@@ -118,7 +118,7 @@ export default function MarkdownMessage({ content }: { content: string }) {
           </div>
         ),
         thead: ({ children }) => (
-          <thead style={{ background: 'rgba(255,255,255,0.04)' }}>{children}</thead>
+          <thead style={{ background: 'var(--alpha-white-4)' }}>{children}</thead>
         ),
         th: ({ children }) => (
           <th className="px-3 py-2 font-semibold" style={{ borderBottom: '1px solid var(--color-border)' }}>
@@ -126,7 +126,7 @@ export default function MarkdownMessage({ content }: { content: string }) {
           </th>
         ),
         td: ({ children }) => (
-          <td className="px-3 py-2 align-top" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <td className="px-3 py-2 align-top" style={{ borderTop: '1px solid var(--alpha-white-6)' }}>
             {children}
           </td>
         ),

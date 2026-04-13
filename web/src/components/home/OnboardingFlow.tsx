@@ -97,8 +97,8 @@ export default function OnboardingFlow({ settings, summary }: OnboardingFlowProp
     <div
       className="enterprise-surface mx-auto max-w-xl rounded-2xl p-6 sm:p-8"
       style={{
-        background: 'linear-gradient(160deg, rgba(15,23,42,0.92), rgba(30,41,59,0.72))',
-        border: '1px solid rgba(148,163,184,0.14)',
+        background: 'linear-gradient(160deg, var(--surface-panel), var(--surface-raised))',
+        border: '1px solid var(--color-divider)',
       }}
     >
       {/* Header */}
@@ -106,7 +106,7 @@ export default function OnboardingFlow({ settings, summary }: OnboardingFlowProp
         <div
           className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl"
           style={{
-            background: 'linear-gradient(135deg, #0f172a, #1d4ed8)',
+            background: 'linear-gradient(135deg, var(--color-bg-surface), #1d4ed8)',
             border: '1px solid rgba(96,165,250,0.34)',
             boxShadow: '0 18px 36px rgba(29,78,216,0.22)',
           }}
@@ -127,8 +127,8 @@ export default function OnboardingFlow({ settings, summary }: OnboardingFlowProp
               className="h-1.5 flex-1 rounded-full transition-all duration-500"
               style={{
                 background: step.done
-                  ? 'linear-gradient(90deg, #10b981, #06b6d4)'
-                  : 'rgba(148,163,184,0.15)',
+                  ? 'linear-gradient(90deg, var(--color-success), var(--color-accent))'
+                  : 'var(--color-border-subtle)',
               }}
             />
           ))}
@@ -145,18 +145,18 @@ export default function OnboardingFlow({ settings, summary }: OnboardingFlowProp
             key={step.id}
             className="flex items-center gap-4 rounded-xl p-3.5 transition-all duration-200"
             style={{
-              background: step.done ? 'rgba(16,185,129,0.06)' : 'rgba(15,23,42,0.5)',
+              background: step.done ? 'var(--tint-success-bg)' : 'var(--surface-card)',
               border: step.done
-                ? '1px solid rgba(16,185,129,0.2)'
-                : '1px solid rgba(148,163,184,0.1)',
+                ? '1px solid var(--tint-success-soft)'
+                : '1px solid var(--color-divider)',
             }}
           >
             {/* Checkbox */}
             <div
               className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full"
               style={{
-                background: step.done ? 'rgba(16,185,129,0.15)' : 'rgba(148,163,184,0.1)',
-                color: step.done ? '#34d399' : 'var(--color-text-muted)',
+                background: step.done ? 'var(--tint-success-soft)' : 'var(--color-divider)',
+                color: step.done ? 'var(--color-icon-success)' : 'var(--color-text-muted)',
               }}
             >
               {step.done ? (
@@ -172,7 +172,7 @@ export default function OnboardingFlow({ settings, summary }: OnboardingFlowProp
             <div className="min-w-0 flex-1">
               <div
                 className="text-[13px] font-medium"
-                style={{ color: step.done ? '#34d399' : 'var(--color-text-primary)' }}
+                style={{ color: step.done ? 'var(--color-icon-success)' : 'var(--color-text-primary)' }}
               >
                 {step.title}
               </div>

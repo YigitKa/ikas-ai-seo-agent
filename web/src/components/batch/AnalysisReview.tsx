@@ -69,29 +69,29 @@ const ALLOWED_HTML_TAGS = new Set([
 
 const TONE_STYLES: Record<Tone, { background: string; border: string; color: string }> = {
   neutral: {
-    background: 'rgba(15,23,42,0.5)',
-    border: '1px solid rgba(148,163,184,0.14)',
+    background: 'var(--surface-card)',
+    border: '1px solid var(--color-divider)',
     color: 'var(--color-text-secondary)',
   },
   primary: {
-    background: 'rgba(59,130,246,0.12)',
-    border: '1px solid rgba(96,165,250,0.22)',
-    color: '#dbeafe',
+    background: 'var(--tint-info-soft)',
+    border: '1px solid var(--tint-info-soft)',
+    color: 'var(--color-text-info)',
   },
   success: {
-    background: 'rgba(16,185,129,0.14)',
-    border: '1px solid rgba(16,185,129,0.28)',
-    color: '#a7f3d0',
+    background: 'var(--tint-success-soft)',
+    border: '1px solid var(--color-border-success)',
+    color: 'var(--color-text-success-soft)',
   },
   warning: {
-    background: 'rgba(245,158,11,0.14)',
-    border: '1px solid rgba(245,158,11,0.28)',
-    color: '#fde68a',
+    background: 'var(--tint-warning-soft)',
+    border: '1px solid var(--color-border-warning)',
+    color: 'var(--color-text-warning-soft)',
   },
   danger: {
-    background: 'rgba(239,68,68,0.14)',
-    border: '1px solid rgba(239,68,68,0.28)',
-    color: '#fecaca',
+    background: 'var(--tint-danger-soft)',
+    border: '1px solid var(--color-border-danger)',
+    color: 'var(--color-text-danger-soft)',
   },
 };
 
@@ -345,7 +345,7 @@ function ActionButton({
   const toneStyle =
     tone === 'success'
       ? {
-          background: '#16a34a',
+          background: 'var(--color-success)',
           border: '1px solid rgba(74,222,128,0.22)',
           color: '#f8fafc',
         }
@@ -391,7 +391,7 @@ function ToolbarButton({
       className="rounded-lg px-2.5 py-1 text-[11px] font-semibold transition hover:-translate-y-0.5"
       style={{
         background: 'rgba(59,130,246,0.1)',
-        border: '1px solid rgba(96,165,250,0.2)',
+        border: '1px solid var(--tint-info-soft)',
         color: '#bfdbfe',
       }}
     >
@@ -448,9 +448,9 @@ function LegacyHtmlEditor({
         className="enterprise-input w-full resize-y rounded-xl px-3 py-2.5 font-mono text-[12px] leading-relaxed outline-none"
         style={{
           minHeight: 176,
-          background: 'rgba(8,15,30,0.88)',
-          border: '1px solid rgba(16,185,129,0.26)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)',
+          background: 'var(--surface-code)',
+          border: '1px solid var(--color-border-success)',
+          boxShadow: 'inset 0 1px 0 var(--alpha-white-3)',
         }}
       />
     </div>
@@ -472,8 +472,8 @@ function HtmlEditor({
         <div
           className="rounded-md border px-2.5 py-2"
           style={{
-            background: 'rgba(8,15,30,0.88)',
-            borderColor: 'rgba(16,185,129,0.26)',
+            background: 'var(--surface-code)',
+            borderColor: 'var(--color-border-success)',
             minHeight: 220,
           }}
         />
@@ -505,8 +505,8 @@ function PlainEditor({
         className="enterprise-input w-full resize-y rounded-md px-2.5 py-2 text-[12px] leading-relaxed outline-none"
         style={{
           minHeight: 96,
-          background: 'rgba(16,185,129,0.06)',
-          border: '1px solid rgba(16,185,129,0.28)',
+          background: 'var(--tint-success-bg)',
+          border: '1px solid var(--color-border-success)',
         }}
       />
     );
@@ -520,8 +520,8 @@ function PlainEditor({
       className="enterprise-input w-full rounded-md px-2.5 py-2 text-[12px] leading-relaxed outline-none"
       style={{
         minHeight: 44,
-        background: 'rgba(16,185,129,0.06)',
-        border: '1px solid rgba(16,185,129,0.28)',
+        background: 'var(--tint-success-bg)',
+        border: '1px solid var(--color-border-success)',
       }}
     />
   );
@@ -564,7 +564,7 @@ function LegacyDiffRow({
           {isDirty && (
             <span
               className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-              style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}
+              style={{ background: 'var(--tint-warning-soft)', color: 'var(--color-warning)' }}
             >
               Düzenlendi
             </span>
@@ -576,9 +576,9 @@ function LegacyDiffRow({
           disabled={disabled || isRegenerating}
           className="rounded-lg px-3 py-1.5 text-[11px] font-medium transition hover:opacity-80 disabled:opacity-50"
           style={{
-            background: 'rgba(99,102,241,0.1)',
-            border: '1px solid rgba(99,102,241,0.24)',
-            color: '#818cf8',
+            background: 'var(--tint-primary-soft)',
+            border: '1px solid var(--color-border-primary)',
+            color: 'var(--color-primary-light)',
           }}
         >
           {isRegenerating ? 'Üretiliyor...' : 'Yeniden Üret'}
@@ -594,7 +594,7 @@ function LegacyDiffRow({
             <div
               className="rounded-lg px-3 py-3 text-[12px] leading-relaxed"
               style={{
-                background: 'rgba(255,255,255,0.03)',
+                background: 'var(--alpha-white-3)',
                 border: '1px solid var(--color-border)',
                 color: 'var(--color-text-secondary)',
                 minHeight: 140,
@@ -611,7 +611,7 @@ function LegacyDiffRow({
                 </summary>
                 <pre
                   className="mt-2 overflow-x-auto rounded-lg px-3 py-2 text-[11px]"
-                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+                  style={{ background: 'var(--alpha-white-3)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
                 >
                   {original}
                 </pre>
@@ -625,7 +625,7 @@ function LegacyDiffRow({
             </p>
             <HtmlEditor value={draftValue} onChange={onChange} disabled={disabled} />
             {showHtmlWarning && (
-              <p className="mt-2 text-[11px]" style={{ color: '#f59e0b' }}>
+              <p className="mt-2 text-[11px]" style={{ color: 'var(--color-warning)' }}>
                 Bu içerikte HTML etiketi yok. Onaylamadan önce başlık, paragraf veya liste ekleyebilirsiniz.
               </p>
             )}
@@ -638,9 +638,9 @@ function LegacyDiffRow({
             <div
               className="rounded-lg px-3 py-3 text-[12px] leading-relaxed"
               style={{
-                background: previewAccent ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
-                border: previewAccent ? '1px solid rgba(34,197,94,0.22)' : '1px solid var(--color-border)',
-                color: previewAccent ? '#22c55e' : 'var(--color-text-secondary)',
+                background: previewAccent ? 'var(--tint-success-bg)' : 'var(--alpha-white-3)',
+                border: previewAccent ? '1px solid var(--color-border-success)' : '1px solid var(--color-border)',
+                color: previewAccent ? 'var(--color-success)' : 'var(--color-text-secondary)',
                 minHeight: 160,
                 maxHeight: 320,
                 overflowY: 'auto',
@@ -659,7 +659,7 @@ function LegacyDiffRow({
             <div
               className="rounded-lg px-3 py-2 text-[12px] leading-relaxed whitespace-pre-wrap"
               style={{
-                background: 'rgba(255,255,255,0.03)',
+                background: 'var(--alpha-white-3)',
                 border: '1px solid var(--color-border)',
                 color: 'var(--color-text-secondary)',
                 minHeight: field.multiline ? 112 : 42,
@@ -679,7 +679,7 @@ function LegacyDiffRow({
       )}
 
       {fieldError && (
-        <p className="mt-3 text-[11px]" style={{ color: '#f59e0b' }}>
+        <p className="mt-3 text-[11px]" style={{ color: 'var(--color-warning)' }}>
           {fieldError}
         </p>
       )}
@@ -711,12 +711,12 @@ function DiffRow({
   const showHtmlWarning = Boolean(field.richText && draftValue.trim() !== '' && !hasHtmlMarkup(draftValue));
   const [editorMode, setEditorMode] = useState<'rich' | 'html'>('rich');
 
-  const borderStyle = '1px solid rgba(148,163,184,0.14)';
+  const borderStyle = '1px solid var(--color-divider)';
 
   return (
     <div
       className="border-t"
-      style={{ borderColor: 'rgba(148,163,184,0.10)' }}
+      style={{ borderColor: 'var(--color-divider)' }}
     >
       <div
         className="flex flex-wrap items-center justify-between gap-2 py-1.5"
@@ -749,7 +749,7 @@ function DiffRow({
               <div
                 className="rounded-md px-2.5 py-2 text-[12px] leading-relaxed"
                 style={{
-                  background: 'rgba(255,255,255,0.02)',
+                  background: 'var(--alpha-white-3)',
                   border: borderStyle,
                   color: 'var(--color-text-secondary)',
                   minHeight: 280,
@@ -773,9 +773,9 @@ function DiffRow({
                     onClick={() => setEditorMode('rich')}
                     className="rounded px-1.5 py-0.5 text-[10px] font-medium transition"
                     style={{
-                      background: editorMode === 'rich' ? 'rgba(99,102,241,0.18)' : 'transparent',
-                      color: editorMode === 'rich' ? '#a5b4fc' : 'var(--color-text-muted)',
-                      border: editorMode === 'rich' ? '1px solid rgba(99,102,241,0.3)' : '1px solid transparent',
+                      background: editorMode === 'rich' ? 'var(--tint-primary-soft)' : 'transparent',
+                      color: editorMode === 'rich' ? 'var(--color-primary-light)' : 'var(--color-text-muted)',
+                      border: editorMode === 'rich' ? '1px solid var(--color-border-primary)' : '1px solid transparent',
                     }}
                   >
                     Normal
@@ -785,9 +785,9 @@ function DiffRow({
                     onClick={() => setEditorMode('html')}
                     className="rounded px-1.5 py-0.5 text-[10px] font-medium transition"
                     style={{
-                      background: editorMode === 'html' ? 'rgba(99,102,241,0.18)' : 'transparent',
-                      color: editorMode === 'html' ? '#a5b4fc' : 'var(--color-text-muted)',
-                      border: editorMode === 'html' ? '1px solid rgba(99,102,241,0.3)' : '1px solid transparent',
+                      background: editorMode === 'html' ? 'var(--tint-primary-soft)' : 'transparent',
+                      color: editorMode === 'html' ? 'var(--color-primary-light)' : 'var(--color-text-muted)',
+                      border: editorMode === 'html' ? '1px solid var(--color-border-primary)' : '1px solid transparent',
                     }}
                   >
                     HTML
@@ -804,13 +804,13 @@ function DiffRow({
                   className="enterprise-input w-full resize-y rounded-md px-2.5 py-2 font-mono text-[11px] leading-relaxed outline-none"
                   style={{
                     minHeight: 280,
-                    background: 'rgba(16,185,129,0.06)',
-                    border: '1px solid rgba(16,185,129,0.28)',
+                    background: 'var(--tint-success-bg)',
+                    border: '1px solid var(--color-border-success)',
                   }}
                 />
               )}
               {showHtmlWarning && (
-                <p className="mt-1.5 text-[11px]" style={{ color: '#f59e0b' }}>
+                <p className="mt-1.5 text-[11px]" style={{ color: 'var(--color-warning)' }}>
                   HTML etiketi görünmüyor. Onaylamadan önce başlık, paragraf veya liste ekleyin.
                 </p>
               )}
@@ -825,7 +825,7 @@ function DiffRow({
               <div
                 className="rounded-md px-2.5 py-2 text-[12px] leading-relaxed whitespace-pre-wrap"
                 style={{
-                  background: 'rgba(255,255,255,0.02)',
+                  background: 'var(--alpha-white-3)',
                   border: borderStyle,
                   color: 'var(--color-text-secondary)',
                   minHeight: field.multiline ? 96 : 44,
@@ -849,9 +849,9 @@ function DiffRow({
         <div
           className="border-t px-2.5 py-1.5 text-[11px]"
           style={{
-            borderColor: 'rgba(245,158,11,0.24)',
-            background: 'rgba(245,158,11,0.08)',
-            color: '#fbbf24',
+            borderColor: 'var(--color-border-warning)',
+            background: 'var(--tint-warning-bg)',
+            color: 'var(--color-icon-warning)',
           }}
         >
           {fieldError}
@@ -864,7 +864,7 @@ function DiffRow({
 function LegacyScoreBadge({ before, after }: { before: number | null; after: number | null }) {
   if (before == null || after == null) return null;
   const delta = after - before;
-  const color = delta > 0 ? '#22c55e' : delta < 0 ? '#ef4444' : '#94a3b8';
+  const color = delta > 0 ? 'var(--color-success)' : delta < 0 ? 'var(--color-danger)' : 'var(--color-text-secondary)';
   return (
     <span
       className="rounded-full px-2 py-0.5 text-[11px] font-bold"
@@ -956,7 +956,7 @@ function LegacyItemCard({
               onClick={() => onDecision('rejected')}
               disabled={isProcessing}
               className="rounded-full px-2 py-0.5 text-[11px] font-medium transition hover:opacity-70 disabled:opacity-50"
-              style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e' }}
+              style={{ background: 'rgba(34,197,94,0.1)', color: 'var(--color-success)' }}
               title="Kararı değiştir"
             >
               ✓ Onaylandı
@@ -969,7 +969,7 @@ function LegacyItemCard({
               onClick={() => onDecision('approved')}
               disabled={isProcessing}
               className="rounded-full px-2 py-0.5 text-[11px] font-medium transition hover:opacity-70 disabled:opacity-50"
-              style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}
+              style={{ background: 'var(--tint-danger-soft)', color: 'var(--color-danger)' }}
               title="Kararı değiştir"
             >
               ✕ Reddedildi
@@ -983,7 +983,7 @@ function LegacyItemCard({
                 onClick={() => onDecision(approveDecision, revisedData)}
                 disabled={isProcessing}
                 className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-white transition hover:opacity-80 disabled:opacity-50"
-                style={{ background: '#22c55e' }}
+                style={{ background: 'var(--color-success)' }}
               >
                 {hasEdits ? 'Düzenleyip Onayla' : 'Onayla'}
               </button>
@@ -993,9 +993,9 @@ function LegacyItemCard({
                 disabled={isProcessing}
                 className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition hover:opacity-80 disabled:opacity-50"
                 style={{
-                  background: 'rgba(239,68,68,0.1)',
-                  border: '1px solid rgba(239,68,68,0.3)',
-                  color: '#ef4444',
+                  background: 'var(--tint-danger-soft)',
+                  border: '1px solid var(--color-border-danger)',
+                  color: 'var(--color-danger)',
                 }}
               >
                 Reddet
@@ -1010,9 +1010,9 @@ function LegacyItemCard({
               disabled={isProcessing}
               className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition hover:opacity-80 disabled:opacity-50"
               style={{
-                background: 'rgba(99,102,241,0.1)',
-                border: '1px solid rgba(99,102,241,0.24)',
-                color: '#818cf8',
+                background: 'var(--tint-primary-soft)',
+                border: '1px solid var(--color-border-primary)',
+                color: 'var(--color-primary-light)',
               }}
             >
               {isItemRegenerating ? 'Yeniden Üretiliyor...' : 'Tüm Alanları Yeniden Üret'}
@@ -1023,7 +1023,7 @@ function LegacyItemCard({
 
       {isProcessing && (
         <div className="mb-4 flex items-center gap-2 py-2">
-          <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="#6366f1" strokeWidth={2}>
+          <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="var(--color-primary)" strokeWidth={2}>
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -1043,13 +1043,13 @@ function LegacyItemCard({
       )}
 
       {item.status === 'failed' && (
-        <p className="mb-4 text-[12px]" style={{ color: '#ef4444' }}>
+        <p className="mb-4 text-[12px]" style={{ color: 'var(--color-danger)' }}>
           Hata: {item.skip_reason || 'Bilinmeyen hata'}
         </p>
       )}
 
       {item.status === 'skipped' && (
-        <p className="mb-4 text-[12px]" style={{ color: '#f59e0b' }}>
+        <p className="mb-4 text-[12px]" style={{ color: 'var(--color-warning)' }}>
           Atlandı: {item.skip_reason || 'AI bu ürün için öneri oluşturamadı.'}
         </p>
       )}
@@ -1118,16 +1118,16 @@ function ItemCard({
     <div
       className="overflow-hidden rounded-lg border"
       style={{
-        background: 'rgba(11,17,32,0.92)',
-        borderColor: 'rgba(148,163,184,0.12)',
+        background: 'var(--surface-code)',
+        borderColor: 'var(--color-divider)',
         boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
       }}
     >
       <div
         className="flex flex-wrap items-start justify-between gap-3 px-3 py-2"
         style={{
-          borderBottom: '1px solid rgba(148,163,184,0.10)',
-          background: 'rgba(15,23,42,0.6)',
+          borderBottom: '1px solid var(--color-divider)',
+          background: 'var(--surface-raised)',
         }}
       >
         <div className="min-w-0 flex-1">
@@ -1210,11 +1210,11 @@ function ItemCard({
           <div
             className="flex items-center gap-2 rounded px-2.5 py-1.5"
             style={{
-              background: 'rgba(59,130,246,0.08)',
-              border: '1px solid rgba(96,165,250,0.16)',
+              background: 'var(--tint-info-bg)',
+              border: '1px solid var(--tint-info-soft)',
             }}
           >
-            <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="#60a5fa" strokeWidth={2}>
+            <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="var(--color-icon-info)" strokeWidth={2}>
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -1231,8 +1231,8 @@ function ItemCard({
           <div
             className="rounded px-2.5 py-1.5 text-[12px]"
             style={{
-              background: 'rgba(148,163,184,0.08)',
-              border: '1px solid rgba(148,163,184,0.16)',
+              background: 'var(--color-divider)',
+              border: '1px solid var(--color-border-subtle)',
               color: 'var(--color-text-secondary)',
             }}
           >
@@ -1244,9 +1244,9 @@ function ItemCard({
           <div
             className="rounded px-2.5 py-1.5 text-[12px]"
             style={{
-              background: 'rgba(239,68,68,0.08)',
-              border: '1px solid rgba(239,68,68,0.18)',
-              color: '#fca5a5',
+              background: 'var(--tint-danger-bg)',
+              border: '1px solid var(--tint-danger-soft)',
+              color: 'var(--color-text-danger-soft)',
             }}
           >
             Hata: {item.skip_reason || 'Bilinmeyen hata'}
@@ -1257,9 +1257,9 @@ function ItemCard({
           <div
             className="rounded px-2.5 py-1.5 text-[12px]"
             style={{
-              background: 'rgba(245,158,11,0.08)',
-              border: '1px solid rgba(245,158,11,0.18)',
-              color: '#fcd34d',
+              background: 'var(--tint-warning-bg)',
+              border: '1px solid var(--tint-warning-soft)',
+              color: 'var(--color-text-warning-soft)',
             }}
           >
             Atlandı: {item.skip_reason || 'AI bu ürün için öneri oluşturamadı.'}
@@ -1415,9 +1415,9 @@ function LegacyAnalysisReview({
               onClick={onStop}
               className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition hover:opacity-80"
               style={{
-                background: 'rgba(239,68,68,0.1)',
-                border: '1px solid rgba(239,68,68,0.3)',
-                color: '#ef4444',
+                background: 'var(--tint-danger-soft)',
+                border: '1px solid var(--color-border-danger)',
+                color: 'var(--color-danger)',
               }}
             >
               Analizi Durdur
@@ -1441,7 +1441,7 @@ function LegacyAnalysisReview({
                 });
               }}
               className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-white transition hover:opacity-80 disabled:opacity-40"
-              style={{ background: '#22c55e' }}
+              style={{ background: 'var(--color-success)' }}
             >
               Tümünü Onayla
             </button>
@@ -1453,7 +1453,7 @@ function LegacyAnalysisReview({
               disabled={isMutating}
               onClick={onApplyAll}
               className="rounded-lg px-4 py-1.5 text-[12px] font-semibold text-white transition hover:opacity-80 disabled:opacity-40"
-              style={{ background: '#6366f1' }}
+              style={{ background: 'var(--color-primary)' }}
             >
               {isMutating ? 'Bekleyin...' : `${approvedCount} Ürünü Uygula`}
             </button>
@@ -1467,7 +1467,7 @@ function LegacyAnalysisReview({
             className="h-full rounded-full transition-all"
             style={{
               width: `${(job.processed_count / job.total_count) * 100}%`,
-              background: '#6366f1',
+              background: 'var(--color-primary)',
             }}
           />
         </div>
@@ -1513,7 +1513,7 @@ function LegacyAnalysisReview({
             type="button"
             onClick={onBack}
             className="mt-4 rounded-lg px-4 py-2 text-[13px] font-medium text-white transition hover:opacity-80"
-            style={{ background: '#6366f1' }}
+            style={{ background: 'var(--color-primary)' }}
           >
             Ürün Seçimine Dön
           </button>
@@ -1638,8 +1638,8 @@ export default function AnalysisReview({
         <div
           className="overflow-hidden rounded-lg border"
           style={{
-            background: 'rgba(15,23,42,0.95)',
-            borderColor: 'rgba(148,163,184,0.14)',
+            background: 'var(--surface-code)',
+            borderColor: 'var(--color-divider)',
             boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
             backdropFilter: 'blur(12px)',
           }}
@@ -1717,7 +1717,7 @@ export default function AnalysisReview({
 
           <div
             className="flex flex-wrap items-center gap-1.5 border-t px-3 py-1.5"
-            style={{ borderColor: 'rgba(148,163,184,0.10)' }}
+            style={{ borderColor: 'var(--color-divider)' }}
           >
             <span className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-muted)' }}>
               Hedef Alanlar
@@ -1735,14 +1735,14 @@ export default function AnalysisReview({
           {!analysisComplete && job.total_count > 0 && (
             <div
               className="flex items-center gap-2 border-t px-3 py-1.5"
-              style={{ borderColor: 'rgba(148,163,184,0.10)' }}
+              style={{ borderColor: 'var(--color-divider)' }}
             >
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: 'rgba(148,163,184,0.14)' }}>
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: 'var(--color-divider)' }}>
                 <div
                   className="h-full rounded-full transition-all duration-300"
                   style={{
                     width: `${progress}%`,
-                    background: 'linear-gradient(90deg, #f59e0b, #3b82f6)',
+                    background: 'linear-gradient(90deg, var(--color-warning), #3b82f6)',
                   }}
                 />
               </div>
@@ -1782,8 +1782,8 @@ export default function AnalysisReview({
         <div
           className="rounded-lg border px-4 py-5 text-center"
           style={{
-            background: 'rgba(15,23,42,0.9)',
-            borderColor: 'rgba(148,163,184,0.14)',
+            background: 'var(--surface-panel)',
+            borderColor: 'var(--color-divider)',
           }}
         >
           <p className="text-[14px] font-semibold" style={{ color: 'var(--color-text-secondary)' }}>

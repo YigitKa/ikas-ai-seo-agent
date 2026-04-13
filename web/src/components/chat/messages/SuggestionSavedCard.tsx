@@ -21,7 +21,7 @@ export default function SuggestionSavedCard({ info }: { info: SuggestionSavedInf
     <>
       <div
         className="rounded-lg px-3 py-2.5 text-xs"
-        style={{ background: 'rgba(34, 197, 94, 0.08)', border: '1px solid rgba(34, 197, 94, 0.2)' }}
+        style={{ background: 'var(--tint-success-bg)', border: '1px solid var(--color-border-success)' }}
       >
         <div
           className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-[0.16em]"
@@ -48,8 +48,8 @@ export default function SuggestionSavedCard({ info }: { info: SuggestionSavedInf
                   className="flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors hover:brightness-125"
                   style={{
                     color: 'rgba(34, 197, 94, 0.9)',
-                    background: 'rgba(34, 197, 94, 0.12)',
-                    border: '1px solid rgba(34, 197, 94, 0.2)',
+                    background: 'var(--tint-success-soft)',
+                    border: '1px solid var(--color-border-success)',
                   }}
                 >
                   On Izle

@@ -40,8 +40,8 @@ export default function ConfirmDialog({
             onClick={onCancel}
             className="rounded-xl px-5 py-2.5 text-sm font-medium transition-all hover:opacity-80"
             style={{
-              background: themeColors.background.white6,
-              border: `1px solid ${themeColors.border.white12}`,
+              background: themeColors.alpha.white6,
+              border: `1px solid ${themeColors.alpha.white12}`,
               color: themeColors.text.secondary,
             }}
           >

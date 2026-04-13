@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Suspense, lazy } from 'react';
 import ErrorBoundary from './shared/ui/ErrorBoundary';
 import { ToastProvider } from './shared/ui/Toast';
+import { ThemeProvider } from './theme/ThemeContext';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -28,6 +29,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
         <ToastProvider>
         <BrowserRouter>
           <Suspense
@@ -51,6 +53,7 @@ export default function App() {
           </Suspense>
         </BrowserRouter>
         </ToastProvider>
+        </ThemeProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

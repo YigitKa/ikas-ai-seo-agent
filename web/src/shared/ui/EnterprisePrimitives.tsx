@@ -8,27 +8,27 @@ function classNames(...classes: Array<string | false | null | undefined>) {
 const TONE_STYLES: Record<'neutral' | 'primary' | 'success' | 'warning' | 'danger', CSSProperties> = {
   neutral: {
     background: themeColors.gradient.panel,
-    border: '1px solid rgba(148,163,184,0.24)',
+    border: `1px solid ${themeColors.border.strong}`,
     color: themeColors.text.secondary,
   },
   primary: {
-    background: 'linear-gradient(135deg, rgba(37,99,235,0.48), rgba(79,70,229,0.38))',
-    border: '1px solid rgba(96,165,250,0.42)',
+    background: themeColors.gradient.activeChip,
+    border: `1px solid ${themeColors.border.info}`,
     color: themeColors.text.primary,
   },
   success: {
-    background: 'rgba(16,185,129,0.16)',
-    border: '1px solid rgba(16,185,129,0.35)',
+    background: themeColors.tint.successSoft,
+    border: `1px solid ${themeColors.border.success}`,
     color: themeColors.text.successSoft,
   },
   warning: {
-    background: 'rgba(245,158,11,0.14)',
-    border: '1px solid rgba(245,158,11,0.35)',
+    background: themeColors.tint.warningSoft,
+    border: `1px solid ${themeColors.border.warning}`,
     color: themeColors.text.warningSoft,
   },
   danger: {
-    background: 'rgba(239,68,68,0.12)',
-    border: '1px solid rgba(239,68,68,0.35)',
+    background: themeColors.tint.dangerSoft,
+    border: `1px solid ${themeColors.border.danger}`,
     color: themeColors.text.dangerSoft,
   },
 };
@@ -113,9 +113,9 @@ export function EnterpriseNavButton({
         color: active ? themeColors.text.primary : themeColors.text.secondary,
         background: active
           ? themeColors.gradient.activeChip
-          : 'rgba(15, 23, 42, 0.52)',
-        border: active ? '1px solid rgba(125,211,252,0.34)' : '1px solid rgba(148,163,184,0.22)',
-        boxShadow: active ? '0 12px 28px rgba(30,64,175,0.28)' : 'none',
+          : themeColors.background.card,
+        border: `1px solid ${active ? themeColors.border.info : themeColors.border.strong}`,
+        boxShadow: active ? themeColors.shadow.hero : 'none',
       }}
     >
       {children}
@@ -134,9 +134,9 @@ export function EnterprisePill({
 }) {
   const toneStyleMap: Record<string, CSSProperties> = {
     neutral: {
-      background: 'rgba(15, 23, 42, 0.76)',
-      border: '1px solid rgba(148, 163, 184, 0.22)',
-      color: 'var(--color-text-secondary)',
+      background: themeColors.background.panel,
+      border: `1px solid ${themeColors.border.strong}`,
+      color: themeColors.text.secondary,
     },
     primary: TONE_STYLES.primary,
     success: TONE_STYLES.success,
@@ -306,7 +306,7 @@ export function EnterpriseSectionCard({
     <section className="enterprise-surface rounded-2xl p-5 sm:p-6">
       <div
         className="mb-5 flex flex-col gap-4 pb-5 md:flex-row md:items-end md:justify-between"
-        style={{ borderBottom: '1px solid rgba(148,163,184,0.14)' }}
+        style={{ borderBottom: `1px solid ${themeColors.border.divider}` }}
       >
         <div>
           <div
@@ -362,7 +362,7 @@ export function EnterpriseStatusRow({
   return (
     <div
       className="flex items-start justify-between gap-3 pb-4 last:pb-0"
-      style={{ borderBottom: '1px solid rgba(148,163,184,0.1)' }}
+      style={{ borderBottom: `1px solid ${themeColors.border.subtle}` }}
     >
       <dt className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
         {label}

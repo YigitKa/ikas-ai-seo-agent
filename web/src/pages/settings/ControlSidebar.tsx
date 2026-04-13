@@ -105,7 +105,7 @@ export default function ControlSidebar({
         </div>
       )}
 
-      <div className="mt-6 pt-5" style={{ borderTop: '1px solid rgba(148,163,184,0.14)' }}>
+      <div className="mt-6 pt-5" style={{ borderTop: '1px solid var(--color-divider)' }}>
         <div
           className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
           style={{ color: 'rgba(239,68,68,0.7)' }}

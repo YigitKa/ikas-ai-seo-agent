@@ -105,8 +105,8 @@ function ComponentCard({
               key={reasonCode}
               className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]"
               style={{
-                background: 'rgba(15,23,42,0.72)',
-                border: '1px solid rgba(148,163,184,0.18)',
+                background: 'var(--surface-raised)',
+                border: '1px solid var(--color-border-subtle)',
                 color: 'var(--color-text-secondary)',
               }}
             >
@@ -123,8 +123,8 @@ function ComponentCard({
               key={check.name}
               className="flex items-center justify-between rounded-xl px-3 py-2 text-[11px]"
               style={{
-                background: 'rgba(15,23,42,0.48)',
-                border: '1px solid rgba(148,163,184,0.14)',
+                background: 'var(--surface-card)',
+                border: '1px solid var(--color-divider)',
               }}
             >
               <div>
@@ -168,7 +168,7 @@ function IssueList({ issues }: { issues: DiagnosticsIssue[] }) {
 
       <div className="mt-4 space-y-3">
         {issues.length === 0 ? (
-          <div className="rounded-xl px-4 py-3 text-sm" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', color: '#a7f3d0' }}>
+          <div className="rounded-xl px-4 py-3 text-sm" style={{ background: 'var(--tint-success-bg)', border: '1px solid var(--tint-success-soft)', color: 'var(--color-text-success-soft)' }}>
             Kritik veya acik issue gorunmuyor.
           </div>
         ) : (
@@ -177,8 +177,8 @@ function IssueList({ issues }: { issues: DiagnosticsIssue[] }) {
               key={`${issue.component}-${issue.reason_code}-${issue.target_id ?? index}`}
               className="rounded-2xl px-4 py-3"
               style={{
-                background: 'rgba(15,23,42,0.48)',
-                border: '1px solid rgba(148,163,184,0.16)',
+                background: 'var(--surface-card)',
+                border: '1px solid var(--color-border-subtle)',
               }}
             >
               <div className="flex flex-wrap items-center gap-2">
@@ -214,8 +214,8 @@ function ActiveJobCard({ job }: { job: DiagnosticsTaskSummary }) {
     <div
       className="rounded-2xl px-4 py-3"
       style={{
-        background: 'rgba(15,23,42,0.48)',
-        border: `1px solid ${job.stuck ? 'rgba(245,158,11,0.3)' : 'rgba(148,163,184,0.16)'}`,
+        background: 'var(--surface-card)',
+        border: `1px solid ${job.stuck ? 'var(--color-border-warning)' : 'var(--color-border-subtle)'}`,
       }}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -274,8 +274,8 @@ function DiagnosticsActions({ data }: { data: DiagnosticsSummary }) {
             key={action}
             className="rounded-2xl px-4 py-3 text-sm"
             style={{
-              background: 'rgba(15,23,42,0.48)',
-              border: '1px solid rgba(148,163,184,0.16)',
+              background: 'var(--surface-card)',
+              border: '1px solid var(--color-border-subtle)',
               color: 'var(--color-text-primary)',
             }}
           >
@@ -484,7 +484,7 @@ export default function Diagnostics() {
 
               <div className="mt-4 space-y-3">
                 {data.active_jobs.items.length === 0 ? (
-                  <div className="rounded-xl px-4 py-3 text-sm" style={{ background: 'rgba(15,23,42,0.48)', border: '1px solid rgba(148,163,184,0.16)', color: 'var(--color-text-secondary)' }}>
+                  <div className="rounded-xl px-4 py-3 text-sm" style={{ background: 'var(--surface-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-secondary)' }}>
                     Su anda aktif veya bekleyen job yok.
                   </div>
                 ) : (
@@ -515,7 +515,7 @@ export default function Diagnostics() {
               className="mt-4 overflow-x-auto rounded-2xl p-4 text-[11px] leading-6"
               style={{
                 background: 'rgba(2,6,23,0.72)',
-                border: '1px solid rgba(148,163,184,0.14)',
+                border: '1px solid var(--color-divider)',
                 color: 'var(--color-text-secondary)',
               }}
             >

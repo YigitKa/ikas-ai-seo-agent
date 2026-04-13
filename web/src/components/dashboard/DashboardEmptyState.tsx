@@ -11,7 +11,7 @@ export default function DashboardEmptyState({ requestedSkillSlug }: DashboardEmp
       >
         <div
           className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl"
-          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)' }}
+          style={{ background: 'var(--alpha-white-3)', border: '1px solid var(--color-border)' }}
         >
           <svg
             className="h-7 w-7"

@@ -126,11 +126,11 @@ function extractPriceResearchResult(resultJson: string): {
 }
 
 const POSITION_LABELS: Record<string, { text: string; color: string }> = {
-  en_ucuz: { text: 'En Ucuz', color: '#34d399' },
-  ortalama_alti: { text: 'Ort. Alti', color: '#34d399' },
-  ortalama: { text: 'Ortalama', color: '#fbbf24' },
-  ortalama_ustu: { text: 'Ort. Ustu', color: '#f97316' },
-  en_pahali: { text: 'En Pahali', color: '#ef4444' },
+  en_ucuz: { text: 'En Ucuz', color: 'var(--color-icon-success)' },
+  ortalama_alti: { text: 'Ort. Alti', color: 'var(--color-icon-success)' },
+  ortalama: { text: 'Ortalama', color: 'var(--color-icon-warning)' },
+  ortalama_ustu: { text: 'Ort. Ustu', color: 'var(--color-orange)' },
+  en_pahali: { text: 'En Pahali', color: 'var(--color-danger)' },
 };
 
 function isSavedResult(resultJson: string): boolean {
@@ -172,40 +172,40 @@ function SeoAgentToolCard({ result, toolMeta }: { result: ToolResult; toolMeta: 
 
   const colorMap: Record<string, { bg: string; border: string; icon: string; badge: string }> = {
     seo_score_product: {
-      bg: 'rgba(99, 102, 241, 0.06)',
-      border: 'rgba(99, 102, 241, 0.18)',
-      icon: '#818cf8',
-      badge: 'rgba(99, 102, 241, 0.18)',
+      bg: 'var(--tint-primary-bg)',
+      border: 'var(--tint-primary-soft)',
+      icon: 'var(--color-primary-light)',
+      badge: 'var(--tint-primary-soft)',
     },
     validate_rewrite: {
       bg: validateResult?.improved === false
-        ? 'rgba(245, 158, 11, 0.06)'
-        : 'rgba(16, 185, 129, 0.06)',
+        ? 'var(--tint-warning-bg)'
+        : 'var(--tint-success-bg)',
       border: validateResult?.improved === false
-        ? 'rgba(245, 158, 11, 0.2)'
-        : 'rgba(16, 185, 129, 0.2)',
-      icon: validateResult?.improved === false ? '#fbbf24' : '#34d399',
+        ? 'var(--tint-warning-soft)'
+        : 'var(--tint-success-soft)',
+      icon: validateResult?.improved === false ? 'var(--color-icon-warning)' : 'var(--color-icon-success)',
       badge: validateResult?.improved === false
-        ? 'rgba(245, 158, 11, 0.18)'
-        : 'rgba(16, 185, 129, 0.18)',
+        ? 'var(--tint-warning-soft)'
+        : 'var(--tint-success-soft)',
     },
     save_suggestion: {
-      bg: 'rgba(16, 185, 129, 0.06)',
-      border: 'rgba(16, 185, 129, 0.2)',
-      icon: '#34d399',
-      badge: 'rgba(16, 185, 129, 0.18)',
+      bg: 'var(--tint-success-bg)',
+      border: 'var(--tint-success-soft)',
+      icon: 'var(--color-icon-success)',
+      badge: 'var(--tint-success-soft)',
     },
     competitor_price_research: {
-      bg: 'rgba(245, 158, 11, 0.06)',
-      border: 'rgba(245, 158, 11, 0.18)',
-      icon: '#f59e0b',
-      badge: 'rgba(245, 158, 11, 0.18)',
+      bg: 'var(--tint-warning-bg)',
+      border: 'var(--tint-warning-soft)',
+      icon: 'var(--color-warning)',
+      badge: 'var(--tint-warning-soft)',
     },
     default: {
-      bg: 'rgba(99, 102, 241, 0.04)',
-      border: 'rgba(99, 102, 241, 0.14)',
-      icon: '#818cf8',
-      badge: 'rgba(99, 102, 241, 0.14)',
+      bg: 'var(--tint-primary-bg)',
+      border: 'var(--tint-primary-soft)',
+      icon: 'var(--color-primary-light)',
+      badge: 'var(--tint-primary-soft)',
     },
   };
 
@@ -311,7 +311,7 @@ function McpToolCard({ result }: { result: ToolResult }) {
   return (
     <div
       className="rounded-lg px-3 py-2 text-xs"
-      style={{ background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.15)' }}
+      style={{ background: 'var(--tint-warning-bg)', border: '1px solid var(--tint-warning-soft)' }}
     >
       <div
         className="mb-1 px-0.5 text-[10px] font-semibold uppercase tracking-[0.16em]"
@@ -322,7 +322,7 @@ function McpToolCard({ result }: { result: ToolResult }) {
       <button
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-center gap-1.5 text-left"
-        style={{ color: '#fbbf24' }}
+        style={{ color: 'var(--color-icon-warning)' }}
       >
         <svg className="h-3 w-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />

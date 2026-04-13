@@ -34,8 +34,8 @@ function QuickWins({ score }: { score: SeoScore }) {
             key={key}
             className="flex items-center gap-3 rounded-xl px-3.5 py-2.5"
             style={{
-              background: 'rgba(99, 102, 241, 0.07)',
-              border: '1px solid rgba(99, 102, 241, 0.18)',
+              background: 'var(--tint-primary-bg)',
+              border: '1px solid var(--tint-primary-soft)',
             }}
           >
             <svg
@@ -60,7 +60,7 @@ function QuickWins({ score }: { score: SeoScore }) {
             <span
               className="flex-shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold"
               style={{
-                background: 'rgba(99, 102, 241, 0.18)',
+                background: 'var(--tint-primary-soft)',
                 color: 'var(--color-primary-light)',
               }}
             >
@@ -82,7 +82,7 @@ export default function ScoreCard({ score }: Props) {
         border: '1px solid var(--color-border)',
       }}
     >
-      <div className="flex items-center gap-4 pb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="flex items-center gap-4 pb-4" style={{ borderBottom: '1px solid var(--alpha-white-6)' }}>
         <CircularScore score={score.total_score} size={104} strokeWidth={6} />
         <div className="min-w-0 flex-1">
           <div
@@ -110,8 +110,8 @@ export default function ScoreCard({ score }: Props) {
               key={key}
               className="rounded-xl px-4 py-3"
               style={{
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.06)',
+                background: 'var(--alpha-white-3)',
+                border: '1px solid var(--alpha-white-6)',
               }}
             >
               <div className="flex items-start justify-between gap-3">
@@ -155,8 +155,8 @@ export default function ScoreCard({ score }: Props) {
               key={key}
               className="rounded-xl px-4 py-3"
               style={{
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.06)',
+                background: 'var(--alpha-white-3)',
+                border: '1px solid var(--alpha-white-6)',
               }}
             >
               <div className="flex items-start justify-between gap-3">
@@ -199,8 +199,8 @@ export default function ScoreCard({ score }: Props) {
                 key={`${issue}-${index}`}
                 className="rounded-xl px-4 py-3"
                 style={{
-                  background: 'rgba(239, 68, 68, 0.05)',
-                  border: '1px solid rgba(239, 68, 68, 0.12)',
+                  background: 'var(--tint-danger-bg)',
+                  border: '1px solid var(--tint-danger-soft)',
                 }}
               >
                 <div className="flex items-start gap-2">
@@ -222,9 +222,9 @@ export default function ScoreCard({ score }: Props) {
           <div
             className="rounded-xl px-4 py-3 text-[12px]"
             style={{
-              background: 'rgba(16, 185, 129, 0.06)',
-              border: '1px solid rgba(16, 185, 129, 0.14)',
-              color: '#a7f3d0',
+              background: 'var(--tint-success-bg)',
+              border: '1px solid var(--tint-success-soft)',
+              color: 'var(--color-text-success-soft)',
             }}
           >
             Bu urun icin kritik bir SEO sorunu tespit edilmedi.

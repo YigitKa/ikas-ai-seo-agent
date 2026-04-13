@@ -46,7 +46,7 @@ function Toggle({
         onClick={() => onChange(!checked)}
         className="relative mt-0.5 h-5 w-9 flex-shrink-0 rounded-full transition-colors"
         style={{
-          background: checked ? 'var(--color-primary)' : 'rgba(255,255,255,0.12)',
+          background: checked ? 'var(--color-primary)' : 'var(--alpha-white-12)',
         }}
       >
         <span
@@ -136,7 +136,7 @@ export default function BatchConfigPanel({
                 disabled={disabled}
                 className="w-20 rounded-lg px-2.5 py-1.5 text-center text-[13px] outline-none disabled:opacity-40"
                 style={{
-                  background: 'rgba(255,255,255,0.06)',
+                  background: 'var(--alpha-white-6)',
                   border: '1px solid var(--color-border)',
                   color: 'var(--color-text-primary)',
                 }}
@@ -159,19 +159,19 @@ export default function BatchConfigPanel({
                 disabled={disabled}
                 className="flex-1 rounded-lg px-2.5 py-1.5 text-[13px] outline-none disabled:opacity-40"
                 style={{
-                  background: '#1e1e2e',
+                  background: 'var(--color-bg-elevated)',
                   border: '1px solid var(--color-border)',
                   color: 'var(--color-text-primary)',
                 }}
               >
-                <option value="" style={{ background: '#1e1e2e', color: 'var(--color-text-primary)' }}>
+                <option value="" style={{ background: 'var(--color-bg-elevated)', color: 'var(--color-text-primary)' }}>
                   Tum Kategoriler
                 </option>
                 {categories.map((category) => (
                   <option
                     key={category}
                     value={category}
-                    style={{ background: '#1e1e2e', color: 'var(--color-text-primary)' }}
+                    style={{ background: 'var(--color-bg-elevated)', color: 'var(--color-text-primary)' }}
                   >
                     {category}
                   </option>
@@ -203,8 +203,8 @@ export default function BatchConfigPanel({
                   disabled={disabled}
                   className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition-all disabled:opacity-40"
                   style={{
-                    background: active ? 'rgba(99,102,241,0.18)' : 'rgba(255,255,255,0.04)',
-                    border: active ? '1px solid rgba(99,102,241,0.5)' : '1px solid var(--color-border)',
+                    background: active ? 'var(--tint-primary-soft)' : 'var(--alpha-white-4)',
+                    border: active ? '1px solid var(--color-border-primary)' : '1px solid var(--color-border)',
                     color: active ? 'var(--color-primary-light)' : 'var(--color-text-muted)',
                   }}
                 >
@@ -248,7 +248,7 @@ export default function BatchConfigPanel({
                 <span
                   className="rounded px-1.5 py-0.5 text-[12px] font-semibold tabular-nums"
                   style={{
-                    background: 'rgba(99,102,241,0.15)',
+                    background: 'var(--tint-primary-soft)',
                     color: 'var(--color-primary-light)',
                   }}
                 >
@@ -290,19 +290,19 @@ export default function BatchConfigPanel({
               disabled={disabled || skillsQ.isLoading}
               className="w-full rounded-lg px-3 py-2 text-[13px] outline-none disabled:opacity-40"
               style={{
-                background: '#1e1e2e',
+                background: 'var(--color-bg-elevated)',
                 border: '1px solid var(--color-border)',
                 color: 'var(--color-text-primary)',
               }}
             >
-              <option value="" style={{ background: '#1e1e2e', color: 'var(--color-text-primary)' }}>
+              <option value="" style={{ background: 'var(--color-bg-elevated)', color: 'var(--color-text-primary)' }}>
                 Varsayilan batch promptu
               </option>
               {batchSkills.map((skill) => (
                 <option
                   key={skill.slug}
                   value={skill.slug}
-                  style={{ background: '#1e1e2e', color: 'var(--color-text-primary)' }}
+                  style={{ background: 'var(--color-bg-elevated)', color: 'var(--color-text-primary)' }}
                 >
                   {skill.name}
                 </option>
@@ -313,11 +313,11 @@ export default function BatchConfigPanel({
               <div
                 className="rounded-lg px-3 py-3"
                 style={{
-                  background: 'rgba(99,102,241,0.08)',
-                  border: '1px solid rgba(99,102,241,0.22)',
+                  background: 'var(--tint-primary-bg)',
+                  border: '1px solid var(--color-border-primary)',
                 }}
               >
-                <p className="text-[12px] font-semibold" style={{ color: '#c7d2fe' }}>
+                <p className="text-[12px] font-semibold" style={{ color: 'var(--color-text-brand-soft)' }}>
                   {selectedSkill.name}
                 </p>
                 <p className="mt-1 text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
@@ -344,15 +344,15 @@ export default function BatchConfigPanel({
         <div
           className="flex items-start gap-3 rounded-lg px-4 py-3"
           style={{
-            background: 'rgba(245,158,11,0.08)',
-            border: '1px solid rgba(245,158,11,0.25)',
+            background: 'var(--tint-warning-bg)',
+            border: '1px solid var(--color-border-warning)',
           }}
         >
-          <svg className="mt-0.5 h-5 w-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth={2}>
+          <svg className="mt-0.5 h-5 w-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="var(--color-warning)" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
           <div>
-            <p className="text-[12px] font-semibold" style={{ color: '#f59e0b' }}>
+            <p className="text-[12px] font-semibold" style={{ color: 'var(--color-warning)' }}>
               {isDryRun ? 'Guvenli Mod (DRY_RUN) Aktif' : 'DIKKAT: Canli Mod'}
             </p>
             <p className="mt-0.5 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
@@ -369,7 +369,7 @@ export default function BatchConfigPanel({
             onClick={onStartCalibration}
             disabled={disabled || config.target_fields.length === 0}
             className="flex-1 rounded-lg px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-            style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
+            style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-primary))' }}
           >
             Kalibrasyon Baslat
           </button>

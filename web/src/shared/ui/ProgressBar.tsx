@@ -25,7 +25,7 @@ export default function ProgressBar({
   return (
     <div
       className={`${height} w-full overflow-hidden rounded-full`}
-      style={{ background: 'rgba(255,255,255,0.06)' }}
+      style={{ background: 'var(--alpha-white-6)' }}
     >
       <div
         className="h-full rounded-full"

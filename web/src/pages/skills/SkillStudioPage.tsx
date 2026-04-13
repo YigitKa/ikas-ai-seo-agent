@@ -35,39 +35,39 @@ const STATUS_OPTIONS = ['active', 'draft', 'disabled'] as const;
 const SOURCE_BADGE: Record<string, { label: string; color: string; bg: string; border: string }> = {
   system: {
     label: 'DEFAULT',
-    color: '#38bdf8',
+    color: 'var(--color-icon-info)',
     bg: 'rgba(56,189,248,0.10)',
     border: 'rgba(56,189,248,0.25)',
   },
   project: {
     label: 'CUSTOM',
-    color: '#a78bfa',
+    color: 'var(--color-primary-light)',
     bg: 'rgba(167,139,250,0.10)',
     border: 'rgba(167,139,250,0.25)',
   },
   custom: {
     label: 'USER',
-    color: '#f59e0b',
-    bg: 'rgba(245,158,11,0.12)',
-    border: 'rgba(245,158,11,0.24)',
+    color: 'var(--color-warning)',
+    bg: 'var(--tint-warning-soft)',
+    border: 'var(--color-border-warning)',
   },
 };
 
 const STATUS_BADGE: Record<string, { color: string; bg: string; border: string }> = {
   active: {
-    color: '#34d399',
+    color: 'var(--color-icon-success)',
     bg: 'rgba(52,211,153,0.10)',
     border: 'rgba(52,211,153,0.25)',
   },
   draft: {
-    color: '#fbbf24',
+    color: 'var(--color-icon-warning)',
     bg: 'rgba(251,191,36,0.10)',
     border: 'rgba(251,191,36,0.25)',
   },
   disabled: {
-    color: '#94a3b8',
-    bg: 'rgba(148,163,184,0.10)',
-    border: 'rgba(148,163,184,0.20)',
+    color: 'var(--color-text-secondary)',
+    bg: 'var(--color-divider)',
+    border: 'var(--color-border-subtle)',
   },
 };
 
@@ -673,7 +673,7 @@ export default function SkillStudioPage() {
           <div
             className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
             style={{
-              background: 'linear-gradient(180deg, rgba(11,17,32,0.95), rgba(2,6,23,0.88))',
+              background: 'linear-gradient(180deg, var(--surface-code), var(--surface-code))',
               borderBottom: '1px solid var(--color-border)',
             }}
           >
@@ -705,9 +705,9 @@ export default function SkillStudioPage() {
                 <span
                   className="rounded-full px-2 py-0.5 text-[10px] font-medium"
                   style={{
-                    background: 'rgba(245,158,11,0.15)',
-                    border: '1px solid rgba(245,158,11,0.3)',
-                    color: '#fbbf24',
+                    background: 'var(--tint-warning-soft)',
+                    border: '1px solid var(--color-border-warning)',
+                    color: 'var(--color-icon-warning)',
                   }}
                 >
                   Kaydedilmemis
@@ -726,8 +726,8 @@ export default function SkillStudioPage() {
                     onClick={() => setEditorTab(tab)}
                     className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all duration-200"
                     style={{
-                      background: isActive ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)',
-                      border: isActive ? '1px solid rgba(99,102,241,0.3)' : '1px solid var(--color-border)',
+                      background: isActive ? 'var(--tint-primary-soft)' : 'var(--alpha-white-4)',
+                      border: isActive ? '1px solid var(--color-border-primary)' : '1px solid var(--color-border)',
                       color: isActive ? 'var(--color-primary-light)' : 'var(--color-text-secondary)',
                     }}
                   >
@@ -746,7 +746,7 @@ export default function SkillStudioPage() {
                 onChange={(event) => setPreviewTarget(event.target.value)}
                 className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium outline-none"
                 style={{
-                  background: 'rgba(255,255,255,0.04)',
+                  background: 'var(--alpha-white-4)',
                   border: '1px solid var(--color-border)',
                   color: 'var(--color-text-secondary)',
                 }}
@@ -763,8 +763,8 @@ export default function SkillStudioPage() {
                 onClick={() => setShowPreview((prev) => !prev)}
                 className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all duration-200"
                 style={{
-                  background: showPreview ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)',
-                  border: showPreview ? '1px solid rgba(99,102,241,0.3)' : '1px solid var(--color-border)',
+                  background: showPreview ? 'var(--tint-primary-soft)' : 'var(--alpha-white-4)',
+                  border: showPreview ? '1px solid var(--color-border-primary)' : '1px solid var(--color-border)',
                   color: showPreview ? 'var(--color-primary-light)' : 'var(--color-text-secondary)',
                 }}
               >
@@ -780,7 +780,7 @@ export default function SkillStudioPage() {
                 onClick={runValidate}
                 className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all duration-200"
                 style={{
-                  background: 'rgba(255,255,255,0.04)',
+                  background: 'var(--alpha-white-4)',
                   border: '1px solid var(--color-border)',
                   color: 'var(--color-text-secondary)',
                 }}
@@ -825,7 +825,7 @@ export default function SkillStudioPage() {
                     <div
                       className="flex items-center justify-between px-4 py-1.5"
                       style={{
-                        background: 'rgba(11,17,32,0.95)',
+                        background: 'var(--surface-code)',
                         borderTop: '1px solid var(--color-border)',
                       }}
                     >
@@ -844,7 +844,7 @@ export default function SkillStudioPage() {
                         <span
                           className="rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider"
                           style={{
-                            background: 'rgba(255,255,255,0.04)',
+                            background: 'var(--alpha-white-4)',
                             border: '1px solid var(--color-border)',
                             color: 'var(--color-text-muted)',
                           }}
@@ -977,7 +977,7 @@ function SkillSidebar({
     <aside
       className="flex h-full w-[300px] flex-shrink-0 flex-col"
       style={{
-        background: 'linear-gradient(180deg, rgba(11,17,32,0.98), rgba(2,6,23,0.98))',
+        background: 'linear-gradient(180deg, var(--surface-code), var(--surface-code))',
         borderRight: '1px solid var(--color-border)',
       }}
     >
@@ -988,7 +988,7 @@ function SkillSidebar({
           className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-all duration-150 hover:brightness-125"
           style={{
             background: 'rgba(37,99,235,0.10)',
-            border: '1px solid rgba(59,130,246,0.22)',
+            border: '1px solid var(--tint-info-soft)',
             color: 'var(--color-text-primary)',
           }}
         >
@@ -1018,7 +1018,7 @@ function SkillSidebar({
             onChange={(event) => setSearchQuery(event.target.value)}
             className="w-full rounded-xl py-2.5 pl-9 pr-3 text-xs outline-none transition duration-200"
             style={{
-              background: 'rgba(255,255,255,0.04)',
+              background: 'var(--alpha-white-4)',
               border: '1px solid var(--color-border)',
               color: 'var(--color-text-primary)',
             }}
@@ -1028,7 +1028,7 @@ function SkillSidebar({
 
       <nav className="flex-1 overflow-y-auto px-2 pb-4">
         {isCreatingNew && (
-          <div className="mb-3 rounded-xl border p-2" style={{ borderColor: 'rgba(59,130,246,0.18)' }}>
+          <div className="mb-3 rounded-xl border p-2" style={{ borderColor: 'var(--tint-info-soft)' }}>
             <div className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-muted)' }}>
               Taslak
             </div>
@@ -1037,17 +1037,17 @@ function SkillSidebar({
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left"
               style={{
                 background: selectedSlug === '__new__'
-                  ? 'linear-gradient(135deg, rgba(59,130,246,0.18), rgba(29,78,216,0.10))'
-                  : 'rgba(255,255,255,0.02)',
-                border: '1px solid rgba(59,130,246,0.18)',
+                  ? 'linear-gradient(135deg, var(--tint-info-soft), rgba(29,78,216,0.10))'
+                  : 'var(--alpha-white-3)',
+                border: '1px solid var(--tint-info-soft)',
               }}
             >
               <span
                 className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
                 style={{
-                  color: '#60a5fa',
-                  background: 'rgba(59,130,246,0.10)',
-                  border: '1px solid rgba(59,130,246,0.22)',
+                  color: 'var(--color-icon-info)',
+                  background: 'var(--tint-info-soft)',
+                  border: '1px solid var(--tint-info-soft)',
                 }}
               >
                 NEW
@@ -1082,11 +1082,11 @@ function SkillSidebar({
                     className="w-full rounded-xl px-3 py-3 text-left transition-all duration-150 hover:brightness-125"
                     style={{
                       background: isActive
-                        ? 'linear-gradient(135deg, rgba(99,102,241,0.18), rgba(79,70,229,0.12))'
-                        : 'rgba(255,255,255,0.02)',
+                        ? 'linear-gradient(135deg, var(--tint-primary-soft), var(--tint-primary-soft))'
+                        : 'var(--alpha-white-3)',
                       border: isActive
-                        ? '1px solid rgba(99,102,241,0.28)'
-                        : '1px solid rgba(148,163,184,0.08)',
+                        ? '1px solid var(--color-border-primary)'
+                        : '1px solid var(--color-divider)',
                     }}
                   >
                     <div className="flex items-center gap-2">
@@ -1142,12 +1142,12 @@ function SkillSidebar({
           className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[13px] font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
           style={{
             background: hasDirty
-              ? 'linear-gradient(135deg, rgba(99,102,241,0.5), rgba(79,70,229,0.45))'
-              : 'rgba(255,255,255,0.04)',
+              ? 'linear-gradient(135deg, var(--color-border-primary), var(--color-border-primary))'
+              : 'var(--alpha-white-4)',
             border: hasDirty
-              ? '1px solid rgba(99,102,241,0.5)'
+              ? '1px solid var(--color-border-primary)'
               : '1px solid var(--color-border)',
-            color: hasDirty ? '#e2e8f0' : 'var(--color-text-muted)',
+            color: hasDirty ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
           }}
         >
           {savePending ? (
@@ -1167,7 +1167,7 @@ function SkillSidebar({
             className="flex w-full items-center justify-center gap-2 rounded-xl py-2 text-[12px] transition-all duration-200"
             style={{
               color: 'var(--color-text-muted)',
-              background: 'rgba(255,255,255,0.03)',
+              background: 'var(--alpha-white-3)',
               border: '1px solid var(--color-border)',
             }}
           >
@@ -1219,9 +1219,9 @@ function SkillLayersEditor({
               onClick={() => addLayer('inline')}
               className="rounded-xl px-3 py-2 text-[12px] font-medium transition-all duration-200"
               style={{
-                background: 'rgba(16,185,129,0.10)',
-                border: '1px solid rgba(16,185,129,0.22)',
-                color: '#6ee7b7',
+                background: 'var(--tint-success-soft)',
+                border: '1px solid var(--color-border-success)',
+                color: 'var(--color-text-success-soft)',
               }}
             >
               Inline Layer
@@ -1231,9 +1231,9 @@ function SkillLayersEditor({
               onClick={() => addLayer('prompt_reference')}
               className="rounded-xl px-3 py-2 text-[12px] font-medium transition-all duration-200"
               style={{
-                background: 'rgba(99,102,241,0.10)',
-                border: '1px solid rgba(99,102,241,0.22)',
-                color: '#a5b4fc',
+                background: 'var(--tint-primary-soft)',
+                border: '1px solid var(--color-border-primary)',
+                color: 'var(--color-primary-light)',
               }}
             >
               Prompt Reference
@@ -1245,8 +1245,8 @@ function SkillLayersEditor({
           <div
             className="rounded-2xl border px-5 py-10 text-center"
             style={{
-              background: 'rgba(255,255,255,0.02)',
-              borderColor: 'rgba(148,163,184,0.14)',
+              background: 'var(--alpha-white-3)',
+              borderColor: 'var(--color-divider)',
             }}
           >
             <div className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
@@ -1266,8 +1266,8 @@ function SkillLayersEditor({
                   key={`${layer.type}-${index}`}
                   className="rounded-2xl border p-4"
                   style={{
-                    background: 'rgba(255,255,255,0.03)',
-                    borderColor: 'rgba(148,163,184,0.16)',
+                    background: 'var(--alpha-white-3)',
+                    borderColor: 'var(--color-border-subtle)',
                   }}
                 >
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -1275,8 +1275,8 @@ function SkillLayersEditor({
                       <span
                         className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold"
                         style={{
-                          background: 'rgba(99,102,241,0.12)',
-                          border: '1px solid rgba(99,102,241,0.22)',
+                          background: 'var(--tint-primary-soft)',
+                          border: '1px solid var(--color-border-primary)',
                           color: 'var(--color-primary-light)',
                         }}
                       >
@@ -1299,7 +1299,7 @@ function SkillLayersEditor({
                         disabled={index === 0}
                         className="rounded-lg px-2 py-1 text-[11px] disabled:opacity-40"
                         style={{
-                          background: 'rgba(255,255,255,0.04)',
+                          background: 'var(--alpha-white-4)',
                           border: '1px solid var(--color-border)',
                           color: 'var(--color-text-secondary)',
                         }}
@@ -1312,7 +1312,7 @@ function SkillLayersEditor({
                         disabled={index === draft.prompt_layers.length - 1}
                         className="rounded-lg px-2 py-1 text-[11px] disabled:opacity-40"
                         style={{
-                          background: 'rgba(255,255,255,0.04)',
+                          background: 'var(--alpha-white-4)',
                           border: '1px solid var(--color-border)',
                           color: 'var(--color-text-secondary)',
                         }}
@@ -1324,9 +1324,9 @@ function SkillLayersEditor({
                         onClick={() => removeLayer(index)}
                         className="rounded-lg px-2 py-1 text-[11px]"
                         style={{
-                          background: 'rgba(239,68,68,0.08)',
-                          border: '1px solid rgba(239,68,68,0.18)',
-                          color: '#fca5a5',
+                          background: 'var(--tint-danger-bg)',
+                          border: '1px solid var(--tint-danger-soft)',
+                          color: 'var(--color-text-danger-soft)',
                         }}
                       >
                         Sil
@@ -1347,8 +1347,8 @@ function SkillLayersEditor({
                             : { type: 'inline', prompt_key: '', content: layer.content })}
                         className="w-full rounded-xl px-3 py-2 text-sm outline-none"
                         style={{
-                          background: 'rgba(255,255,255,0.04)',
-                          border: '1px solid rgba(148,163,184,0.2)',
+                          background: 'var(--alpha-white-4)',
+                          border: '1px solid var(--color-border-subtle)',
                           color: 'var(--color-text-primary)',
                         }}
                       >
@@ -1367,7 +1367,7 @@ function SkillLayersEditor({
                         className="w-full rounded-xl bg-transparent px-3 py-2 text-sm outline-none"
                         placeholder="Editor'de gorunecek isim"
                         style={{
-                          border: '1px solid rgba(148,163,184,0.2)',
+                          border: '1px solid var(--color-border-subtle)',
                           color: 'var(--color-text-primary)',
                         }}
                       />
@@ -1385,8 +1385,8 @@ function SkillLayersEditor({
                           onChange={(event) => updateLayer(index, { prompt_key: event.target.value })}
                           className="w-full rounded-xl px-3 py-2 text-sm outline-none"
                           style={{
-                            background: 'rgba(255,255,255,0.04)',
-                            border: '1px solid rgba(148,163,184,0.2)',
+                            background: 'var(--alpha-white-4)',
+                            border: '1px solid var(--color-border-subtle)',
                             color: 'var(--color-text-primary)',
                           }}
                         >
@@ -1404,8 +1404,8 @@ function SkillLayersEditor({
                       <div
                         className="rounded-xl border p-3 text-[11px] leading-5"
                         style={{
-                          background: 'rgba(99,102,241,0.05)',
-                          borderColor: 'rgba(99,102,241,0.14)',
+                          background: 'var(--tint-primary-bg)',
+                          borderColor: 'var(--tint-primary-soft)',
                           color: 'var(--color-text-secondary)',
                         }}
                       >
@@ -1437,7 +1437,7 @@ function SkillLayersEditor({
                         className="w-full rounded-2xl bg-transparent px-3 py-3 font-mono text-xs outline-none"
                         placeholder="Bu layer'in modele enjekte edecegi ek talimati yazin."
                         style={{
-                          border: '1px solid rgba(148,163,184,0.2)',
+                          border: '1px solid var(--color-border-subtle)',
                           color: 'var(--color-text-primary)',
                         }}
                       />
@@ -1480,8 +1480,8 @@ function SkillMetadataEditor({
         <section
           className="rounded-2xl border p-5"
           style={{
-            background: 'rgba(255,255,255,0.03)',
-            borderColor: 'rgba(148,163,184,0.16)',
+            background: 'var(--alpha-white-3)',
+            borderColor: 'var(--color-border-subtle)',
           }}
         >
           <div className="mb-4">
@@ -1504,7 +1504,7 @@ function SkillMetadataEditor({
                 onChange={(event) => setDraft((prev) => ({ ...prev, slug: event.target.value }))}
                 className="w-full rounded-xl bg-transparent px-3 py-2 text-sm outline-none disabled:opacity-60"
                 style={{
-                  border: '1px solid rgba(148,163,184,0.2)',
+                  border: '1px solid var(--color-border-subtle)',
                   color: 'var(--color-text-primary)',
                 }}
               />
@@ -1519,7 +1519,7 @@ function SkillMetadataEditor({
                 onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))}
                 className="w-full rounded-xl bg-transparent px-3 py-2 text-sm outline-none"
                 style={{
-                  border: '1px solid rgba(148,163,184,0.2)',
+                  border: '1px solid var(--color-border-subtle)',
                   color: 'var(--color-text-primary)',
                 }}
               />
@@ -1534,8 +1534,8 @@ function SkillMetadataEditor({
                 onChange={(event) => setDraft((prev) => ({ ...prev, status: event.target.value }))}
                 className="w-full rounded-xl px-3 py-2 text-sm outline-none"
                 style={{
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(148,163,184,0.2)',
+                  background: 'var(--alpha-white-4)',
+                  border: '1px solid var(--color-border-subtle)',
                   color: 'var(--color-text-primary)',
                 }}
               >
@@ -1561,7 +1561,7 @@ function SkillMetadataEditor({
                   }))}
                 className="w-full rounded-xl bg-transparent px-3 py-2 text-sm outline-none"
                 style={{
-                  border: '1px solid rgba(148,163,184,0.2)',
+                  border: '1px solid var(--color-border-subtle)',
                   color: 'var(--color-text-primary)',
                 }}
               />
@@ -1578,7 +1578,7 @@ function SkillMetadataEditor({
               rows={3}
               className="w-full rounded-2xl bg-transparent px-3 py-3 text-sm outline-none"
               style={{
-                border: '1px solid rgba(148,163,184,0.2)',
+                border: '1px solid var(--color-border-subtle)',
                 color: 'var(--color-text-primary)',
               }}
             />
@@ -1594,7 +1594,7 @@ function SkillMetadataEditor({
               rows={4}
               className="w-full rounded-2xl bg-transparent px-3 py-3 text-sm outline-none"
               style={{
-                border: '1px solid rgba(148,163,184,0.2)',
+                border: '1px solid var(--color-border-subtle)',
                 color: 'var(--color-text-primary)',
               }}
             />
@@ -1614,10 +1614,10 @@ function SkillMetadataEditor({
                     onClick={() => toggleAppliesTo(option.value)}
                     className="rounded-full px-3 py-1.5 text-[12px] font-medium transition-all duration-150"
                     style={{
-                      background: checked ? 'rgba(14,165,233,0.12)' : 'rgba(255,255,255,0.03)',
+                      background: checked ? 'rgba(14,165,233,0.12)' : 'var(--alpha-white-3)',
                       border: checked
                         ? '1px solid rgba(56,189,248,0.3)'
-                        : '1px solid rgba(148,163,184,0.18)',
+                        : '1px solid var(--color-border-subtle)',
                       color: checked ? '#67e8f9' : 'var(--color-text-secondary)',
                     }}
                   >
@@ -1638,7 +1638,7 @@ function SkillMetadataEditor({
               placeholder="seo, launch, audit"
               className="w-full rounded-xl bg-transparent px-3 py-2 text-sm outline-none"
               style={{
-                border: '1px solid rgba(148,163,184,0.2)',
+                border: '1px solid var(--color-border-subtle)',
                 color: 'var(--color-text-primary)',
               }}
             />
@@ -1649,8 +1649,8 @@ function SkillMetadataEditor({
                     key={tag}
                     className="rounded-full px-2.5 py-1 text-[11px]"
                     style={{
-                      background: 'rgba(255,255,255,0.04)',
-                      border: '1px solid rgba(148,163,184,0.18)',
+                      background: 'var(--alpha-white-4)',
+                      border: '1px solid var(--color-border-subtle)',
                       color: 'var(--color-text-secondary)',
                     }}
                   >
@@ -1665,8 +1665,8 @@ function SkillMetadataEditor({
         <section
           className="rounded-2xl border p-5"
           style={{
-            background: 'rgba(255,255,255,0.03)',
-            borderColor: 'rgba(148,163,184,0.16)',
+            background: 'var(--alpha-white-3)',
+            borderColor: 'var(--color-border-subtle)',
           }}
         >
           <div className="mb-4">
@@ -1688,11 +1688,11 @@ function SkillMetadataEditor({
                   onClick={() => toggleTool(toolName)}
                   className="rounded-xl px-3 py-2 text-left text-[11px] font-medium transition-all duration-150"
                   style={{
-                    background: checked ? 'rgba(99,102,241,0.16)' : 'rgba(255,255,255,0.03)',
+                    background: checked ? 'var(--tint-primary-soft)' : 'var(--alpha-white-3)',
                     border: checked
-                      ? '1px solid rgba(99,102,241,0.28)'
-                      : '1px solid rgba(148,163,184,0.16)',
-                    color: checked ? '#c7d2fe' : 'var(--color-text-secondary)',
+                      ? '1px solid var(--color-border-primary)'
+                      : '1px solid var(--color-border-subtle)',
+                    color: checked ? 'var(--color-text-brand-soft)' : 'var(--color-text-secondary)',
                   }}
                 >
                   {toolName}
@@ -1702,7 +1702,7 @@ function SkillMetadataEditor({
           </div>
 
           {draft.allowed_tools.length > 0 && (
-            <div className="mt-4 rounded-xl border p-3" style={{ borderColor: 'rgba(99,102,241,0.18)', background: 'rgba(99,102,241,0.06)' }}>
+            <div className="mt-4 rounded-xl border p-3" style={{ borderColor: 'var(--tint-primary-soft)', background: 'var(--tint-primary-bg)' }}>
               <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-muted)' }}>
                 Secili Toollar
               </div>
@@ -1712,9 +1712,9 @@ function SkillMetadataEditor({
                     key={toolName}
                     className="rounded-full px-2 py-1 text-[10px] font-mono"
                     style={{
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(99,102,241,0.22)',
-                      color: '#c7d2fe',
+                      background: 'var(--alpha-white-6)',
+                      border: '1px solid var(--color-border-primary)',
+                      color: 'var(--color-text-brand-soft)',
                     }}
                   >
                     {toolName}
@@ -1748,7 +1748,7 @@ function SkillPreviewPanel({
       <div
         className="flex items-center justify-between gap-2 px-4 py-2"
         style={{
-          background: 'rgba(11,17,32,0.95)',
+          background: 'var(--surface-code)',
           borderBottom: '1px solid var(--color-border)',
         }}
       >
@@ -1766,9 +1766,9 @@ function SkillPreviewPanel({
           onClick={runPreview}
           className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium"
           style={{
-            background: 'rgba(99,102,241,0.15)',
-            border: '1px solid rgba(99,102,241,0.28)',
-            color: '#c7d2fe',
+            background: 'var(--tint-primary-soft)',
+            border: '1px solid var(--color-border-primary)',
+            color: 'var(--color-text-brand-soft)',
           }}
         >
           Yenile
@@ -1780,9 +1780,9 @@ function SkillPreviewPanel({
           <div
             className="rounded-2xl border p-4 text-sm"
             style={{
-              background: 'rgba(239,68,68,0.08)',
-              borderColor: 'rgba(239,68,68,0.18)',
-              color: '#fca5a5',
+              background: 'var(--tint-danger-bg)',
+              borderColor: 'var(--tint-danger-soft)',
+              color: 'var(--color-text-danger-soft)',
             }}
           >
             {normalizedDraftError}
@@ -1802,7 +1802,7 @@ function SkillPreviewPanel({
               className="rounded-2xl border p-4"
               style={{
                 background: 'rgba(11,17,32,0.68)',
-                borderColor: 'rgba(148,163,184,0.14)',
+                borderColor: 'var(--color-divider)',
               }}
             >
               <div className="mb-3 grid grid-cols-2 gap-2">
@@ -1834,7 +1834,7 @@ function SkillPreviewPanel({
               className="whitespace-pre-wrap break-words rounded-2xl p-4"
               style={{
                 background: 'rgba(11,17,32,0.68)',
-                border: '1px solid rgba(148,163,184,0.14)',
+                border: '1px solid var(--color-divider)',
                 color: 'var(--color-text-secondary)',
                 fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
                 fontSize: '12px',
@@ -1848,8 +1848,8 @@ function SkillPreviewPanel({
           <div
             className="rounded-2xl border p-4 text-sm"
             style={{
-              background: 'rgba(255,255,255,0.03)',
-              borderColor: 'rgba(148,163,184,0.14)',
+              background: 'var(--alpha-white-3)',
+              borderColor: 'var(--color-divider)',
               color: 'var(--color-text-muted)',
             }}
           >
@@ -1876,8 +1876,8 @@ function DebugListCard({
     <div
       className="rounded-xl border px-3 py-3"
       style={{
-        background: tone === 'success' ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.03)',
-        borderColor: tone === 'success' ? 'rgba(16,185,129,0.16)' : 'rgba(148,163,184,0.14)',
+        background: tone === 'success' ? 'var(--tint-success-bg)' : 'var(--alpha-white-3)',
+        borderColor: tone === 'success' ? 'var(--tint-success-soft)' : 'var(--color-divider)',
       }}
     >
       <div className="text-[10px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-muted)' }}>
@@ -1890,8 +1890,8 @@ function DebugListCard({
               key={item}
               className="rounded-full px-2 py-1 text-[10px] font-medium"
               style={{
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(148,163,184,0.18)',
+                background: 'var(--alpha-white-6)',
+                border: '1px solid var(--color-border-subtle)',
                 color: 'var(--color-text-secondary)',
               }}
             >
@@ -1947,7 +1947,7 @@ function SkillInspectorPanel({
     <aside
       className="flex h-full w-[320px] flex-shrink-0 flex-col overflow-y-auto"
       style={{
-        background: 'linear-gradient(180deg, rgba(11,17,32,0.98), rgba(2,6,23,0.98))',
+        background: 'linear-gradient(180deg, var(--surface-code), var(--surface-code))',
         borderLeft: '1px solid var(--color-border)',
       }}
     >
@@ -1963,8 +1963,8 @@ function SkillInspectorPanel({
             <div
               className="mt-3 rounded-xl border p-3 text-[11px] leading-5"
               style={{
-                background: 'rgba(255,255,255,0.03)',
-                borderColor: 'rgba(148,163,184,0.16)',
+                background: 'var(--alpha-white-3)',
+                borderColor: 'var(--color-border-subtle)',
                 color: 'var(--color-text-secondary)',
               }}
             >
@@ -1992,28 +1992,28 @@ function SkillInspectorPanel({
           <div
             className="rounded-2xl border p-3"
             style={{
-              background: 'rgba(255,255,255,0.03)',
+              background: 'var(--alpha-white-3)',
               borderColor: normalizedDraftError
-                ? 'rgba(239,68,68,0.16)'
+                ? 'var(--tint-danger-soft)'
                 : activeValidation?.ok
                 ? 'rgba(52,211,153,0.16)'
                 : activeValidation
-                  ? 'rgba(239,68,68,0.16)'
-                  : 'rgba(148,163,184,0.16)',
+                  ? 'var(--tint-danger-soft)'
+                  : 'var(--color-border-subtle)',
             }}
           >
             {normalizedDraftError ? (
-              <div className="text-[12px]" style={{ color: '#fca5a5' }}>
+              <div className="text-[12px]" style={{ color: 'var(--color-text-danger-soft)' }}>
                 {normalizedDraftError}
               </div>
             ) : activeValidation ? (
               <div className="space-y-3">
-                <div style={{ color: activeValidation.ok ? 'var(--color-success)' : '#fca5a5' }}>
+                <div style={{ color: activeValidation.ok ? 'var(--color-success)' : 'var(--color-text-danger-soft)' }}>
                   {activeValidation.ok ? 'Skill gecerli gorunuyor.' : 'Validation hata verdi.'}
                 </div>
                 {activeValidation.errors.length > 0 && (
                   <div>
-                    <div className="text-[11px] font-semibold" style={{ color: '#fca5a5' }}>
+                    <div className="text-[11px] font-semibold" style={{ color: 'var(--color-text-danger-soft)' }}>
                       Errors
                     </div>
                     <ul className="mt-1 list-disc space-y-1 pl-5 text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
@@ -2025,7 +2025,7 @@ function SkillInspectorPanel({
                 )}
                 {activeValidation.warnings.length > 0 && (
                   <div>
-                    <div className="text-[11px] font-semibold" style={{ color: '#fbbf24' }}>
+                    <div className="text-[11px] font-semibold" style={{ color: 'var(--color-icon-warning)' }}>
                       Warnings
                     </div>
                     <ul className="mt-1 list-disc space-y-1 pl-5 text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
@@ -2055,8 +2055,8 @@ function SkillInspectorPanel({
                   key={`${layer.type}-${layer.source}-${layer.label}`}
                   className="rounded-xl border px-3 py-2"
                   style={{
-                    background: 'rgba(255,255,255,0.03)',
-                    borderColor: 'rgba(148,163,184,0.16)',
+                    background: 'var(--alpha-white-3)',
+                    borderColor: 'var(--color-border-subtle)',
                   }}
                 >
                   <div className="text-[11px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
@@ -2072,8 +2072,8 @@ function SkillInspectorPanel({
             <div
               className="rounded-xl border px-3 py-2.5 text-[11px]"
               style={{
-                background: 'rgba(255,255,255,0.03)',
-                borderColor: 'rgba(148,163,184,0.16)',
+                background: 'var(--alpha-white-3)',
+                borderColor: 'var(--color-border-subtle)',
                 color: 'var(--color-text-muted)',
               }}
             >
@@ -2116,9 +2116,9 @@ function SkillInspectorPanel({
           disabled={!canOpenInChat}
           className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[11px] transition-all duration-200 disabled:opacity-40"
           style={{
-            background: 'rgba(16,185,129,0.10)',
-            border: '1px solid rgba(16,185,129,0.20)',
-            color: '#a7f3d0',
+            background: 'var(--tint-success-soft)',
+            border: '1px solid var(--color-border-success)',
+            color: 'var(--color-text-success-soft)',
           }}
         >
           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2133,9 +2133,9 @@ function SkillInspectorPanel({
           disabled={previewPending}
           className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[11px] transition-all duration-200 disabled:opacity-40"
           style={{
-            background: 'rgba(99,102,241,0.10)',
-            border: '1px solid rgba(99,102,241,0.18)',
-            color: '#c7d2fe',
+            background: 'var(--tint-primary-soft)',
+            border: '1px solid var(--tint-primary-soft)',
+            color: 'var(--color-text-brand-soft)',
           }}
         >
           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2151,7 +2151,7 @@ function SkillInspectorPanel({
           disabled={validatePending}
           className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[11px] transition-all duration-200 disabled:opacity-40"
           style={{
-            background: 'rgba(255,255,255,0.04)',
+            background: 'var(--alpha-white-4)',
             border: '1px solid var(--color-border)',
             color: 'var(--color-text-secondary)',
           }}
@@ -2166,8 +2166,8 @@ function SkillInspectorPanel({
           <div
             className="rounded-lg border px-3 py-2 text-[10px] leading-5"
             style={{
-              background: 'rgba(255,255,255,0.03)',
-              borderColor: 'rgba(148,163,184,0.16)',
+              background: 'var(--alpha-white-3)',
+              borderColor: 'var(--color-border-subtle)',
               color: 'var(--color-text-muted)',
             }}
           >
@@ -2182,9 +2182,9 @@ function SkillInspectorPanel({
             disabled={resetPending}
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[11px] transition-all duration-200 disabled:opacity-40"
             style={{
-              background: 'rgba(245,158,11,0.08)',
-              border: '1px solid rgba(245,158,11,0.18)',
-              color: '#fcd34d',
+              background: 'var(--tint-warning-bg)',
+              border: '1px solid var(--tint-warning-soft)',
+              color: 'var(--color-text-warning-soft)',
             }}
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2201,9 +2201,9 @@ function SkillInspectorPanel({
             disabled={deletePending}
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[11px] transition-all duration-200 disabled:opacity-40"
             style={{
-              background: 'rgba(239,68,68,0.08)',
-              border: '1px solid rgba(239,68,68,0.18)',
-              color: '#fca5a5',
+              background: 'var(--tint-danger-bg)',
+              border: '1px solid var(--tint-danger-soft)',
+              color: 'var(--color-text-danger-soft)',
             }}
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

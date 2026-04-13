@@ -40,7 +40,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               border: '1px solid var(--color-border)',
             }}
           >
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full" style={{ background: 'rgba(239, 68, 68, 0.1)' }}>
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full" style={{ background: 'var(--tint-danger-soft)' }}>
               <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="var(--score-poor)" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
               </svg>

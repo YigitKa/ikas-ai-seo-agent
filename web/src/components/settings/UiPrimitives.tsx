@@ -72,7 +72,7 @@ export function PromptCard({ template, value, onChange, onReset, disabled }: { t
     <article className="enterprise-surface rounded-2xl p-5">
       <div
         className="flex flex-col gap-3 pb-4 md:flex-row md:items-start md:justify-between"
-        style={{ borderBottom: '1px solid rgba(148,163,184,0.14)' }}
+        style={{ borderBottom: '1px solid var(--color-divider)' }}
       >
         <div>
           <h3 className="text-[15px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{template.title}</h3>
@@ -83,8 +83,8 @@ export function PromptCard({ template, value, onChange, onReset, disabled }: { t
           disabled={disabled}
           className="inline-flex shrink-0 items-center justify-center rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           style={{
-            background: 'linear-gradient(135deg, rgba(15,23,42,0.78), rgba(30,41,59,0.62))',
-            border: '1px solid rgba(148,163,184,0.24)',
+            background: 'linear-gradient(135deg, var(--surface-panel), var(--surface-raised))',
+            border: '1px solid var(--color-border-strong)',
             color: 'var(--color-text-secondary)',
           }}
         >
@@ -95,7 +95,7 @@ export function PromptCard({ template, value, onChange, onReset, disabled }: { t
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <span
           className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
-          style={{ background: 'rgba(15,23,42,0.76)', border: '1px solid rgba(148,163,184,0.2)', color: 'var(--color-text-muted)' }}
+          style={{ background: 'var(--surface-raised)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}
         >
           {template.key}
         </span>
@@ -103,7 +103,7 @@ export function PromptCard({ template, value, onChange, onReset, disabled }: { t
           <span
             key={variable}
             className="rounded-full px-3 py-1 text-[11px]"
-            style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)', color: '#a5b4fc' }}
+            style={{ background: 'var(--tint-primary-soft)', border: '1px solid var(--color-border-primary)', color: 'var(--color-primary-light)' }}
           >
             {'{{'}{variable}{'}}'}
           </span>
@@ -111,7 +111,7 @@ export function PromptCard({ template, value, onChange, onReset, disabled }: { t
         {template.variables.length === 0 && (
           <span
             className="rounded-full px-3 py-1 text-[11px]"
-            style={{ background: 'rgba(15,23,42,0.76)', border: '1px solid rgba(148,163,184,0.14)', color: 'var(--color-text-muted)' }}
+            style={{ background: 'var(--surface-raised)', border: '1px solid var(--color-divider)', color: 'var(--color-text-muted)' }}
           >
             Degisken yok
           </span>
@@ -122,7 +122,7 @@ export function PromptCard({ template, value, onChange, onReset, disabled }: { t
         value={value}
         onChange={(event) => onChange(event.target.value)}
         style={{ minHeight: `${Math.max(template.height, 180)}px` }}
-        className="enterprise-field mt-4 h-auto rounded-xl px-4 py-3 font-mono text-xs leading-6 outline-none transition focus:border-[rgba(99,102,241,0.66)] focus:shadow-[0_0_0_3px_rgba(99,102,241,0.15)]"
+        className="enterprise-field mt-4 h-auto rounded-xl px-4 py-3 font-mono text-xs leading-6 outline-none transition focus:border-[var(--color-border-primary)] focus:shadow-[0_0_0_3px_var(--tint-primary-soft)]"
       />
     </article>
   );

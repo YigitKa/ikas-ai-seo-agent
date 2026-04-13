@@ -8,28 +8,28 @@ export interface ChatStatusItem {
 
 const palette = {
   neutral: {
-    surface: 'rgba(148, 163, 184, 0.08)',
-    border: '1px solid rgba(148, 163, 184, 0.14)',
+    surface: 'var(--color-divider)',
+    border: '1px solid var(--color-divider)',
     labelColor: 'var(--color-text-secondary)',
     valueColor: 'var(--color-text-primary)',
-    glow: 'rgba(148, 163, 184, 0.08)',
-    dot: '#94a3b8',
+    glow: 'var(--color-divider)',
+    dot: 'var(--color-text-secondary)',
   },
   success: {
-    surface: 'rgba(16, 185, 129, 0.12)',
-    border: '1px solid rgba(16, 185, 129, 0.18)',
+    surface: 'var(--tint-success-soft)',
+    border: '1px solid var(--tint-success-soft)',
     labelColor: 'rgba(167, 243, 208, 0.82)',
-    valueColor: '#d1fae5',
-    glow: 'rgba(16, 185, 129, 0.1)',
-    dot: '#34d399',
+    valueColor: 'var(--color-text-success-soft)',
+    glow: 'var(--tint-success-soft)',
+    dot: 'var(--color-icon-success)',
   },
   warn: {
-    surface: 'rgba(245, 158, 11, 0.12)',
-    border: '1px solid rgba(245, 158, 11, 0.18)',
+    surface: 'var(--tint-warning-soft)',
+    border: '1px solid var(--tint-warning-soft)',
     labelColor: 'rgba(253, 230, 138, 0.86)',
-    valueColor: '#fef3c7',
-    glow: 'rgba(245, 158, 11, 0.1)',
-    dot: '#fbbf24',
+    valueColor: 'var(--color-text-warning-soft)',
+    glow: 'var(--tint-warning-soft)',
+    dot: 'var(--color-icon-warning)',
   },
 } as const;
 
