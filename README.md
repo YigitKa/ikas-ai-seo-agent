@@ -648,8 +648,8 @@ Bir ortam değişkeni değiştirin — tüm agentic pipeline, chat sistemi ve st
 | Model | Kullanım | Maliyet (1M token) |
 |---|---|---|
 | `claude-haiku-4-5-20251001` | Varsayılan — hızlı ve ekonomik | $0.80 input / $4.0 output |
-| `claude-sonnet-4-20250514` | Dengeli performans | $3.0 input / $15.0 output |
-| `claude-opus-4-20250514` | Maksimum kalite | $15.0 input / $75.0 output |
+| `claude-sonnet-4-5-20250514` | Dengeli performans | $3.0 input / $15.0 output |
+| `claude-opus-4-5-20250514` | Maksimum kalite | $15.0 input / $75.0 output |
 
 ---
 
