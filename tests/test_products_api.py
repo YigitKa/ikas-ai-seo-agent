@@ -17,10 +17,20 @@ def _build_product(product_id: str, *, en_description: str = "") -> Product:
     )
 
 
-def _build_score(product_id: str, total_score: int = 80) -> SeoScore:
+def _build_score(
+    product_id: str,
+    total_score: int = 80,
+    *,
+    seo_score: int | None = None,
+    geo_score: int | None = None,
+    aeo_score: int | None = None,
+) -> SeoScore:
     return SeoScore(
         product_id=product_id,
         total_score=total_score,
+        seo_score=seo_score if seo_score is not None else 62,
+        geo_score=geo_score if geo_score is not None else 45,
+        aeo_score=aeo_score if aeo_score is not None else 68,
         title_score=10,
         description_score=15,
         english_description_score=2,
@@ -114,3 +124,31 @@ def test_list_products_supports_missing_english_filter():
     assert stub.missing_english_calls == 1
     assert response.json()["total_count"] == 1
     assert [item["product"]["id"] for item in response.json()["items"]] == ["p-missing"]
+
+
+def test_list_products_supports_pillar_threshold_and_sort():
+    stub = _StubManager()
+    stub._products = [
+        _build_product("p-seo-low"),
+        _build_product("p-seo-mid"),
+        _build_product("p-seo-high"),
+    ]
+    stub._scores = {
+        "p-seo-low": _build_score("p-seo-low", total_score=54, seo_score=32, geo_score=88, aeo_score=70),
+        "p-seo-mid": _build_score("p-seo-mid", total_score=61, seo_score=48, geo_score=76, aeo_score=68),
+        "p-seo-high": _build_score("p-seo-high", total_score=89, seo_score=84, geo_score=80, aeo_score=82),
+    }
+    app.dependency_overrides[get_manager] = lambda: stub
+    client = TestClient(app)
+
+    try:
+        response = client.get("/api/products?seo_score_threshold=60&sort_by=seo_score&sort_dir=asc")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["total_count"] == 2
+    assert [item["product"]["id"] for item in response.json()["items"]] == [
+        "p-seo-low",
+        "p-seo-mid",
+    ]

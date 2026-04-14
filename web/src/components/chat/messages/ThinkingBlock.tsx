@@ -62,25 +62,25 @@ export default function ThinkingBlock({
     <div
       className="rounded-lg px-3 py-2 text-xs"
       style={{
-        background: 'linear-gradient(145deg, rgba(34, 211, 238, 0.08), var(--surface-panel))',
-        border: '1px solid rgba(34, 211, 238, 0.22)',
+        background: 'linear-gradient(145deg, var(--tint-info-bg), var(--chat-soft-card-bg))',
+        border: '1px solid var(--color-border-info)',
       }}
     >
       <button
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-center gap-1.5 text-left"
-        style={{ color: '#67e8f9' }}
+        style={{ color: 'var(--color-text-info)' }}
       >
         <svg className="h-3 w-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
         </svg>
         <span className="font-medium">{title}</span>
-        <span className="ml-auto text-[10px]" style={{ color: 'rgba(103, 232, 249, 0.66)' }}>
+        <span className="ml-auto text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>
           {isExpanded ? 'Gizle' : 'Goster'}
         </span>
       </button>
       {isExpanded && (
-        <div className="mt-2 text-[12px] leading-relaxed" style={{ color: 'rgba(224, 242, 254, 0.88)' }}>
+        <div className="mt-2 text-[12px] leading-relaxed" style={{ color: 'var(--color-text-primary)' }}>
           {isLive && !hasMarkdownHints ? (
             <ThinkingStreamText text={text} />
           ) : (

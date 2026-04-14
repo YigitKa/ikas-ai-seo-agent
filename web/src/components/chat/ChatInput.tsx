@@ -101,12 +101,13 @@ export function ChatInput({
     : '{} ile hazir urun alanlarini mesaja ekleyebilirsin.';
 
   return (
-    <div className="px-4 py-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+    <div className="px-4 py-3" style={{ borderTop: '1px solid var(--chat-section-border)' }}>
       <div
         className="flex items-end gap-2 rounded-[20px] border px-2.5 py-2"
         style={{
-          borderColor: 'var(--color-border-subtle)',
-          background: 'var(--surface-raised)',
+          borderColor: 'var(--chat-soft-card-border)',
+          background: 'var(--chat-soft-card-bg)',
+          boxShadow: 'var(--chat-soft-card-shadow)',
         }}
       >
         <div className="relative flex-1">
@@ -114,16 +115,16 @@ export function ChatInput({
             <div
               className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-xl"
               style={{
-                background: 'var(--surface-code)',
+                background: 'var(--chat-input-menu-bg)',
                 border: '1px solid var(--color-border-primary)',
-                boxShadow: '0 14px 40px rgba(0, 0, 0, 0.34)',
+                boxShadow: 'var(--chat-input-menu-shadow)',
               }}
             >
               <div
                 className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em]"
                 style={{
                   color: 'var(--color-text-muted)',
-                  borderBottom: '1px solid var(--alpha-white-6)',
+                  borderBottom: '1px solid var(--chat-section-border)',
                 }}
               >
                 Parametreler
@@ -141,19 +142,19 @@ export function ChatInput({
                     style={{
                       background:
                         index === activeParamIndex
-                          ? 'var(--tint-primary-soft)'
-                          : 'var(--alpha-white-3)',
+                          ? 'var(--chat-bubble-user-bg)'
+                          : 'var(--chat-muted-card-bg)',
                       border:
                         index === activeParamIndex
-                          ? '1px solid var(--color-border-primary)'
-                          : '1px solid transparent',
+                          ? '1px solid var(--chat-bubble-user-border)'
+                          : '1px solid var(--chat-section-border)',
                     }}
                   >
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[11px]" style={{ color: 'var(--color-text-brand-soft)' }}>
                         {`{${option.key}}`}
                       </span>
-                      <span className="text-[11px] font-medium text-white">
+                      <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
                         {option.label}
                       </span>
                     </div>
@@ -225,15 +226,15 @@ export function ChatInput({
             }
             className="min-h-[42px] w-full resize-none rounded-2xl px-3 py-2 text-[13px] outline-none transition-all"
             style={{
-              background: 'var(--surface-panel)',
-              border: '1px solid var(--color-border-subtle)',
+              background: 'var(--chat-input-bg)',
+              border: '1px solid var(--chat-soft-card-border)',
               color: 'var(--color-text-primary)',
               opacity: isAutoIntroActive ? 0.7 : 1,
               cursor: isAutoIntroActive ? 'not-allowed' : 'text',
             }}
-            onFocus={(event) => (event.currentTarget.style.borderColor = 'rgba(99,102,241,0.7)')}
+            onFocus={(event) => (event.currentTarget.style.borderColor = 'var(--chat-bubble-user-border)')}
             onBlur={(event) => {
-              event.currentTarget.style.borderColor = 'var(--color-border-subtle)';
+              event.currentTarget.style.borderColor = 'var(--chat-soft-card-border)';
               setParamTrigger(null);
             }}
           />
@@ -246,7 +247,8 @@ export function ChatInput({
           style={{
             background: isLoading
               ? 'linear-gradient(135deg, var(--color-danger), var(--color-orange))'
-              : 'linear-gradient(135deg, var(--color-primary), var(--color-primary))',
+              : 'var(--gradient-primary)',
+            boxShadow: isLoading ? 'var(--shadow-danger-sm)' : 'var(--shadow-primary-sm)',
           }}
           title={isLoading ? 'Aktif istegi durdur' : 'Mesaji gonder'}
         >

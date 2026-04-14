@@ -9,6 +9,7 @@ interface DashboardSidebarProps {
   selectedId: string | null;
   isLoading: boolean;
   filter: FilterTab;
+  contextLabel?: string | null;
   page: number;
   totalPages: number;
   totalCount?: number;
@@ -24,6 +25,7 @@ export default function DashboardSidebar({
   selectedId,
   isLoading,
   filter,
+  contextLabel,
   page,
   totalPages,
   totalCount,
@@ -127,6 +129,19 @@ export default function DashboardSidebar({
             );
           })}
         </div>
+
+        {contextLabel && (
+          <div
+            className="mt-2 rounded-lg px-2.5 py-2 text-[11px] leading-relaxed"
+            style={{
+              background: 'var(--tint-info-soft)',
+              border: '1px solid var(--tint-info-soft)',
+              color: 'var(--color-text-info)',
+            }}
+          >
+            Komuta Merkezi filtresi aktif: {contextLabel}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-auto">

@@ -272,6 +272,17 @@ CREATE TABLE IF NOT EXISTS competitor_prices (
 
 CREATE INDEX IF NOT EXISTS idx_comp_prices_lookup
 ON competitor_prices(product_id, query, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS gsc_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    property_url TEXT NOT NULL,
+    data JSON NOT NULL,
+    days INTEGER NOT NULL,
+    synced_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_gsc_cache_lookup
+ON gsc_cache(property_url, days, synced_at DESC);
 """
 
 
@@ -2564,3 +2575,47 @@ async def get_cached_competitor_prices(
         return json.loads(row["result_json"])
     except (json.JSONDecodeError, KeyError):
         return None
+
+
+# ── Google Search Console Cache ──────────────────────────────────────────────
+
+
+async def get_gsc_cache(property_url: str, days: int) -> dict[str, Any] | None:
+    """Return the latest cached GSC data for the given property and day range, or None."""
+    async with connection() as conn:
+        async with conn.execute(
+            "SELECT data, synced_at FROM gsc_cache "
+            "WHERE property_url = ? AND days = ? "
+            "ORDER BY synced_at DESC LIMIT 1",
+            (property_url, days),
+        ) as cursor:
+            row = await cursor.fetchone()
+    if row is None:
+        return None
+    try:
+        data = json.loads(row["data"])
+        data["synced_at"] = row["synced_at"]
+        return data
+    except (json.JSONDecodeError, KeyError):
+        return None
+
+
+async def save_gsc_cache(property_url: str, days: int, data: dict[str, Any]) -> None:
+    """Save GSC analytics data to the cache table."""
+    synced_at = data.get("synced_at") or _now_iso()
+    async with connection() as conn:
+        await conn.execute(
+            "INSERT INTO gsc_cache (property_url, data, days, synced_at) VALUES (?, ?, ?, ?)",
+            (property_url, json.dumps(data, ensure_ascii=False), days, synced_at),
+        )
+        await conn.commit()
+
+
+async def clear_gsc_cache(property_url: str | None = None) -> None:
+    """Delete all GSC cache rows. If property_url given, only delete that property's rows."""
+    async with connection() as conn:
+        if property_url:
+            await conn.execute("DELETE FROM gsc_cache WHERE property_url = ?", (property_url,))
+        else:
+            await conn.execute("DELETE FROM gsc_cache")
+        await conn.commit()

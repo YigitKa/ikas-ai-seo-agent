@@ -10,19 +10,54 @@ import {
 import ChatPanel from '../components/ChatPanel';
 import DashboardEmptyState from '../components/dashboard/DashboardEmptyState';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar';
+import GscPanel from '../components/dashboard/GscPanel';
 import type { FilterTab } from '../components/dashboard/constants';
 import { buildIkasProductUrl } from '../components/dashboard/productUrl';
+import {
+  WORKSPACE_PRESET_PARAM_KEYS,
+  parseWorkspacePreset,
+  type ProductSortDirection,
+  type ProductSortField,
+} from '../shared/navigation/commandCenter';
 import AppHeader from '../shared/ui/AppHeader';
 import { useToast } from '../shared/ui/Toast';
 import { EnterpriseButton, EnterpriseSurface } from '../shared/ui/EnterprisePrimitives';
+
+interface WorkspaceListState {
+  sortBy: ProductSortField;
+  sortDir: ProductSortDirection;
+  scoreThreshold: number;
+  seoScoreThreshold: number;
+  geoScoreThreshold: number;
+  aeoScoreThreshold: number;
+}
+
+const DEFAULT_WORKSPACE_LIST_STATE: WorkspaceListState = {
+  sortBy: 'name',
+  sortDir: 'asc',
+  scoreThreshold: 100,
+  seoScoreThreshold: 100,
+  geoScoreThreshold: 100,
+  aeoScoreThreshold: 100,
+};
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
+  const initialPreset = parseWorkspacePreset(searchParams);
   const [page, setPage] = useState(1);
-  const [filter, setFilter] = useState<FilterTab>('all');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterTab>(initialPreset.filter);
+  const [selectedId, setSelectedId] = useState<string | null>(initialPreset.productId);
+  const [listState, setListState] = useState<WorkspaceListState>({
+    sortBy: initialPreset.sortBy ?? DEFAULT_WORKSPACE_LIST_STATE.sortBy,
+    sortDir: initialPreset.sortDir,
+    scoreThreshold: initialPreset.scoreThreshold ?? DEFAULT_WORKSPACE_LIST_STATE.scoreThreshold,
+    seoScoreThreshold: initialPreset.seoScoreThreshold ?? DEFAULT_WORKSPACE_LIST_STATE.seoScoreThreshold,
+    geoScoreThreshold: initialPreset.geoScoreThreshold ?? DEFAULT_WORKSPACE_LIST_STATE.geoScoreThreshold,
+    aeoScoreThreshold: initialPreset.aeoScoreThreshold ?? DEFAULT_WORKSPACE_LIST_STATE.aeoScoreThreshold,
+  });
+  const [commandContextLabel, setCommandContextLabel] = useState<string | null>(initialPreset.contextLabel);
 
   // ── Switch guard ──────────────────────────────────────────────────────────
   /** Set while a ChatPanel request is in flight. Stored as a ref so that the
@@ -48,8 +83,15 @@ export default function Dashboard() {
   });
 
   const productsQ = useQuery({
-    queryKey: ['products', page, filter],
-    queryFn: () => fetchProducts(page, 50, filter),
+    queryKey: ['products', page, filter, listState],
+    queryFn: () => fetchProducts(page, 50, filter, {
+      score_threshold: listState.scoreThreshold,
+      seo_score_threshold: listState.seoScoreThreshold,
+      geo_score_threshold: listState.geoScoreThreshold,
+      aeo_score_threshold: listState.aeoScoreThreshold,
+      sort_by: listState.sortBy,
+      sort_dir: listState.sortDir,
+    }),
   });
 
   const detailQ = useQuery({
@@ -88,9 +130,36 @@ export default function Dashboard() {
       : '';
 
   useEffect(() => {
-    if (!requestedSkillSlug) return;
+    const preset = parseWorkspacePreset(searchParams);
+    if (preset.hasPreset) {
+      setFilter(preset.filter);
+      setPage(1);
+      setSelectedId(preset.productId);
+      setListState({
+        sortBy: preset.sortBy ?? DEFAULT_WORKSPACE_LIST_STATE.sortBy,
+        sortDir: preset.sortDir,
+        scoreThreshold: preset.scoreThreshold ?? DEFAULT_WORKSPACE_LIST_STATE.scoreThreshold,
+        seoScoreThreshold: preset.seoScoreThreshold ?? DEFAULT_WORKSPACE_LIST_STATE.seoScoreThreshold,
+        geoScoreThreshold: preset.geoScoreThreshold ?? DEFAULT_WORKSPACE_LIST_STATE.geoScoreThreshold,
+        aeoScoreThreshold: preset.aeoScoreThreshold ?? DEFAULT_WORKSPACE_LIST_STATE.aeoScoreThreshold,
+      });
+      setCommandContextLabel(preset.contextLabel);
+    }
+
+    if (!requestedSkillSlug && !preset.hasPreset) return;
+
     const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete('skill');
+    let shouldReplace = false;
+    if (requestedSkillSlug) {
+      nextParams.delete('skill');
+      shouldReplace = true;
+    }
+    for (const key of WORKSPACE_PRESET_PARAM_KEYS) {
+      if (!nextParams.has(key)) continue;
+      nextParams.delete(key);
+      shouldReplace = true;
+    }
+    if (!shouldReplace) return;
     setSearchParams(nextParams, { replace: true });
   }, [requestedSkillSlug, searchParams, setSearchParams]);
 
@@ -123,6 +192,8 @@ export default function Dashboard() {
   // ─────────────────────────────────────────────────────────────────────────
 
   const handleFilterChange = (nextFilter: FilterTab) => {
+    setCommandContextLabel(null);
+    setListState(DEFAULT_WORKSPACE_LIST_STATE);
     setFilter(nextFilter);
     setPage(1);
   };
@@ -191,6 +262,7 @@ export default function Dashboard() {
           selectedId={selectedId}
           isLoading={productsQ.isLoading}
           filter={filter}
+          contextLabel={commandContextLabel}
           page={page}
           totalPages={totalPages}
           totalCount={productsQ.data?.total_count}
@@ -203,6 +275,7 @@ export default function Dashboard() {
 
         <main className="flex flex-1 overflow-hidden">
           <section className="min-w-0 flex flex-1 flex-col overflow-hidden p-4">
+
             {bannerProductName && (
               <EnterpriseSurface
                 className="mb-3 flex items-center gap-2 px-4 py-2.5 text-sm"
@@ -258,6 +331,19 @@ export default function Dashboard() {
               </div>
             </div>
           </section>
+
+          {/* ── GSC Panel (sağ kenar — sadece xl+ ekranlarda) ──────────────── */}
+          {selectedProduct && (
+            <aside
+              className="enterprise-panel-divider hidden xl:flex w-[288px] shrink-0 flex-col overflow-y-auto p-4"
+              style={{
+                background: 'linear-gradient(180deg, var(--surface-code), var(--surface-panel))',
+                borderLeft: '1px solid var(--color-border)',
+              }}
+            >
+              <GscPanel product={selectedProduct} />
+            </aside>
+          )}
         </main>
       </div>
 

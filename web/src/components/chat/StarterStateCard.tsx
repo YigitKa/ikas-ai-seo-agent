@@ -15,15 +15,16 @@ export function StarterStateCard({
     <div
       className="rounded-2xl p-4 text-center shadow-lg"
       style={{
-        background: 'linear-gradient(160deg, var(--tint-primary-soft), rgba(17, 24, 39, 0.22))',
-        border: '1px solid var(--color-border-primary)',
-        boxShadow: '0 14px 30px rgba(14, 21, 48, 0.28)',
+        background: 'var(--chat-starter-bg)',
+        border: '1px solid var(--chat-starter-border)',
+        boxShadow: 'var(--chat-starter-shadow)',
       }}
     >
       <div
         className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl"
         style={{
-          background: 'var(--tint-primary-soft)',
+          background: 'var(--chat-starter-chip-bg)',
+          border: '1px solid var(--chat-starter-chip-border)',
           color: 'var(--color-text-brand-soft)',
         }}
       >
@@ -49,9 +50,9 @@ export function StarterStateCard({
             disabled={disabled}
             className="rounded-full px-3 py-1.5 text-[11px] font-medium transition-all hover:opacity-90 disabled:opacity-40"
             style={{
-              background: 'var(--tint-primary-soft)',
+              background: 'var(--chat-starter-chip-bg)',
               color: 'var(--color-text-brand-soft)',
-              border: '1px solid var(--tint-primary-soft)',
+              border: '1px solid var(--chat-starter-chip-border)',
             }}
           >
             {prompt.label}

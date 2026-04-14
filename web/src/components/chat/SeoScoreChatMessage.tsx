@@ -227,9 +227,9 @@ function getCategoryCardStyle(accent: string): {
   boxShadow: string;
 } {
   return {
-    background: `radial-gradient(circle at top right, ${accent}1f, transparent 36%), linear-gradient(180deg, var(--surface-code), var(--surface-panel))`,
+    background: `radial-gradient(circle at top right, ${accent}1f, transparent 36%), var(--chat-score-panel-bg)`,
     border: `1px solid ${accent}30`,
-    boxShadow: `0 16px 30px ${accent}14`,
+    boxShadow: `0 16px 30px ${accent}12`,
   };
 }
 
@@ -239,9 +239,9 @@ function getSoftCardStyle(accent: string): {
   boxShadow: string;
 } {
   return {
-    background: 'linear-gradient(180deg, var(--surface-panel), var(--surface-raised))',
+    background: 'var(--chat-score-panel-bg)',
     border: `1px solid ${accent}24`,
-    boxShadow: `0 12px 28px ${accent}10`,
+    boxShadow: `0 12px 28px ${accent}12`,
   };
 }
 
@@ -772,12 +772,15 @@ function ProductSnapshotCard({ product }: { product?: Product | null }) {
       className="score-section-enter relative overflow-hidden rounded-[28px] p-4"
       style={{
         animationDelay: '140ms',
-        background: 'linear-gradient(180deg, var(--surface-code), var(--surface-panel))',
-        border: '1px solid var(--color-border-subtle)',
-        boxShadow: '0 16px 38px rgba(2, 6, 23, 0.32)',
+        background: 'var(--chat-score-panel-bg)',
+        border: '1px solid var(--chat-score-panel-border)',
+        boxShadow: 'var(--chat-soft-card-shadow)',
       }}
     >
-      <div className="score-glow-drift absolute right-2 top-0 h-24 w-24 rounded-full bg-cyan-400/10 blur-3xl" />
+      <div
+        className="score-glow-drift absolute right-2 top-0 h-24 w-24 rounded-full blur-3xl"
+        style={{ background: 'var(--chat-shell-glow-secondary)' }}
+      />
 
       <div className="relative flex items-start gap-3">
         {primaryImage ? (
@@ -785,7 +788,7 @@ function ProductSnapshotCard({ product }: { product?: Product | null }) {
             src={primaryImage}
             alt={title}
             className="rounded-2xl object-cover"
-            style={{ height: 72, width: 72, border: '1px solid var(--alpha-white-8)' }}
+            style={{ height: 72, width: 72, border: '1px solid var(--chat-preview-image-border)' }}
           />
         ) : (
           <div
@@ -817,17 +820,17 @@ function ProductSnapshotCard({ product }: { product?: Product | null }) {
             {product?.category ? (
               <span
                 className="rounded-full px-2.5 py-1 text-[10px] font-semibold"
-                style={{ background: 'var(--tint-accent-soft)', color: '#67e8f9' }}
+                style={{ background: 'var(--tint-accent-soft)', color: 'var(--color-text-info)' }}
               >
                 {product.category}
               </span>
             ) : null}
           </div>
-          <div className="mt-2 text-[15px] font-semibold leading-6 text-white" style={PREVIEW_CLAMP_STYLE}>
+          <div className="mt-2 text-[15px] font-semibold leading-6" style={{ color: 'var(--color-text-primary)', ...PREVIEW_CLAMP_STYLE }}>
             {title}
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
-            <span className="rounded-full px-2 py-1 text-[10px] font-medium" style={{ background: 'rgba(52,211,153,0.12)', color: 'var(--color-text-success-soft)' }}>
+            <span className="rounded-full px-2 py-1 text-[10px] font-medium" style={{ background: 'var(--tint-success-bg)', color: 'var(--color-text-success-soft)' }}>
               {(product?.tags?.length ?? 0)} etiket
             </span>
             <span className="rounded-full px-2 py-1 text-[10px] font-medium" style={{ background: 'var(--color-divider)', color: 'var(--color-text-secondary)' }}>
@@ -1026,8 +1029,8 @@ function FieldDetailCard({ item, index }: { item: FieldCardData; index: number }
           <div className="mt-2 space-y-2.5">
             {item.issues.length > 0 ? (
               item.issues.slice(0, 2).map((issue) => (
-                <div key={`${item.field.key}-${issue}`} className="rounded-2xl px-3 py-2.5" style={{ background: 'var(--alpha-white-3)' }}>
-                  <div className="text-[12px] font-semibold leading-5 text-white">{issue}</div>
+                <div key={`${item.field.key}-${issue}`} className="rounded-2xl px-3 py-2.5" style={{ background: 'var(--chat-muted-card-bg)' }}>
+                  <div className="text-[12px] font-semibold leading-5" style={{ color: 'var(--color-text-primary)' }}>{issue}</div>
                   <div className="mt-1 text-[11px] leading-5" style={{ color: 'var(--color-text-secondary)' }}>
                     {explainIssue(issue)}
                   </div>
@@ -1116,7 +1119,7 @@ function IssueCard({
             </span>
           </div>
 
-          <p className="mt-2 text-[13px] font-semibold leading-6 text-white">
+          <p className="mt-2 text-[13px] font-semibold leading-6" style={{ color: 'var(--color-text-primary)' }}>
             {issue}
           </p>
           <p className="mt-2 text-[12px] leading-6" style={{ color: 'var(--color-text-secondary)' }}>
@@ -1219,13 +1222,19 @@ function SeoScoreChatMessage({
       <div
         className="relative overflow-hidden rounded-[28px]"
         style={{
-          background: 'linear-gradient(180deg, rgba(17,24,39,0.98), var(--surface-panel))',
-          border: '1px solid var(--color-border-subtle)',
-          boxShadow: '0 22px 48px rgba(2, 6, 23, 0.38)',
+          background: 'var(--chat-score-hero-bg)',
+          border: '1px solid var(--chat-score-panel-border)',
+          boxShadow: 'var(--chat-score-shadow)',
         }}
       >
-        <div className="score-glow-drift absolute -left-12 top-10 h-40 w-40 rounded-full bg-violet-500/10 blur-3xl" />
-        <div className="score-glow-drift absolute right-0 top-0 h-40 w-40 rounded-full bg-cyan-400/10 blur-3xl" />
+        <div
+          className="score-glow-drift absolute -left-12 top-10 h-40 w-40 rounded-full blur-3xl"
+          style={{ background: 'var(--chat-shell-glow-primary)' }}
+        />
+        <div
+          className="score-glow-drift absolute right-0 top-0 h-40 w-40 rounded-full blur-3xl"
+          style={{ background: 'var(--chat-shell-glow-secondary)' }}
+        />
 
         <div className="px-4 py-4 sm:px-5 sm:py-5">
           <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
@@ -1233,11 +1242,14 @@ function SeoScoreChatMessage({
               className="score-section-enter relative overflow-hidden rounded-[28px] px-4 py-4"
               style={{
                 animationDelay: '0ms',
-                background: 'linear-gradient(135deg, var(--surface-raised), var(--surface-panel))',
-                border: '1px solid var(--color-border-subtle)',
+                background: 'var(--chat-score-panel-bg)',
+                border: '1px solid var(--chat-score-panel-border)',
               }}
             >
-              <div className="score-glow-drift absolute -right-6 -top-10 h-28 w-28 rounded-full bg-violet-500/15 blur-3xl" />
+              <div
+                className="score-glow-drift absolute -right-6 -top-10 h-28 w-28 rounded-full blur-3xl"
+                style={{ background: 'var(--chat-shell-glow-primary)' }}
+              />
               <div className="relative flex items-center gap-4 xl:flex-col xl:items-start">
                 <CircularScore score={totalPct} size={80} strokeWidth={6} animated delay={120} />
 
@@ -1325,10 +1337,10 @@ function SeoScoreChatMessage({
         </div>
 
         {expanded ? (
-          <div style={{ borderTop: '1px solid var(--alpha-white-6)' }}>
+          <div style={{ borderTop: '1px solid var(--chat-section-border)' }}>
             <div
               className="px-4 py-4"
-              style={{ borderBottom: '1px solid var(--alpha-white-6)' }}
+              style={{ borderBottom: '1px solid var(--chat-section-border)' }}
             >
               <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
                 <div>
@@ -1351,7 +1363,7 @@ function SeoScoreChatMessage({
 
             <div
               className="px-4 py-4"
-              style={{ borderBottom: '1px solid var(--alpha-white-6)' }}
+              style={{ borderBottom: '1px solid var(--chat-section-border)' }}
             >
               <div className="score-section-enter mb-3" style={{ animationDelay: '320ms' }}>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-muted)' }}>
@@ -1372,7 +1384,7 @@ function SeoScoreChatMessage({
             <div
               className="px-4 py-4"
               style={{
-                borderBottom: score.issues.length > 0 ? '1px solid var(--alpha-white-6)' : undefined,
+                borderBottom: score.issues.length > 0 ? '1px solid var(--chat-section-border)' : undefined,
               }}
             >
               <div className="score-section-enter mb-3" style={{ animationDelay: '420ms' }}>

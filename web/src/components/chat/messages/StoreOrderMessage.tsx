@@ -18,21 +18,21 @@ const KIND_META: Record<StoreOrderMessageData['kind'], {
   recent_orders: {
     eyebrow: 'Siparis Akisi',
     accent: 'var(--color-text-info)',
-    border: 'rgba(125, 211, 252, 0.18)',
-    glow: 'rgba(56, 189, 248, 0.22)',
+    border: 'var(--color-border-info)',
+    glow: 'var(--tint-info-soft)',
     subtitle: 'En yeni siparisler canli ikas verisiyle kartlara ayrildi.',
   },
   pending_orders: {
     eyebrow: 'Takip Listesi',
     accent: 'var(--color-icon-warning)',
-    border: 'rgba(251, 191, 36, 0.18)',
+    border: 'var(--color-border-warning)',
     glow: 'var(--color-border-warning)',
     subtitle: 'Bekleyen odeme ve taslak siparisler one cikarildi.',
   },
   today_summary: {
     eyebrow: 'Gunluk Ozet',
     accent: 'var(--color-icon-success)',
-    border: 'rgba(52, 211, 153, 0.18)',
+    border: 'var(--color-border-success)',
     glow: 'var(--color-border-success)',
     subtitle: 'Bugune ait siparis sinyalleri tek bir gorunumde toplandi.',
   },
@@ -111,32 +111,32 @@ function toneStyles(tone: Tone): { background: string; border: string; text: str
   switch (tone) {
     case 'info':
       return {
-        background: 'var(--tint-info-soft)',
-        border: 'var(--tint-info-soft)',
-        text: '#bfdbfe',
+        background: 'var(--tint-info-bg)',
+        border: 'var(--color-border-info)',
+        text: 'var(--color-text-info)',
       };
     case 'success':
       return {
-        background: 'var(--tint-success-soft)',
-        border: 'rgba(52, 211, 153, 0.22)',
-        text: '#bbf7d0',
+        background: 'var(--tint-success-bg)',
+        border: 'var(--color-border-success)',
+        text: 'var(--color-text-success-soft)',
       };
     case 'warning':
       return {
-        background: 'var(--tint-warning-soft)',
-        border: 'rgba(251, 191, 36, 0.22)',
+        background: 'var(--tint-warning-bg)',
+        border: 'var(--color-border-warning)',
         text: 'var(--color-text-warning-soft)',
       };
     case 'danger':
       return {
-        background: 'var(--tint-danger-soft)',
-        border: 'rgba(248, 113, 113, 0.22)',
+        background: 'var(--tint-danger-bg)',
+        border: 'var(--color-border-danger)',
         text: 'var(--color-text-danger-soft)',
       };
     default:
       return {
-        background: 'var(--color-divider)',
-        border: 'var(--color-border-subtle)',
+        background: 'var(--chat-muted-card-bg)',
+        border: 'var(--chat-section-border)',
         text: 'var(--color-text-secondary)',
       };
   }
@@ -250,7 +250,7 @@ function StatChip({ metric }: { metric: StoreOrderMetric }) {
     >
       <div
         className="text-[10px] font-semibold uppercase tracking-[0.16em]"
-        style={{ color: 'rgba(226, 232, 240, 0.56)' }}
+        style={{ color: 'var(--color-text-muted)' }}
       >
         {metric.label}
       </div>
@@ -292,17 +292,17 @@ function OrderTotal({ totalText }: { totalText: string }) {
     <div
       className="rounded-2xl border px-3 py-2"
       style={{
-        background: 'linear-gradient(180deg, var(--surface-panel), var(--surface-raised))',
-        borderColor: 'var(--color-border-subtle)',
+        background: 'var(--chat-soft-card-bg)',
+        borderColor: 'var(--chat-soft-card-border)',
       }}
     >
       <div
         className="text-[10px] font-semibold uppercase tracking-[0.16em]"
-        style={{ color: 'rgba(148, 163, 184, 0.78)' }}
+        style={{ color: 'var(--color-text-muted)' }}
       >
         Toplam
       </div>
-      <div className="mt-1 text-base font-semibold text-white">{formatMoney(totalText)}</div>
+      <div className="mt-1 text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>{formatMoney(totalText)}</div>
     </div>
   );
 }
@@ -328,8 +328,8 @@ function OrderItems({ order }: { order: StoreOrderEntry }) {
           key={`${item}-${index}`}
           className="rounded-full border px-2.5 py-1 text-[11px]"
           style={{
-            background: 'var(--alpha-white-4)',
-            borderColor: 'var(--color-border-subtle)',
+            background: 'var(--chat-muted-card-bg)',
+            borderColor: 'var(--chat-section-border)',
             color: 'var(--color-text-primary)',
           }}
         >
@@ -343,9 +343,9 @@ function OrderItems({ order }: { order: StoreOrderEntry }) {
           aria-expanded={expanded}
           className="rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all hover:brightness-110"
           style={{
-            background: expanded ? 'var(--tint-primary-soft)' : 'rgba(125, 211, 252, 0.12)',
-            borderColor: expanded ? 'var(--color-border-primary)' : 'rgba(125, 211, 252, 0.2)',
-            color: expanded ? 'var(--color-text-brand-soft)' : '#bae6fd',
+            background: expanded ? 'var(--chat-bubble-user-bg)' : 'var(--tint-info-bg)',
+            borderColor: expanded ? 'var(--chat-bubble-user-border)' : 'var(--color-border-info)',
+            color: expanded ? 'var(--color-text-brand-soft)' : 'var(--color-text-info)',
           }}
         >
           {expanded ? 'Daralt' : `+${hiddenItemCount} urun daha`}
@@ -355,9 +355,9 @@ function OrderItems({ order }: { order: StoreOrderEntry }) {
         <span
           className="rounded-full border px-2.5 py-1 text-[11px] font-medium"
           style={{
-            background: 'rgba(125, 211, 252, 0.12)',
-            borderColor: 'rgba(125, 211, 252, 0.2)',
-            color: '#bae6fd',
+            background: 'var(--tint-info-bg)',
+            borderColor: 'var(--color-border-info)',
+            color: 'var(--color-text-info)',
           }}
         >
           {legacyExtraItemsText}
@@ -372,9 +372,9 @@ function OrderCard({ order }: { order: StoreOrderEntry }) {
     <article
       className="rounded-[20px] border p-4 transition-transform duration-200 hover:-translate-y-0.5"
       style={{
-        background: 'linear-gradient(180deg, var(--alpha-white-3), var(--surface-card))',
-        borderColor: 'var(--color-border-subtle)',
-        boxShadow: '0 14px 32px rgba(2, 6, 23, 0.22)',
+        background: 'var(--chat-soft-card-bg)',
+        borderColor: 'var(--chat-soft-card-border)',
+        boxShadow: 'var(--chat-soft-card-shadow)',
       }}
       aria-label={`Siparis ${order.orderNumber}`}
     >
@@ -384,8 +384,8 @@ function OrderCard({ order }: { order: StoreOrderEntry }) {
             <span
               className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold"
               style={{
-                background: 'var(--alpha-white-6)',
-                borderColor: 'var(--color-border-subtle)',
+                background: 'var(--chat-muted-card-bg)',
+                borderColor: 'var(--chat-section-border)',
                 color: 'var(--color-text-primary)',
               }}
             >
@@ -409,8 +409,8 @@ function OrderCard({ order }: { order: StoreOrderEntry }) {
         <div
           className="flex items-start gap-2 rounded-2xl border px-3 py-2.5"
           style={{
-            background: 'var(--surface-card)',
-            borderColor: 'var(--color-divider)',
+            background: 'var(--chat-muted-card-bg)',
+            borderColor: 'var(--chat-section-border)',
           }}
         >
           <svg
@@ -419,15 +419,15 @@ function OrderCard({ order }: { order: StoreOrderEntry }) {
             viewBox="0 0 24 24"
             stroke="currentColor"
             strokeWidth={2}
-            style={{ color: 'rgba(148, 163, 184, 0.82)' }}
+            style={{ color: 'var(--color-text-muted)' }}
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M5.121 17.804A9 9 0 1118.36 4.566M15 11a3 3 0 11-6 0 3 3 0 016 0zM19 20l-4.35-4.35" />
           </svg>
           <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'rgba(148, 163, 184, 0.7)' }}>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-muted)' }}>
               Musteri
             </div>
-            <div className="mt-1 break-words text-[13px] text-white">
+            <div className="mt-1 break-words text-[13px]" style={{ color: 'var(--color-text-primary)' }}>
               {order.customer === '-' ? 'Musteri bilgisi yok' : order.customer}
             </div>
           </div>
@@ -436,11 +436,11 @@ function OrderCard({ order }: { order: StoreOrderEntry }) {
         <div
           className="rounded-2xl border px-3 py-2.5"
           style={{
-            background: 'var(--surface-card)',
-            borderColor: 'var(--color-divider)',
+            background: 'var(--chat-muted-card-bg)',
+            borderColor: 'var(--chat-section-border)',
           }}
         >
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'rgba(148, 163, 184, 0.7)' }}>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-muted)' }}>
             Urunler
           </div>
           <div className="mt-2">
@@ -458,11 +458,11 @@ function EmptyState({ message }: { message: string }) {
       <div
         className="rounded-[20px] border border-dashed px-4 py-6 text-center"
         style={{
-          background: 'var(--surface-card)',
-          borderColor: 'var(--color-border-subtle)',
+          background: 'var(--chat-soft-card-bg)',
+          borderColor: 'var(--chat-soft-card-border)',
         }}
       >
-        <div className="text-sm font-semibold text-white">{message}</div>
+        <div className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{message}</div>
         <div className="mt-1 text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
           Yeni siparisler geldiginde bu alan ozet kartlariyla dolacak.
         </div>
@@ -479,9 +479,9 @@ export default function StoreOrderMessage({ data }: { data: StoreOrderMessageDat
     <section
       className="relative overflow-hidden rounded-[24px] border"
       style={{
-        background: 'linear-gradient(180deg, rgba(8, 47, 73, 0.2), var(--surface-panel))',
+        background: 'linear-gradient(180deg, var(--tint-info-bg), var(--chat-score-panel-bg))',
         borderColor: meta.border,
-        boxShadow: '0 22px 60px rgba(2, 6, 23, 0.38)',
+        boxShadow: 'var(--chat-score-shadow)',
       }}
     >
       <div
@@ -496,7 +496,7 @@ export default function StoreOrderMessage({ data }: { data: StoreOrderMessageDat
       <div className="relative">
         <div
           className="border-b px-4 py-4"
-          style={{ borderColor: 'var(--color-divider)' }}
+          style={{ borderColor: 'var(--chat-section-border)' }}
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-3">
@@ -519,8 +519,8 @@ export default function StoreOrderMessage({ data }: { data: StoreOrderMessageDat
                 >
                   {meta.eyebrow}
                 </div>
-                <h3 className="mt-1 text-[18px] font-semibold tracking-tight text-white">{data.title}</h3>
-                <p className="mt-1 max-w-xl text-[12px]" style={{ color: 'rgba(226, 232, 240, 0.72)' }}>
+                <h3 className="mt-1 text-[18px] font-semibold tracking-tight" style={{ color: 'var(--color-text-primary)' }}>{data.title}</h3>
+                <p className="mt-1 max-w-xl text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
                   {meta.subtitle}
                 </p>
               </div>
@@ -529,9 +529,9 @@ export default function StoreOrderMessage({ data }: { data: StoreOrderMessageDat
             <div
               className="inline-flex items-center gap-2 self-start rounded-full border px-3 py-1.5 text-[11px] font-medium"
               style={{
-                background: 'var(--surface-raised)',
+                background: 'var(--chat-muted-card-bg)',
                 borderColor: meta.border,
-                color: 'rgba(226, 232, 240, 0.82)',
+                color: 'var(--color-text-secondary)',
               }}
             >
               <span
@@ -546,7 +546,7 @@ export default function StoreOrderMessage({ data }: { data: StoreOrderMessageDat
         {metrics.length > 0 ? (
           <div
             className="grid gap-2 border-b px-4 py-3 sm:grid-cols-2 xl:grid-cols-4"
-            style={{ borderColor: 'var(--color-divider)' }}
+            style={{ borderColor: 'var(--chat-section-border)' }}
           >
             {metrics.map((metric) => (
               <StatChip key={`${metric.label}-${metric.value}`} metric={metric} />
@@ -567,13 +567,13 @@ export default function StoreOrderMessage({ data }: { data: StoreOrderMessageDat
         {data.note ? (
           <div
             className="border-t px-4 py-3"
-            style={{ borderColor: 'var(--color-divider)' }}
+            style={{ borderColor: 'var(--chat-section-border)' }}
           >
             <div
               className="rounded-2xl border px-3 py-2.5 text-[12px]"
               style={{
-                background: 'var(--alpha-white-3)',
-                borderColor: 'var(--color-divider)',
+                background: 'var(--chat-muted-card-bg)',
+                borderColor: 'var(--chat-section-border)',
                 color: 'var(--color-text-secondary)',
               }}
             >

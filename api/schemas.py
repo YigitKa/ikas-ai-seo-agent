@@ -137,6 +137,11 @@ class SettingsResponse(BaseModel):
     languages: str = "tr"
     keywords: str = ""
     dry_run: bool = True
+    # Google Search Console
+    gsc_client_id: str = ""
+    gsc_client_secret: str = ""
+    gsc_refresh_token: str = ""
+    gsc_property_url: str = ""
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -675,3 +680,50 @@ class StartBatchRequest(BaseModel):
 class BatchItemDecisionRequest(BaseModel):
     decision: str  # 'approved' | 'rejected' | 'revised'
     revised_data: Optional[dict[str, Any]] = None
+
+
+# ── Google Search Console ─────────────────────────────────────────────────────
+
+class GscStatusResponse(BaseModel):
+    connected: bool
+    property_url: str
+    last_synced: Optional[str] = None  # ISO8601 veya None
+    is_stale: bool = False             # 24 saatten eski mi?
+
+
+class GscPageMetric(BaseModel):
+    url: str
+    clicks: int
+    impressions: int
+    ctr: float
+    position: float
+
+
+class GscQueryMetric(BaseModel):
+    query: str
+    clicks: int
+    impressions: int
+    ctr: float
+    position: float
+
+
+class GscDataResponse(BaseModel):
+    property_url: str
+    days: int
+    totals: dict[str, Any]
+    pages: list[GscPageMetric]
+    queries: list[GscQueryMetric]
+    synced_at: str
+    is_stale: bool = False
+
+
+class GscAuthUrlResponse(BaseModel):
+    url: str
+
+
+class GscSyncResponse(BaseModel):
+    message: str
+    property_url: str
+    pages_synced: int
+    queries_synced: int
+    synced_at: str

@@ -139,7 +139,7 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
       <div
         className="fixed inset-0 z-40 transition-opacity duration-300"
         style={{
-          background: 'rgba(0,0,0,0.55)',
+          background: 'var(--color-overlay)',
           opacity: isOpen ? 1 : 0,
           pointerEvents: isOpen ? 'auto' : 'none',
         }}
@@ -161,8 +161,8 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
           width: isFullscreen ? '100vw' : 'min(640px, 95vw)',
           maxWidth: '100vw',
           height: '100vh',
-          background: 'linear-gradient(160deg, rgba(8,14,32,0.99), rgba(12,20,40,0.98))',
-          borderLeft: isFullscreen ? 'none' : '1px solid var(--color-divider)',
+          background: 'var(--chat-shell-bg)',
+          borderLeft: isFullscreen ? 'none' : '1px solid var(--chat-shell-border)',
           boxShadow: isFullscreen ? '0 0 0 rgba(0,0,0,0)' : '-12px 0 48px var(--color-overlay-dark)',
           transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
           transition: 'transform 0.32s cubic-bezier(0.4,0,0.2,1), width 0.22s ease, left 0.22s ease',
@@ -170,7 +170,7 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
       >
         <div
           className="flex flex-shrink-0 items-center gap-3 px-4 py-3.5"
-          style={{ borderBottom: '1px solid var(--color-divider)' }}
+          style={{ borderBottom: '1px solid var(--chat-section-border)' }}
         >
           <div
             className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl"
@@ -278,10 +278,10 @@ export default function StoreChatAdvisor({ storeName, isOpen, onClose }: StoreCh
 
               <button
                 onClick={() => setChatStarted(true)}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[12px] font-medium transition-all hover:brightness-110"
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[12px] font-medium transition-all hover:brightness-110"
                 style={{
-                  background: 'linear-gradient(135deg, var(--tint-primary-soft), rgba(139,92,246,0.14))',
-                  border: '1px solid var(--color-border-primary)',
+                  background: 'var(--chat-bubble-user-bg)',
+                  border: '1px solid var(--chat-bubble-user-border)',
                   color: 'var(--color-text-brand-soft)',
                 }}
               >

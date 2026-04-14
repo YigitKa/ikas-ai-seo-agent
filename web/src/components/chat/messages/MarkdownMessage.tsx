@@ -37,9 +37,9 @@ export default function MarkdownMessage({ content }: { content: string }) {
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
-        h1: ({ children }) => <h1 className="mb-3 text-lg font-semibold text-white">{children}</h1>,
-        h2: ({ children }) => <h2 className="mb-3 text-base font-semibold text-white">{children}</h2>,
-        h3: ({ children }) => <h3 className="mb-2 text-sm font-semibold text-white">{children}</h3>,
+        h1: ({ children }) => <h1 className="mb-3 text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>{children}</h1>,
+        h2: ({ children }) => <h2 className="mb-3 text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>{children}</h2>,
+        h3: ({ children }) => <h3 className="mb-2 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{children}</h3>,
         p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
         ul: ({ children }) => <ul className="mb-3 list-disc space-y-1 pl-5 last:mb-0">{children}</ul>,
         ol: ({ children }) => <ol className="mb-3 list-decimal space-y-1 pl-5 last:mb-0">{children}</ol>,
@@ -47,7 +47,7 @@ export default function MarkdownMessage({ content }: { content: string }) {
         blockquote: ({ children }) => (
           <blockquote
             className="mb-3 border-l-2 pl-3 italic"
-            style={{ borderColor: 'rgba(34, 211, 238, 0.35)', color: 'var(--color-text-secondary)' }}
+            style={{ borderColor: 'var(--color-border-info)', color: 'var(--color-text-secondary)' }}
           >
             {children}
           </blockquote>
@@ -59,8 +59,8 @@ export default function MarkdownMessage({ content }: { content: string }) {
               <div
                 className="mb-3 rounded-lg p-3 text-[12px] leading-relaxed"
                 style={{
-                  background: 'var(--alpha-white-3)',
-                  border: '1px solid var(--alpha-white-8)',
+                  background: 'var(--chat-muted-card-bg)',
+                  border: '1px solid var(--chat-section-border)',
                   color: 'var(--color-text-primary)',
                 }}
               >
@@ -71,7 +71,7 @@ export default function MarkdownMessage({ content }: { content: string }) {
                     ul: ({ children }) => <ul className="mb-2 list-disc space-y-1 pl-5 last:mb-0">{children}</ul>,
                     ol: ({ children }) => <ol className="mb-2 list-decimal space-y-1 pl-5 last:mb-0">{children}</ol>,
                     li: ({ children }) => <li>{children}</li>,
-                    strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+                    strong: ({ children }) => <strong className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{children}</strong>,
                     code: ({ children }) => <code>{children}</code>,
                   }}
                 >
@@ -84,7 +84,10 @@ export default function MarkdownMessage({ content }: { content: string }) {
           return (
             <pre
               className="mb-3 overflow-x-auto rounded-lg p-3 text-[12px]"
-              style={{ background: 'rgba(0,0,0,0.18)' }}
+              style={{
+                background: 'var(--surface-code)',
+                border: '1px solid var(--chat-section-border)',
+              }}
             >
               {children}
             </pre>
@@ -101,7 +104,7 @@ export default function MarkdownMessage({ content }: { content: string }) {
           return (
             <code
               className="rounded px-1.5 py-0.5 text-[12px]"
-              style={{ background: 'var(--alpha-white-6)', color: 'var(--color-text-brand-soft)' }}
+              style={{ background: 'var(--tint-primary-bg)', color: 'var(--color-text-brand-soft)' }}
             >
               {children}
             </code>
@@ -118,7 +121,7 @@ export default function MarkdownMessage({ content }: { content: string }) {
           </div>
         ),
         thead: ({ children }) => (
-          <thead style={{ background: 'var(--alpha-white-4)' }}>{children}</thead>
+          <thead style={{ background: 'var(--chat-muted-card-bg)' }}>{children}</thead>
         ),
         th: ({ children }) => (
           <th className="px-3 py-2 font-semibold" style={{ borderBottom: '1px solid var(--color-border)' }}>
@@ -126,11 +129,11 @@ export default function MarkdownMessage({ content }: { content: string }) {
           </th>
         ),
         td: ({ children }) => (
-          <td className="px-3 py-2 align-top" style={{ borderTop: '1px solid var(--alpha-white-6)' }}>
+          <td className="px-3 py-2 align-top" style={{ borderTop: '1px solid var(--chat-section-border)' }}>
             {children}
           </td>
         ),
-        strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+        strong: ({ children }) => <strong className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{children}</strong>,
         hr: () => <hr className="my-3" style={{ borderColor: 'var(--color-border)' }} />,
       }}
     >

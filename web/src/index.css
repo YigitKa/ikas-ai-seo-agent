@@ -114,6 +114,36 @@
   --shadow-hero: 0 18px 36px rgba(29, 78, 216, 0.22);
   --shadow-card: 0 14px 36px rgba(2, 6, 23, 0.45);
 
+  /* Chat surfaces */
+  --chat-shell-bg: linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.92));
+  --chat-shell-border: rgba(148, 163, 184, 0.18);
+  --chat-shell-shadow: 0 24px 52px rgba(2, 6, 23, 0.52);
+  --chat-shell-glow-primary: rgba(99, 102, 241, 0.18);
+  --chat-shell-glow-secondary: rgba(6, 182, 212, 0.16);
+  --chat-section-border: rgba(148, 163, 184, 0.14);
+  --chat-soft-card-bg: linear-gradient(180deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.78));
+  --chat-soft-card-border: rgba(148, 163, 184, 0.18);
+  --chat-soft-card-shadow: 0 16px 34px rgba(2, 6, 23, 0.28);
+  --chat-bubble-assistant-bg: linear-gradient(160deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.74));
+  --chat-bubble-assistant-border: rgba(148, 163, 184, 0.24);
+  --chat-bubble-user-bg: linear-gradient(135deg, rgba(99, 102, 241, 0.24), rgba(6, 182, 212, 0.16));
+  --chat-bubble-user-border: rgba(129, 140, 248, 0.34);
+  --chat-bubble-shadow: 0 10px 24px rgba(2, 6, 23, 0.26);
+  --chat-input-bg: rgba(15, 23, 42, 0.78);
+  --chat-input-menu-bg: rgba(15, 23, 42, 0.94);
+  --chat-input-menu-shadow: 0 18px 40px rgba(0, 0, 0, 0.34);
+  --chat-starter-bg: linear-gradient(150deg, rgba(99, 102, 241, 0.18), rgba(6, 182, 212, 0.12), rgba(15, 23, 42, 0.62));
+  --chat-starter-border: rgba(99, 102, 241, 0.28);
+  --chat-starter-shadow: 0 18px 36px rgba(2, 6, 23, 0.28);
+  --chat-starter-chip-bg: rgba(99, 102, 241, 0.16);
+  --chat-starter-chip-border: rgba(129, 140, 248, 0.22);
+  --chat-score-hero-bg: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.82));
+  --chat-score-panel-bg: linear-gradient(180deg, rgba(30, 41, 59, 0.6), rgba(15, 23, 42, 0.8));
+  --chat-score-panel-border: rgba(148, 163, 184, 0.18);
+  --chat-score-shadow: 0 22px 48px rgba(2, 6, 23, 0.38);
+  --chat-preview-image-border: rgba(255, 255, 255, 0.12);
+  --chat-muted-card-bg: rgba(255, 255, 255, 0.04);
+
   /* Alpha tokens */
   --alpha-white-3: rgba(255, 255, 255, 0.03);
   --alpha-white-4: rgba(255, 255, 255, 0.04);
@@ -242,6 +272,36 @@
   --shadow-modal: 0 25px 50px rgba(15, 23, 42, 0.18);
   --shadow-hero: 0 18px 36px rgba(29, 78, 216, 0.12);
   --shadow-card: 0 14px 36px rgba(15, 23, 42, 0.08);
+
+  /* Chat surfaces */
+  --chat-shell-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94));
+  --chat-shell-border: rgba(148, 163, 184, 0.2);
+  --chat-shell-shadow: 0 26px 56px rgba(148, 163, 184, 0.2);
+  --chat-shell-glow-primary: rgba(129, 140, 248, 0.24);
+  --chat-shell-glow-secondary: rgba(34, 211, 238, 0.18);
+  --chat-section-border: rgba(148, 163, 184, 0.18);
+  --chat-soft-card-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(241, 245, 249, 0.86));
+  --chat-soft-card-border: rgba(148, 163, 184, 0.2);
+  --chat-soft-card-shadow: 0 16px 34px rgba(148, 163, 184, 0.16);
+  --chat-bubble-assistant-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.98), rgba(238, 242, 255, 0.78));
+  --chat-bubble-assistant-border: rgba(165, 180, 252, 0.24);
+  --chat-bubble-user-bg: linear-gradient(135deg, rgba(79, 70, 229, 0.16), rgba(8, 145, 178, 0.12));
+  --chat-bubble-user-border: rgba(99, 102, 241, 0.28);
+  --chat-bubble-shadow: 0 10px 26px rgba(148, 163, 184, 0.18);
+  --chat-input-bg: rgba(255, 255, 255, 0.96);
+  --chat-input-menu-bg: rgba(255, 255, 255, 0.98);
+  --chat-input-menu-shadow: 0 20px 44px rgba(148, 163, 184, 0.22);
+  --chat-starter-bg: linear-gradient(145deg, rgba(238, 242, 255, 0.96), rgba(224, 242, 254, 0.78), rgba(255, 255, 255, 0.98));
+  --chat-starter-border: rgba(129, 140, 248, 0.24);
+  --chat-starter-shadow: 0 18px 40px rgba(129, 140, 248, 0.14);
+  --chat-starter-chip-bg: rgba(255, 255, 255, 0.72);
+  --chat-starter-chip-border: rgba(129, 140, 248, 0.18);
+  --chat-score-hero-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.9));
+  --chat-score-panel-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.84));
+  --chat-score-panel-border: rgba(148, 163, 184, 0.18);
+  --chat-score-shadow: 0 24px 56px rgba(148, 163, 184, 0.22);
+  --chat-preview-image-border: rgba(226, 232, 240, 0.92);
+  --chat-muted-card-bg: rgba(248, 250, 252, 0.92);
 
   /* Alpha tokens (swap to darks for light theme) */
   --alpha-white-3: rgba(15, 23, 42, 0.03);

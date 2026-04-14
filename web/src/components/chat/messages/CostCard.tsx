@@ -20,13 +20,13 @@ export default function CostCard({
   return (
     <div
       className="mr-6 rounded-xl p-3"
-      style={{ background: 'var(--alpha-white-3)', border: '1px solid var(--alpha-white-8)' }}
+      style={{ background: 'var(--chat-muted-card-bg)', border: '1px solid var(--chat-section-border)' }}
     >
       <div className="space-y-1.5 text-[12px] leading-5">
         {cost != null && cost > 0 ? (
           <div style={{ color: 'var(--color-text-secondary)' }}>
             This message cost:{' '}
-            <span className="font-semibold text-emerald-400">{formatCost(cost)}</span>
+            <span className="font-semibold" style={{ color: 'var(--color-text-success)' }}>{formatCost(cost)}</span>
             {inputTokens != null && outputTokens != null ? (
               <span style={{ color: 'var(--color-text-muted)' }}>
                 {' '}({inputTokens.toLocaleString()} in + {outputTokens.toLocaleString()} out)
@@ -37,7 +37,7 @@ export default function CostCard({
         {sessionCost != null && sessionCost > 0 ? (
           <div style={{ color: 'var(--color-text-secondary)' }}>
             Session total:{' '}
-            <span className="font-semibold text-amber-400">{formatCost(sessionCost)}</span>
+            <span className="font-semibold" style={{ color: 'var(--color-text-warning)' }}>{formatCost(sessionCost)}</span>
           </div>
         ) : null}
       </div>

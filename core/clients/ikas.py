@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from config.settings import get_config
+from core.clients.mcp import IkasMCPClient
 from core.models import Product
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,17 @@ class IkasClient:
             id
             name
             description
+        }
+    }
+    """
+
+    MCP_UPDATE_PRODUCT_MUTATION = """
+    mutation UpdateProduct($input: UpdateProductInput!) {
+        updateProduct(input: $input) {
+            id
+            name
+            description
+            updatedAt
         }
     }
     """
@@ -653,6 +665,101 @@ class IkasClient:
 
         return None
 
+    @staticmethod
+    def _extract_mcp_text_content(result: Any) -> str:
+        if not isinstance(result, dict):
+            return str(result or "")
+
+        content = result.get("content")
+        if not isinstance(content, list):
+            return ""
+
+        parts: list[str] = []
+        for item in content:
+            if not isinstance(item, dict) or item.get("type") != "text":
+                continue
+            text = item.get("text")
+            if isinstance(text, str) and text.strip():
+                parts.append(text.strip())
+        return "\n".join(parts).strip()
+
+    def _build_mcp_update_input(
+        self,
+        product_id: str,
+        updates: Dict[str, Any],
+        existing_product: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        input_data: Dict[str, Any] = {"id": product_id}
+
+        if "name" in updates:
+            input_data["name"] = updates["name"]
+        if "description" in updates:
+            input_data["description"] = updates["description"]
+
+        existing_meta = existing_product.get("metaData")
+        if not isinstance(existing_meta, dict):
+            existing_meta = {}
+
+        if "meta_title" in updates or "meta_description" in updates:
+            meta_data: Dict[str, Any] = {}
+            if existing_meta.get("pageTitle") is not None:
+                meta_data["pageTitle"] = existing_meta["pageTitle"]
+            if existing_meta.get("description") is not None:
+                meta_data["description"] = existing_meta["description"]
+            meta_slug = existing_meta.get("slug")
+            if isinstance(meta_slug, str) and meta_slug.strip():
+                meta_data["slug"] = meta_slug
+            if "meta_title" in updates:
+                meta_data["pageTitle"] = updates["meta_title"]
+            if "meta_description" in updates:
+                meta_data["description"] = updates["meta_description"]
+            if meta_data:
+                input_data["metaData"] = meta_data
+
+        requested_translations = self._normalize_translation_updates(updates.get("description_translations") or {})
+        if requested_translations:
+            input_data["translations"] = [
+                {"locale": locale, "description": text}
+                for locale, text in requested_translations.items()
+            ]
+            tr_description = requested_translations.get("tr")
+            if tr_description and "description" not in input_data:
+                input_data["description"] = tr_description
+            elif (
+                "description" not in input_data
+                and isinstance(existing_product.get("description"), str)
+                and existing_product["description"].strip()
+            ):
+                input_data["description"] = existing_product["description"]
+
+        return input_data
+
+    async def _update_product_via_mcp(
+        self,
+        product_id: str,
+        updates: Dict[str, Any],
+        existing_product: Dict[str, Any],
+        *,
+        mcp_token: str,
+    ) -> None:
+        input_data = self._build_mcp_update_input(product_id, updates, existing_product)
+        mcp_client = IkasMCPClient(mcp_token)
+        try:
+            await mcp_client.initialize()
+            result = await mcp_client.execute_mutation(
+                "updateProduct",
+                self.MCP_UPDATE_PRODUCT_MUTATION,
+                {"input": input_data},
+            )
+        finally:
+            await mcp_client.close()
+
+        if isinstance(result, dict) and result.get("isError"):
+            message = self._extract_mcp_text_content(result) or "MCP updateProduct returned an error"
+            raise RuntimeError(message)
+
+        logger.info("updateProduct MCP fallback succeeded for %s with keys: %s", product_id, list(input_data.keys()))
+
     def _parse_product(self, data: Dict[str, Any]) -> Product:
         variants = data.get("variants") or data.get("productVariants") or []
         first_variant = variants[0] if variants else {}
@@ -922,7 +1029,30 @@ class IkasClient:
             if translation_error and "translations" in input_data and "description" in input_data:
                 logger.warning("translations not accepted by API, retrying with default description only")
                 fallback_input = {k: v for k, v in input_data.items() if k != "translations"}
-                await self._graphql(self.SAVE_PRODUCT_MUTATION, {"input": fallback_input})
+                try:
+                    await self._graphql(self.SAVE_PRODUCT_MUTATION, {"input": fallback_input})
+                except RuntimeError as fallback_exc:
+                    if not config.ikas_mcp_token.strip():
+                        raise
+                    logger.warning(
+                        "saveProduct retry failed for %s, falling back to MCP updateProduct: %s",
+                        product_id,
+                        fallback_exc,
+                    )
+                    await self._update_product_via_mcp(
+                        product_id,
+                        updates,
+                        existing_product,
+                        mcp_token=config.ikas_mcp_token,
+                    )
+            elif config.ikas_mcp_token.strip():
+                logger.warning("saveProduct failed for %s, retrying with MCP updateProduct: %s", product_id, exc)
+                await self._update_product_via_mcp(
+                    product_id,
+                    updates,
+                    existing_product,
+                    mcp_token=config.ikas_mcp_token,
+                )
             else:
                 raise
 

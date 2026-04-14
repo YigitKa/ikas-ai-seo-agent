@@ -110,6 +110,10 @@ async def get_settings(
         languages=",".join(cfg.store_languages),
         keywords=",".join(cfg.seo_target_keywords),
         dry_run=cfg.dry_run,
+        gsc_client_id=cfg.gsc_client_id,
+        gsc_client_secret=cfg.gsc_client_secret,
+        gsc_refresh_token=cfg.gsc_refresh_token,
+        gsc_property_url=cfg.gsc_property_url,
     )
 
 

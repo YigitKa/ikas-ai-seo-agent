@@ -161,6 +161,11 @@ class AppConfig(BaseModel):
     ai_thinking_mode_chat: bool = False
     ai_thinking_mode_batch: bool = False
     seo_low_score_threshold: int = 70
+    # Google Search Console OAuth2
+    gsc_client_id: str = ""
+    gsc_client_secret: str = ""
+    gsc_refresh_token: str = ""   # OAuth2 akışından sonra otomatik saklanır
+    gsc_property_url: str = ""    # Örn: https://www.mystore.com
 
     @property
     def ai_thinking_mode(self) -> bool:

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { BatchConfig, Product, ProductWithScore, SeoScore } from '../../types';
 import { fetchProducts, getCategories, getSettings } from '../../api/client';
+import type { ProductSortDirection, ProductSortField } from '../../shared/navigation/commandCenter';
 import { getScoreColor, getStatusBadgeStyle } from '../../shared/score/scoreUtils';
 
 type TargetFieldKey = 'meta_title' | 'meta_description' | 'name' | 'description' | 'description_en';
@@ -12,20 +13,10 @@ type ScoreThresholdKey =
   | 'english_description_score_threshold'
   | 'meta_score_threshold'
   | 'meta_desc_score_threshold';
-type SortFieldKey =
-  | 'name'
-  | 'category'
-  | 'sku'
-  | 'has_english_description'
-  | 'total_score'
-  | 'title_score'
-  | 'description_score'
-  | 'english_description_score'
-  | 'meta_score'
-  | 'meta_desc_score';
-type SortDirection = 'asc' | 'desc';
+type SortFieldKey = ProductSortField;
+type SortDirection = ProductSortDirection;
 
-type FieldScoreThresholds = Record<ScoreThresholdKey, number>;
+export type FieldScoreThresholds = Record<ScoreThresholdKey, number>;
 
 interface FieldOption {
   key: TargetFieldKey;
@@ -98,11 +89,31 @@ const DEFAULT_FIELD_SCORE_THRESHOLDS: FieldScoreThresholds = {
   meta_score_threshold: 100,
   meta_desc_score_threshold: 100,
 };
+export interface ProductSelectorPreset {
+  contextLabel: string | null;
+  search: string;
+  missingEnglishOnly: boolean;
+  sortBy: SortFieldKey;
+  sortDir: SortDirection;
+  fieldScoreThresholds: FieldScoreThresholds;
+}
+
+export const DEFAULT_PRODUCT_SELECTOR_PRESET: ProductSelectorPreset = {
+  contextLabel: null,
+  search: '',
+  missingEnglishOnly: false,
+  sortBy: 'name',
+  sortDir: 'asc',
+  fieldScoreThresholds: DEFAULT_FIELD_SCORE_THRESHOLDS,
+};
 const BASE_SORT_OPTIONS: SortOption[] = [
   { key: 'name', label: 'Ürün Adı' },
   { key: 'category', label: 'Kategori' },
   { key: 'sku', label: 'SKU' },
   { key: 'total_score', label: 'Toplam Skor' },
+  { key: 'seo_score', label: 'SEO Skoru' },
+  { key: 'geo_score', label: 'GEO Skoru' },
+  { key: 'aeo_score', label: 'AEO Skoru' },
 ];
 const FIELD_SORT_OPTIONS: Record<TargetFieldKey, SortOption> = {
   meta_title: { key: 'meta_score', label: 'Meta Başlık Skoru' },
@@ -124,6 +135,7 @@ interface Props {
   onChange: (config: BatchConfig) => void;
   onStartAnalysis: (productIds: string[]) => void;
   disabled: boolean;
+  preset?: ProductSelectorPreset;
 }
 
 function normalizeScore(rawValue: number, maxScore: number) {
@@ -168,6 +180,9 @@ function getSortValue(item: ProductWithScore, sortBy: SortFieldKey) {
   if (sortBy === 'sku') return normalizeText(product.sku);
   if (sortBy === 'has_english_description') return hasEnglishDescription(product) ? 1 : 0;
   if (sortBy === 'total_score') return score?.total_score ?? -1;
+  if (sortBy === 'seo_score') return score?.seo_score ?? -1;
+  if (sortBy === 'geo_score') return score?.geo_score ?? -1;
+  if (sortBy === 'aeo_score') return score?.aeo_score ?? -1;
 
   const max = SCORE_FIELD_MAX_MAP[sortBy as ScoreFieldKey];
   const rawScore = score?.[sortBy as ScoreFieldKey] ?? 0;
@@ -238,17 +253,21 @@ function Toggle({
   );
 }
 
-export default function ProductSelector({ config, onChange, onStartAnalysis, disabled }: Props) {
-  const [search, setSearch] = useState('');
+export default function ProductSelector({
+  config,
+  onChange,
+  onStartAnalysis,
+  disabled,
+  preset = DEFAULT_PRODUCT_SELECTOR_PRESET,
+}: Props) {
+  const [search, setSearch] = useState(preset.search);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
-  const [missingEnglishOnly, setMissingEnglishOnly] = useState(false);
-  const [sortBy, setSortBy] = useState<SortFieldKey>('name');
-  const [sortDir, setSortDir] = useState<SortDirection>('asc');
-  const [fieldScoreThresholds, setFieldScoreThresholds] = useState<FieldScoreThresholds>(
-    DEFAULT_FIELD_SCORE_THRESHOLDS,
-  );
+  const [missingEnglishOnly, setMissingEnglishOnly] = useState(preset.missingEnglishOnly);
+  const [sortBy, setSortBy] = useState<SortFieldKey>(preset.sortBy);
+  const [sortDir, setSortDir] = useState<SortDirection>(preset.sortDir);
+  const [fieldScoreThresholds, setFieldScoreThresholds] = useState<FieldScoreThresholds>(preset.fieldScoreThresholds);
 
   const listFieldOptions = FIELD_OPTIONS;
   const effectiveMissingEnglishOnly = missingEnglishOnly;
@@ -268,6 +287,17 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
       setSortDir('asc');
     }
   }, [sortBy, sortOptions]);
+
+  useEffect(() => {
+    setSearch(preset.search);
+    setSelectedIds(new Set());
+    setPage(1);
+    setPageSize(50);
+    setMissingEnglishOnly(preset.missingEnglishOnly);
+    setSortBy(preset.sortBy);
+    setSortDir(preset.sortDir);
+    setFieldScoreThresholds(preset.fieldScoreThresholds);
+  }, [preset]);
 
   useEffect(() => {
     setPage(1);
@@ -370,6 +400,19 @@ export default function ProductSelector({ config, onChange, onStartAnalysis, dis
 
   return (
     <div className="space-y-5">
+      {preset.contextLabel && (
+        <div
+          className="rounded-xl px-4 py-3 text-[12px] font-medium"
+          style={{
+            background: 'var(--tint-info-bg)',
+            border: '1px solid var(--tint-info-soft)',
+            color: 'var(--color-text-info)',
+          }}
+        >
+          Komuta Merkezi filtresi aktif: {preset.contextLabel}
+        </div>
+      )}
+
       <div
         className="rounded-xl p-5"
         style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)' }}

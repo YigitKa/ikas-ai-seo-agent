@@ -29,6 +29,9 @@ FIELD_SCORE_FILTERS: dict[str, tuple[int, str]] = {
     "english_description_score_threshold": (5, "english_description_score"),
     "meta_score_threshold": (15, "meta_score"),
     "meta_desc_score_threshold": (10, "meta_desc_score"),
+    "seo_score_threshold": (100, "seo_score"),
+    "geo_score_threshold": (100, "geo_score"),
+    "aeo_score_threshold": (100, "aeo_score"),
 }
 
 SORTABLE_FIELDS = {
@@ -37,6 +40,9 @@ SORTABLE_FIELDS = {
     "sku",
     "has_english_description",
     "total_score",
+    "seo_score",
+    "geo_score",
+    "aeo_score",
     "title_score",
     "description_score",
     "english_description_score",
@@ -107,6 +113,9 @@ async def list_products(
     search: str = Query(""),
     category: str = Query(""),
     score_threshold: int = Query(100, ge=0, le=100),
+    seo_score_threshold: int = Query(100, ge=0, le=100),
+    geo_score_threshold: int = Query(100, ge=0, le=100),
+    aeo_score_threshold: int = Query(100, ge=0, le=100),
     title_score_threshold: int = Query(100, ge=0, le=100),
     description_score_threshold: int = Query(100, ge=0, le=100),
     english_description_score_threshold: int = Query(100, ge=0, le=100),
@@ -114,7 +123,7 @@ async def list_products(
     meta_desc_score_threshold: int = Query(100, ge=0, le=100),
     sort_by: str = Query(
         "name",
-        pattern="^(name|category|sku|has_english_description|total_score|title_score|description_score|english_description_score|meta_score|meta_desc_score)$",
+        pattern="^(name|category|sku|has_english_description|total_score|seo_score|geo_score|aeo_score|title_score|description_score|english_description_score|meta_score|meta_desc_score)$",
     ),
     sort_dir: str = Query("asc", pattern="^(asc|desc)$"),
     manager: ProductManager = Depends(get_manager),
@@ -163,6 +172,9 @@ async def list_products(
         scored = [(p, s) for p, s in scored if s.total_score < score_threshold]
 
     field_thresholds = {
+        "seo_score_threshold": seo_score_threshold,
+        "geo_score_threshold": geo_score_threshold,
+        "aeo_score_threshold": aeo_score_threshold,
         "title_score_threshold": title_score_threshold,
         "description_score_threshold": description_score_threshold,
         "english_description_score_threshold": english_description_score_threshold,

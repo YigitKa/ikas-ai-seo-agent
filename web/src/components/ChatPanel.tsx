@@ -271,13 +271,23 @@ export default function ChatPanel({
 
   return (
     <div
-      className="enterprise-surface flex h-full flex-col overflow-hidden rounded-2xl"
+      className="enterprise-surface relative flex h-full flex-col overflow-hidden rounded-2xl"
       style={{
-        background: "linear-gradient(180deg, var(--surface-panel), var(--surface-code))",
-        border: "1px solid var(--color-border-subtle)",
-        boxShadow: "0 24px 52px rgba(2, 6, 23, 0.52)",
+        background: "var(--chat-shell-bg)",
+        border: "1px solid var(--chat-shell-border)",
+        boxShadow: "var(--chat-shell-shadow)",
+        backdropFilter: "blur(18px)",
       }}
     >
+      <div
+        className="pointer-events-none absolute -left-16 top-10 h-44 w-44 rounded-full blur-3xl"
+        style={{ background: "var(--chat-shell-glow-primary)" }}
+      />
+      <div
+        className="pointer-events-none absolute right-0 top-0 h-48 w-48 rounded-full blur-3xl"
+        style={{ background: "var(--chat-shell-glow-secondary)" }}
+      />
+
       <ChatHeader
         displayProductName={displayProductName}
         displayProductCategory={displayProductCategory}

@@ -42,6 +42,11 @@ KEY_MAP = {
     "languages": "STORE_LANGUAGES",
     "keywords": "SEO_TARGET_KEYWORDS",
     "dry_run": "DRY_RUN",
+    # Google Search Console
+    "gsc_client_id": "GSC_CLIENT_ID",
+    "gsc_client_secret": "GSC_CLIENT_SECRET",
+    "gsc_refresh_token": "GSC_REFRESH_TOKEN",
+    "gsc_property_url": "GSC_PROPERTY_URL",
 }
 
 
@@ -195,6 +200,10 @@ def get_config() -> AppConfig:
         ai_thinking_mode_chat=_parse_bool(_getenv("AI_THINKING_MODE_CHAT", overrides) or _getenv("AI_THINKING_MODE", overrides) or None, default=False),
         ai_thinking_mode_batch=_parse_bool(_getenv("AI_THINKING_MODE_BATCH", overrides) or _getenv("AI_THINKING_MODE", overrides) or None, default=False),
         seo_low_score_threshold=_parse_int(_getenv("SEO_LOW_SCORE_THRESHOLD", overrides) or None, 70),
+        gsc_client_id=_getenv("GSC_CLIENT_ID", overrides, ""),
+        gsc_client_secret=_getenv("GSC_CLIENT_SECRET", overrides, ""),
+        gsc_refresh_token=_getenv("GSC_REFRESH_TOKEN", overrides, ""),
+        gsc_property_url=_getenv("GSC_PROPERTY_URL", overrides, ""),
     )
     return _config
 

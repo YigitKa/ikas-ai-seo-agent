@@ -80,6 +80,11 @@ export interface SettingsData {
   languages: string;
   keywords: string;
   dry_run: boolean;
+  // Google Search Console
+  gsc_client_id: string;
+  gsc_client_secret: string;
+  gsc_refresh_token: string;
+  gsc_property_url: string;
 }
 
 export type StoreMemoryType =
@@ -780,4 +785,54 @@ export interface OperationMetric {
   best_delta: number | null;
   worst_delta: number | null;
   avg_score_after: number | null;
+}
+
+// ── Google Search Console ─────────────────────────────────────────────────────
+
+export interface GscPageMetric {
+  url: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+export interface GscQueryMetric {
+  query: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+export interface GscTotals {
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+export interface GscData {
+  property_url: string;
+  days: number;
+  totals: GscTotals;
+  pages: GscPageMetric[];
+  queries: GscQueryMetric[];
+  synced_at: string;
+  is_stale: boolean;
+}
+
+export interface GscStatus {
+  connected: boolean;
+  property_url: string;
+  last_synced: string | null;
+  is_stale: boolean;
+}
+
+export interface GscSyncResponse {
+  message: string;
+  property_url: string;
+  pages_synced: number;
+  queries_synced: number;
+  synced_at: string;
 }

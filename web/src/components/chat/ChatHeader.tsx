@@ -56,7 +56,13 @@ export function ChatHeader({
     : 'Skill secilmezse standart chat promptu kullanilir.';
 
   return (
-    <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+    <div
+      className="px-4 py-3"
+      style={{
+        borderBottom: '1px solid var(--chat-section-border)',
+        background: 'linear-gradient(180deg, var(--chat-soft-card-bg), transparent)',
+      }}
+    >
       <div className="flex flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -64,13 +70,13 @@ export function ChatHeader({
               className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
               style={{
                 background: chatScope === 'store'
-                  ? 'var(--tint-primary-soft)'
-                  : displayProductName ? 'var(--tint-info-soft)' : 'var(--color-divider)',
+                  ? 'var(--chat-bubble-user-bg)'
+                  : displayProductName ? 'var(--tint-info-soft)' : 'var(--chat-muted-card-bg)',
                 border: chatScope === 'store'
-                  ? '1px solid var(--color-border-primary)'
+                  ? '1px solid var(--chat-bubble-user-border)'
                   : displayProductName
-                    ? '1px solid var(--tint-info-soft)'
-                    : '1px solid var(--color-border-subtle)',
+                    ? '1px solid var(--color-border-info)'
+                    : '1px solid var(--chat-section-border)',
                 color: chatScope === 'store'
                   ? 'var(--color-text-brand-soft)'
                   : displayProductName ? 'var(--color-text-info)' : 'var(--color-text-secondary)',
@@ -95,9 +101,9 @@ export function ChatHeader({
                 rel="noreferrer"
                 className="flex-shrink-0 rounded-md px-2 py-1 text-[10px] font-medium transition-opacity hover:opacity-80"
                 style={{
-                  background: 'var(--tint-primary-soft)',
+                  background: 'var(--chat-bubble-user-bg)',
                   color: 'var(--color-text-brand-soft)',
-                  border: '1px solid var(--tint-primary-soft)',
+                  border: '1px solid var(--chat-bubble-user-border)',
                 }}
                 title="ikas urun detayina git"
               >
@@ -135,9 +141,10 @@ export function ChatHeader({
             disabled={skillLoading}
             className="min-w-[210px] max-w-full rounded-lg px-3 py-2 text-[12px] outline-none disabled:opacity-50"
             style={{
-              background: 'var(--surface-panel)',
-              border: '1px solid var(--color-border-strong)',
+              background: 'var(--chat-input-bg)',
+              border: '1px solid var(--chat-soft-card-border)',
               color: 'var(--color-text-primary)',
+              boxShadow: 'var(--chat-soft-card-shadow)',
             }}
           >
             <option value="">Varsayilan sohbet</option>
@@ -152,7 +159,11 @@ export function ChatHeader({
             <button
               onClick={onSkillClear}
               className="rounded-lg border px-2.5 py-2 text-[11px] font-medium transition-all hover:-translate-y-0.5"
-              style={{ color: '#cbd5f5', borderColor: 'var(--color-border-primary)' }}
+              style={{
+                color: 'var(--color-text-brand-soft)',
+                borderColor: 'var(--chat-bubble-user-border)',
+                background: 'var(--chat-bubble-user-bg)',
+              }}
             >
               Kaldir
             </button>
@@ -163,7 +174,11 @@ export function ChatHeader({
               <button
                 onClick={onExport}
                 className="rounded-lg border px-2.5 py-2 text-[11px] font-medium transition-all hover:-translate-y-0.5"
-                style={{ color: 'var(--color-text-muted)', borderColor: 'var(--color-border-strong)' }}
+                style={{
+                  color: 'var(--color-text-secondary)',
+                  borderColor: 'var(--chat-soft-card-border)',
+                  background: 'var(--chat-muted-card-bg)',
+                }}
                 title="Sohbeti disa aktar"
               >
                 Aktar
@@ -171,7 +186,11 @@ export function ChatHeader({
               <button
                 onClick={onClear}
                 className="rounded-lg border px-2.5 py-2 text-[11px] font-medium transition-all hover:-translate-y-0.5"
-                style={{ color: 'var(--color-text-muted)', borderColor: 'var(--color-border-strong)' }}
+                style={{
+                  color: 'var(--color-text-secondary)',
+                  borderColor: 'var(--chat-soft-card-border)',
+                  background: 'var(--chat-muted-card-bg)',
+                }}
               >
                 Temizle
               </button>

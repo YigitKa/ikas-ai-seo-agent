@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getMcpStatus,
@@ -14,6 +14,8 @@ import {
   savePromptTemplates,
   testConnection,
   updateSettings,
+  getGscStatus,
+  getGscAuthUrl,
 } from '../api/client';
 import type { PromptGroup, SettingsData } from '../types';
 import { Banner, Field, PromptCard, SectionCard, SelectField, StatusPill, StatusRow, ToggleField, type BannerTone } from '../components/settings/UiPrimitives';
@@ -115,6 +117,7 @@ const DISCOVERABLE_PROVIDERS = new Set(['ollama', 'lm-studio']);
 
 export default function Settings() {
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [form, setForm] = useState<SettingsData | null>(null);
   const [promptGroups, setPromptGroups] = useState<PromptGroup[]>([]);
   const [promptValues, setPromptValues] = useState<Record<string, string>>({});
@@ -122,12 +125,14 @@ export default function Settings() {
   const [discoveredModels, setDiscoveredModels] = useState<Record<string, string[]>>({});
   const [banner, setBanner] = useState<BannerState>(null);
   const [downloadJobId, setDownloadJobId] = useState('');
+  const [gscConnecting, setGscConnecting] = useState(false);
 
   const settingsQ = useQuery({ queryKey: ['settings'], queryFn: getSettings });
   const promptsQ = useQuery({ queryKey: ['prompt-templates'], queryFn: getPromptTemplates });
   const providersQ = useQuery({ queryKey: ['providers'], queryFn: getProviders });
   const healthQ = useQuery({ queryKey: ['provider-health'], queryFn: getProviderHealth });
   const mcpQ = useQuery({ queryKey: ['mcp-status'], queryFn: getMcpStatus });
+  const gscStatusQ = useQuery({ queryKey: ['gscStatus'], queryFn: getGscStatus, staleTime: 30_000 });
   const activeProvider = form?.ai_provider || settingsQ.data?.ai_provider || 'none';
   const lmStudioLiveQ = useQuery({
     queryKey: ['lm-studio-live-status', activeProvider, downloadJobId],
@@ -142,6 +147,15 @@ export default function Settings() {
       setForm((prev) => prev ?? settingsQ.data);
     }
   }, [settingsQ.data]);
+
+  // GSC OAuth2 akışı başarıyla tamamlandıysa bildirim göster
+  useEffect(() => {
+    if (searchParams.get('gsc') === 'ok') {
+      setBanner({ tone: 'success', message: 'Google Search Console başarıyla bağlandı!' });
+      qc.invalidateQueries({ queryKey: ['gscStatus'] });
+      qc.invalidateQueries({ queryKey: ['settings'] });
+    }
+  }, [searchParams, qc]);
 
   useEffect(() => {
     if (!promptsQ.data || promptGroups.length > 0) {
@@ -754,6 +768,130 @@ export default function Settings() {
                 </div>
               </SectionCard>
             )}
+
+            <SectionCard
+              eyebrow="Entegrasyon"
+              title="Google Search Console"
+              description="Tıklama, gösterim, CTR ve sıralama verilerini doğrudan Dashboard'da görmek için GSC hesabınızı bağlayın."
+            >
+              <div className="space-y-4">
+                {/* Bağlantı durumu */}
+                {gscStatusQ.data?.connected ? (
+                  <div
+                    className="flex items-center gap-3 rounded-xl px-4 py-3"
+                    style={{ background: 'rgba(34,197,94,.1)', border: '1px solid rgba(34,197,94,.2)' }}
+                  >
+                    <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor" style={{ color: '#4ade80' }}>
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
+                    </svg>
+                    <div>
+                      <span className="text-[13px] font-medium" style={{ color: '#4ade80' }}>Bağlandı</span>
+                      {gscStatusQ.data.property_url && (
+                        <span className="ml-2 text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
+                          {gscStatusQ.data.property_url}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="rounded-xl px-4 py-3 text-[12px]"
+                    style={{ background: 'var(--color-surface-2)', color: 'var(--color-text-muted)' }}
+                  >
+                    Henüz bağlantı kurulmadı. Client ID ve Secret girdikten sonra aşağıdaki butona tıklayın.
+                  </div>
+                )}
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field
+                    label="Client ID"
+                    value={form.gsc_client_id ?? ''}
+                    onChange={(value) => setValue('gsc_client_id', value)}
+                    placeholder="123456789-abc.apps.googleusercontent.com"
+                    hint="Google Cloud Console → OAuth 2.0 Client ID"
+                  />
+                  <Field
+                    label="Client Secret"
+                    value={form.gsc_client_secret ?? ''}
+                    onChange={(value) => setValue('gsc_client_secret', value)}
+                    type="password"
+                    placeholder="GOCSPX-..."
+                    hint="Google Cloud Console → OAuth 2.0 Client Secret"
+                  />
+                  <Field
+                    label="Property URL"
+                    value={form.gsc_property_url ?? ''}
+                    onChange={(value) => setValue('gsc_property_url', value)}
+                    placeholder="https://www.mystore.com"
+                    hint="GSC'de tanımlı site adresi (tam URL)"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={!form.gsc_client_id || !form.gsc_client_secret || gscConnecting}
+                    onClick={async () => {
+                      if (!form.gsc_client_id || !form.gsc_client_secret) return;
+                      setGscConnecting(true);
+                      try {
+                        // Önce ayarları kaydet (Client ID/Secret/Property URL)
+                        await updateSettings({
+                          gsc_client_id: form.gsc_client_id,
+                          gsc_client_secret: form.gsc_client_secret,
+                          gsc_property_url: form.gsc_property_url,
+                        });
+                        // Callback URI oluştur ve OAuth başlat
+                        const redirectUri = `${window.location.origin}/api/gsc/auth/callback`;
+                        const { url } = await getGscAuthUrl(redirectUri);
+                        window.location.href = url;
+                      } catch (err) {
+                        setBanner({ tone: 'error', message: `GSC bağlantısı başlatılamadı: ${err instanceof Error ? err.message : String(err)}` });
+                        setGscConnecting(false);
+                      }
+                    }}
+                    className="flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+                    style={{ background: 'var(--color-primary)' }}
+                  >
+                    {gscConnecting ? (
+                      <>
+                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Yönlendiriliyor…
+                      </>
+                    ) : (
+                      <>
+                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                        </svg>
+                        Google ile Bağlan
+                      </>
+                    )}
+                  </button>
+
+                  {gscStatusQ.data?.connected && (
+                    <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                      {gscStatusQ.data.last_synced
+                        ? `Son veri: ${new Date(gscStatusQ.data.last_synced).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+                        : 'Henüz veri çekilmedi'}
+                    </span>
+                  )}
+                </div>
+
+                <div
+                  className="rounded-xl p-3 text-[11px] leading-relaxed"
+                  style={{ background: 'var(--color-surface-2)', color: 'var(--color-text-muted)' }}
+                >
+                  <span className="font-semibold text-white">Kurulum:</span>{' '}
+                  Google Cloud Console'da OAuth 2.0 Client oluşturun, Authorized redirect URI olarak{' '}
+                  <code className="rounded px-1 text-[10px]" style={{ background: 'var(--color-surface-3)' }}>
+                    {typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000'}/api/gsc/auth/callback
+                  </code>{' '}
+                  ekleyin.
+                </div>
+              </div>
+            </SectionCard>
 
             <SectionCard
               eyebrow="Durum"

@@ -750,3 +750,156 @@ async def test_update_product_preserves_existing_product_fields(monkeypatch):
         ],
         "images": [{"imageId": "img-1", "order": 1, "fileName": "test.webp", "isMain": True, "isVideo": False}],
     }]
+
+
+@pytest.mark.anyio
+async def test_update_product_falls_back_to_mcp_for_meta_updates(monkeypatch):
+    monkeypatch.setattr(
+        "core.clients.ikas.get_config",
+        lambda: AppConfig(
+            ikas_store_name="demo-store",
+            ikas_client_id="demo-client",
+            ikas_client_secret="demo-secret",
+            ikas_api_url="https://api.myikas.com/api/v1/admin/graphql",
+            ikas_mcp_token="mcp-demo-token",
+            dry_run=False,
+        ),
+    )
+    client = IkasClient()
+    graphql_calls: list[tuple[str, dict]] = []
+    mcp_calls: list[tuple[str, str, dict]] = []
+    existing_product_data = {
+        "id": "prod-1",
+        "name": "Test Product",
+        "description": "<p>Turkce aciklama</p>",
+        "type": "PHYSICAL",
+        "metaData": {
+            "slug": "test-product",
+            "pageTitle": "Eski Meta Title",
+            "description": "Eski Meta Description",
+        },
+        "variants": [
+            {
+                "id": "var-1",
+                "sku": "sku-1",
+                "isActive": True,
+                "sellIfOutOfStock": False,
+                "prices": [{"buyPrice": 60.0, "sellPrice": 100.0, "currency": "TRY"}],
+                "images": [],
+            }
+        ],
+    }
+
+    async def fake_graphql(query, variables=None):
+        graphql_calls.append((query, variables or {}))
+        raise RuntimeError("GraphQL errors: SALES_CHANNEL_NOT_PROVIDED")
+
+    async def fake_get_product_for_update_data(_product_id):
+        return existing_product_data
+
+    class FakeMCPClient:
+        def __init__(self, access_token: str, *, endpoint: str | None = None):
+            assert access_token == "mcp-demo-token"
+
+        async def initialize(self):
+            return {}
+
+        async def execute_mutation(self, operation_name: str, query: str, variables: dict | None = None):
+            mcp_calls.append((operation_name, query, variables or {}))
+            return {"content": [{"type": "text"}]}
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(client, "_graphql", fake_graphql)
+    monkeypatch.setattr(client, "_get_product_for_update_data", fake_get_product_for_update_data)
+    monkeypatch.setattr("core.clients.ikas.IkasMCPClient", FakeMCPClient)
+
+    ok = await client.update_product("prod-1", {
+        "meta_description": "Yeni Meta Description",
+    })
+
+    assert ok is True
+    assert len(graphql_calls) == 1
+    assert len(mcp_calls) == 1
+    operation_name, query, variables = mcp_calls[0]
+    assert operation_name == "updateProduct"
+    assert "mutation UpdateProduct($input: UpdateProductInput!)" in query
+    assert variables == {
+        "input": {
+            "id": "prod-1",
+            "metaData": {
+                "pageTitle": "Eski Meta Title",
+                "description": "Yeni Meta Description",
+                "slug": "test-product",
+            },
+        }
+    }
+
+
+@pytest.mark.anyio
+async def test_update_product_raises_when_mcp_fallback_returns_error(monkeypatch):
+    monkeypatch.setattr(
+        "core.clients.ikas.get_config",
+        lambda: AppConfig(
+            ikas_store_name="demo-store",
+            ikas_client_id="demo-client",
+            ikas_client_secret="demo-secret",
+            ikas_api_url="https://api.myikas.com/api/v1/admin/graphql",
+            ikas_mcp_token="mcp-demo-token",
+            dry_run=False,
+        ),
+    )
+    client = IkasClient()
+    existing_product_data = {
+        "id": "prod-1",
+        "name": "Test Product",
+        "description": "<p>Turkce aciklama</p>",
+        "type": "PHYSICAL",
+        "metaData": {
+            "slug": "test-product",
+            "pageTitle": "Eski Meta Title",
+            "description": "Eski Meta Description",
+        },
+        "variants": [
+            {
+                "id": "var-1",
+                "sku": "sku-1",
+                "isActive": True,
+                "sellIfOutOfStock": False,
+                "prices": [{"buyPrice": 60.0, "sellPrice": 100.0, "currency": "TRY"}],
+                "images": [],
+            }
+        ],
+    }
+
+    async def fake_graphql(query, variables=None):
+        raise RuntimeError("GraphQL errors: SALES_CHANNEL_NOT_PROVIDED")
+
+    async def fake_get_product_for_update_data(_product_id):
+        return existing_product_data
+
+    class FakeMCPClient:
+        def __init__(self, access_token: str, *, endpoint: str | None = None):
+            assert access_token == "mcp-demo-token"
+
+        async def initialize(self):
+            return {}
+
+        async def execute_mutation(self, operation_name: str, query: str, variables: dict | None = None):
+            return {
+                "isError": True,
+                "content": [{"type": "text", "text": "MCP update failed"}],
+            }
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(client, "_graphql", fake_graphql)
+    monkeypatch.setattr(client, "_get_product_for_update_data", fake_get_product_for_update_data)
+    monkeypatch.setattr("core.clients.ikas.IkasMCPClient", FakeMCPClient)
+
+    with pytest.raises(RuntimeError, match="MCP update failed"):
+        await client.update_product("prod-1", {
+            "meta_description": "Yeni Meta Description",
+        })

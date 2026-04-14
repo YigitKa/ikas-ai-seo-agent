@@ -77,13 +77,13 @@ function MessageBubble({
             className="rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed shadow-sm"
             style={{
               background: isUser
-                ? 'linear-gradient(135deg, var(--color-border-primary), var(--tint-primary-soft))'
+                ? 'var(--chat-bubble-user-bg)'
                 : isSystem
-                  ? 'var(--color-divider)'
-                  : 'linear-gradient(160deg, var(--surface-raised), var(--surface-raised))',
+                  ? 'var(--chat-muted-card-bg)'
+                  : 'var(--chat-bubble-assistant-bg)',
               border: isSystem
                 ? 'none'
-                : `1px solid ${isUser ? 'var(--color-border-primary)' : 'var(--color-border-strong)'}`,
+                : `1px solid ${isUser ? 'var(--chat-bubble-user-border)' : 'var(--chat-bubble-assistant-border)'}`,
               color: isUser
                 ? 'var(--color-text-brand-soft)'
                 : isSystem
@@ -91,6 +91,7 @@ function MessageBubble({
                   : 'var(--color-text-primary)',
               fontStyle: isSystem ? 'italic' : 'normal',
               fontSize: isSystem ? '12px' : '13px',
+              boxShadow: isSystem ? 'none' : 'var(--chat-bubble-shadow)',
             }}
           >
             {isAssistant ? (
@@ -132,9 +133,9 @@ function MessageBubble({
               key={metric.key}
               className="rounded-full px-2.5 py-1 text-[10px] font-medium"
               style={{
-                background: 'var(--alpha-white-4)',
+                background: 'var(--chat-muted-card-bg)',
                 color: 'var(--color-text-muted)',
-                border: '1px solid var(--alpha-white-8)',
+                border: '1px solid var(--chat-section-border)',
               }}
             >
               {metric.label}: {metric.value}

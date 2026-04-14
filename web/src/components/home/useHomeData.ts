@@ -9,6 +9,11 @@ import {
   getDailyActivity,
   getBatchStats,
 } from '../../api/client';
+import {
+  LOW_SCORE_THRESHOLD,
+  buildQuickWinBatchUrl,
+  buildWeakestPillarWorkspaceUrl,
+} from '../../shared/navigation/commandCenter';
 import type {
   ReportSummary,
   ScoreDistributionBucket,
@@ -46,7 +51,7 @@ function computeActions(
       description: 'Dusuk skorlu urunleriniz toplu optimizasyonla hizla iyilestirilebilir.',
       tone: 'warning',
       cta: 'Toplu Isleme Git',
-      navigateTo: '/batch',
+      navigateTo: buildQuickWinBatchUrl(),
     });
   }
 
@@ -66,7 +71,7 @@ function computeActions(
         description: `Ortalama ${Math.round(weakest.score)} puan. Bu alana odaklanarak genel skorunuzu yukseltin.`,
         tone: 'danger',
         cta: 'Urunleri Incele',
-        navigateTo: '/workspace',
+        navigateTo: buildWeakestPillarWorkspaceUrl(weakest.key as 'seo' | 'geo' | 'aeo'),
       });
     }
   }
@@ -151,7 +156,7 @@ export function useHomeData() {
 
   const lowProductsQ = useQuery({
     queryKey: ['products-low-score'],
-    queryFn: () => fetchProducts(1, 10, 'all', { sort_by: 'total_score', sort_dir: 'asc', score_threshold: 69 }),
+    queryFn: () => fetchProducts(1, 10, 'all', { sort_by: 'total_score', sort_dir: 'asc', score_threshold: LOW_SCORE_THRESHOLD }),
   });
 
   const activityQ = useQuery({

@@ -55,6 +55,9 @@ export async function fetchProducts(
     search?: string;
     category?: string;
     score_threshold?: number;
+    seo_score_threshold?: number;
+    geo_score_threshold?: number;
+    aeo_score_threshold?: number;
     title_score_threshold?: number;
     description_score_threshold?: number;
     english_description_score_threshold?: number;
@@ -72,6 +75,9 @@ export async function fetchProducts(
   if (options.search?.trim()) params.set('search', options.search.trim());
   if (options.category?.trim()) params.set('category', options.category.trim());
   if (typeof options.score_threshold === 'number') params.set('score_threshold', String(options.score_threshold));
+  if (typeof options.seo_score_threshold === 'number') params.set('seo_score_threshold', String(options.seo_score_threshold));
+  if (typeof options.geo_score_threshold === 'number') params.set('geo_score_threshold', String(options.geo_score_threshold));
+  if (typeof options.aeo_score_threshold === 'number') params.set('aeo_score_threshold', String(options.aeo_score_threshold));
   if (typeof options.title_score_threshold === 'number') params.set('title_score_threshold', String(options.title_score_threshold));
   if (typeof options.description_score_threshold === 'number') params.set('description_score_threshold', String(options.description_score_threshold));
   if (typeof options.english_description_score_threshold === 'number') params.set('english_description_score_threshold', String(options.english_description_score_threshold));
@@ -582,4 +588,31 @@ export async function getOperationMetrics(params: {
   if (params.start_date) qs.set('start_date', params.start_date);
   if (params.end_date) qs.set('end_date', params.end_date);
   return request(`/api/reports/operation-metrics?${qs.toString()}`);
+}
+
+// ── Google Search Console ─────────────────────────────────────────────────────
+
+export function getGscStatus(): Promise<import('../types').GscStatus> {
+  return request('/api/gsc/status');
+}
+
+export function getGscAuthUrl(redirectUri: string): Promise<{ url: string }> {
+  const qs = new URLSearchParams({ redirect_uri: redirectUri });
+  return request(`/api/gsc/auth/start?${qs.toString()}`);
+}
+
+export function getGscData(days = 30): Promise<import('../types').GscData> {
+  return request(`/api/gsc/data?days=${days}`);
+}
+
+export function syncGsc(days = 30): Promise<import('../types').GscSyncResponse> {
+  return request(`/api/gsc/sync?days=${days}`, { method: 'POST' });
+}
+
+export function clearGscCache(): Promise<{ message: string }> {
+  return request('/api/gsc/cache', { method: 'DELETE' });
+}
+
+export function getGscProperties(): Promise<{ properties: string[] }> {
+  return request('/api/gsc/properties');
 }

@@ -9,25 +9,25 @@ export interface ChatStatusItem {
 export function ChatStatusDeck({ items }: { items: ChatStatusItem[] }) {
   const palette = {
     neutral: {
-      surface: 'var(--color-divider)',
-      border: '1px solid var(--color-divider)',
+      surface: 'var(--chat-muted-card-bg)',
+      border: '1px solid var(--chat-section-border)',
       labelColor: 'var(--color-text-secondary)',
       valueColor: 'var(--color-text-primary)',
-      glow: 'var(--color-divider)',
+      glow: 'var(--alpha-white-3)',
       dot: 'var(--color-text-secondary)',
     },
     success: {
-      surface: 'var(--tint-success-soft)',
-      border: '1px solid var(--tint-success-soft)',
-      labelColor: 'rgba(167, 243, 208, 0.82)',
+      surface: 'var(--tint-success-bg)',
+      border: '1px solid var(--color-border-success)',
+      labelColor: 'var(--color-text-success)',
       valueColor: 'var(--color-text-success-soft)',
       glow: 'var(--tint-success-soft)',
       dot: 'var(--color-icon-success)',
     },
     warn: {
-      surface: 'var(--tint-warning-soft)',
-      border: '1px solid var(--tint-warning-soft)',
-      labelColor: 'rgba(253, 230, 138, 0.86)',
+      surface: 'var(--tint-warning-bg)',
+      border: '1px solid var(--color-border-warning)',
+      labelColor: 'var(--color-text-warning)',
       valueColor: 'var(--color-text-warning-soft)',
       glow: 'var(--tint-warning-soft)',
       dot: 'var(--color-icon-warning)',
@@ -104,15 +104,16 @@ export function StarterStateCard({
     <div
       className="rounded-2xl p-4 text-center shadow-lg"
       style={{
-        background: 'linear-gradient(160deg, var(--tint-primary-soft), rgba(17, 24, 39, 0.22))',
-        border: '1px solid var(--color-border-primary)',
-        boxShadow: '0 14px 30px rgba(14, 21, 48, 0.28)',
+        background: 'var(--chat-starter-bg)',
+        border: '1px solid var(--chat-starter-border)',
+        boxShadow: 'var(--chat-starter-shadow)',
       }}
     >
       <div
         className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl"
         style={{
-          background: 'var(--tint-primary-soft)',
+          background: 'var(--chat-starter-chip-bg)',
+          border: '1px solid var(--chat-starter-chip-border)',
           color: 'var(--color-text-brand-soft)',
         }}
       >
@@ -138,9 +139,9 @@ export function StarterStateCard({
             disabled={disabled}
             className="rounded-full px-3 py-1.5 text-[11px] font-medium transition-all hover:opacity-90 disabled:opacity-40"
             style={{
-              background: 'var(--tint-primary-soft)',
+              background: 'var(--chat-starter-chip-bg)',
               color: 'var(--color-text-brand-soft)',
-              border: '1px solid var(--tint-primary-soft)',
+              border: '1px solid var(--chat-starter-chip-border)',
             }}
           >
             {prompt.label}

@@ -16,15 +16,15 @@ export default function ContextUsageCard({
   return (
     <div
       className="mr-6 rounded-xl p-3"
-      style={{ background: 'var(--alpha-white-3)', border: '1px solid var(--alpha-white-8)' }}
+      style={{ background: 'var(--chat-muted-card-bg)', border: '1px solid var(--chat-section-border)' }}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1.5 text-[12px] leading-5">
           <div style={{ color: 'var(--color-text-secondary)' }}>
-            Current conversation tokens: <span className="font-semibold text-white">{usage.inputTokens}</span>
+            Current conversation tokens: <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{usage.inputTokens}</span>
           </div>
           <div style={{ color: 'var(--color-text-secondary)' }}>
-            Total loaded context: <span className="font-semibold text-white">{usage.contextLength}</span>
+            Total loaded context: <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{usage.contextLength}</span>
           </div>
           <div style={{ color: 'var(--color-text-muted)' }}>
             {formatPercent(usage.usedPercent)} used ({formatPercent(usage.remainingPercent)} left)
@@ -34,7 +34,7 @@ export default function ContextUsageCard({
           <div
             className="relative h-11 w-11 rounded-full"
             style={{
-              background: `conic-gradient(var(--color-icon-info) ${usage.usedPercent}%, var(--alpha-white-8) 0)`,
+              background: `conic-gradient(var(--color-icon-info) ${usage.usedPercent}%, var(--chat-section-border) 0)`,
             }}
           >
             <div

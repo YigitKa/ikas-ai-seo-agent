@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import type { BatchConfig, BatchItem } from '../types';
 import type { QueryClient } from '@tanstack/react-query';
 import {
@@ -20,11 +20,15 @@ import {
 } from '../api/client';
 import AppHeader from '../shared/ui/AppHeader';
 import { useToast } from '../shared/ui/Toast';
-import ProductSelector from '../components/batch/ProductSelector';
+import ProductSelector, {
+  DEFAULT_PRODUCT_SELECTOR_PRESET,
+  type ProductSelectorPreset,
+} from '../components/batch/ProductSelector';
 import AnalysisReview from '../components/batch/AnalysisReview';
 import BatchProgressView from '../components/batch/BatchProgressView';
 import BatchJobDetail from '../components/batch/BatchJobDetail';
 import BatchHistory from '../components/batch/BatchHistory';
+import { BATCH_PRESET_PARAM_KEYS, parseBatchPreset } from '../shared/navigation/commandCenter';
 
 type View = 'select' | 'analyzing' | 'review' | 'running' | 'detail';
 
@@ -45,13 +49,43 @@ const DEFAULT_CONFIG: BatchConfig = {
   skill_slug: '',
 };
 
+function buildConfigFromPreset(preset: ReturnType<typeof parseBatchPreset>): BatchConfig {
+  return {
+    ...DEFAULT_CONFIG,
+    score_threshold: preset.scoreThreshold ?? DEFAULT_CONFIG.score_threshold,
+    category_filter: preset.categoryFilter || DEFAULT_CONFIG.category_filter,
+  };
+}
+
+function buildSelectorPreset(preset: ReturnType<typeof parseBatchPreset>): ProductSelectorPreset {
+  return {
+    ...DEFAULT_PRODUCT_SELECTOR_PRESET,
+    contextLabel: preset.contextLabel,
+    search: preset.search,
+    missingEnglishOnly: preset.missingEnglishOnly,
+    sortBy: preset.sortBy ?? DEFAULT_PRODUCT_SELECTOR_PRESET.sortBy,
+    sortDir: preset.sortDir,
+    fieldScoreThresholds: {
+      ...DEFAULT_PRODUCT_SELECTOR_PRESET.fieldScoreThresholds,
+      ...(preset.titleScoreThreshold !== null ? { title_score_threshold: preset.titleScoreThreshold } : {}),
+      ...(preset.descriptionScoreThreshold !== null ? { description_score_threshold: preset.descriptionScoreThreshold } : {}),
+      ...(preset.englishDescriptionScoreThreshold !== null ? { english_description_score_threshold: preset.englishDescriptionScoreThreshold } : {}),
+      ...(preset.metaScoreThreshold !== null ? { meta_score_threshold: preset.metaScoreThreshold } : {}),
+      ...(preset.metaDescScoreThreshold !== null ? { meta_desc_score_threshold: preset.metaDescScoreThreshold } : {}),
+    },
+  };
+}
+
 export default function BatchOperations() {
   const qc = useQueryClient();
   const { addToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialPreset = parseBatchPreset(searchParams);
 
   const [view, setView] = useState<View>('select');
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [config, setConfig] = useState<BatchConfig>(DEFAULT_CONFIG);
+  const [config, setConfig] = useState<BatchConfig>(() => buildConfigFromPreset(initialPreset));
+  const [selectorPreset, setSelectorPreset] = useState<ProductSelectorPreset>(() => buildSelectorPreset(initialPreset));
   const [regeneratingKey, setRegeneratingKey] = useState<string | null>(null);
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -77,9 +111,32 @@ export default function BatchOperations() {
 
   const activeJob = activeDetail?.job ?? null;
   const activeItems: BatchItem[] = activeDetail?.items ?? [];
+  const prevStatusRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const preset = parseBatchPreset(searchParams);
+    if (preset.hasPreset) {
+      setView('select');
+      setActiveJobId(null);
+      prevStatusRef.current = null;
+      setConfig(buildConfigFromPreset(preset));
+      setSelectorPreset(buildSelectorPreset(preset));
+    }
+
+    if (!preset.hasPreset) return;
+
+    const nextParams = new URLSearchParams(searchParams);
+    let shouldReplace = false;
+    for (const key of BATCH_PRESET_PARAM_KEYS) {
+      if (!nextParams.has(key)) continue;
+      nextParams.delete(key);
+      shouldReplace = true;
+    }
+    if (!shouldReplace) return;
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // Sync view with job status when polling updates come in
-  const prevStatusRef = useRef<string | null>(null);
   useEffect(() => {
     if (!activeJob) return;
     const st = activeJob.status;
@@ -440,6 +497,7 @@ export default function BatchOperations() {
                 onChange={setConfig}
                 onStartAnalysis={(productIds) => startMutation.mutate(productIds)}
                 disabled={startMutation.isPending}
+                preset={selectorPreset}
               />
 
               {/* Job history */}

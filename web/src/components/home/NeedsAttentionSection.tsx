@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getScoreColor } from '../../shared/score/scoreUtils';
 import { useCountUp } from '../../shared/ui/CircularScore';
+import { buildAttentionWorkspaceUrl } from '../../shared/navigation/commandCenter';
 import type { ProductListResponse } from '../../types';
 
 const BADGE_SIZE = 44;
@@ -93,7 +94,7 @@ export default function NeedsAttentionSection({ lowProducts, isLoading }: NeedsA
         </div>
         {!allGood && (
           <button
-            onClick={() => navigate('/workspace')}
+            onClick={() => navigate(buildAttentionWorkspaceUrl())}
             className="flex items-center gap-1 text-[12px] font-medium transition-opacity hover:opacity-70"
             style={{ color: 'var(--color-primary-light)' }}
           >
@@ -153,7 +154,7 @@ export default function NeedsAttentionSection({ lowProducts, isLoading }: NeedsA
                 </div>
 
                 <button
-                  onClick={() => navigate(`/workspace?product=${item.product.id}`)}
+                  onClick={() => navigate(buildAttentionWorkspaceUrl(item.product.id))}
                   className="flex-shrink-0 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-all hover:brightness-110"
                   style={{
                     background: 'var(--tint-primary-soft)',
