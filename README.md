@@ -597,6 +597,7 @@ Skor geçmişini izleyen ve iyileşmeleri görselleştiren analitik dashboard:
 - **Skor değişikliği günlüğü** — her operasyonun ürün × alan × delta bazında olay kaydı (tarih, ürün, operasyon, iş kimliği ile filtrelenebilir)
 - **Anlık görüntü takvimi** — mevcut anlık görüntü tarihlerini listeleyin, herhangi bir tarihteki tüm ürün skorlarını inceleyin
 - **Anlık görüntü** — karşılaştırma için mevcut durumu elle kaydedin
+- **Google Search Console entegrasyonu** — OAuth2 akışıyla bağlanır, site geneli tıklamalar / gösterimler / CTR / ortalama pozisyon metriklerini çeker ve ürün slug'ıyla eşleştirerek ürün bazlı GSC panelinde en iyi sorgularla birlikte gösterir; veriler 24 saat önbelleklenir ve arka planda otomatik yenilenir
 
 <p align="center">
   <img src="./assets/reports.png" alt="Raporlama Ekranı" width="1100" />
@@ -648,8 +649,8 @@ Bir ortam değişkeni değiştirin — tüm agentic pipeline, chat sistemi ve st
 | Model | Kullanım | Maliyet (1M token) |
 |---|---|---|
 | `claude-haiku-4-5-20251001` | Varsayılan — hızlı ve ekonomik | $0.80 input / $4.0 output |
-| `claude-sonnet-4-20250514` | Dengeli performans | $3.0 input / $15.0 output |
-| `claude-opus-4-20250514` | Maksimum kalite | $15.0 input / $75.0 output |
+| `claude-sonnet-4-5-20250514` | Dengeli performans | $3.0 input / $15.0 output |
+| `claude-opus-4-5-20250514` | Maksimum kalite | $15.0 input / $75.0 output |
 
 ---
 
@@ -981,6 +982,8 @@ graph TD
 | `SEO_TARGET_KEYWORDS` | — | Virgülle ayrılmış hedef anahtar kelimeler |
 | `SEO_LOW_SCORE_THRESHOLD` | `70` | Ürünlerin dikkat gerektirdiği skor eşiği |
 | `DRY_RUN` | `true` | ikas'a yazmak için `false` yapın |
+| `GSC_CLIENT_ID` / `GSC_CLIENT_SECRET` | — | Google Search Console OAuth2 kimlik bilgileri (entegrasyonu etkinleştirmek için) |
+| `GSC_PROPERTY_URL` | — | GSC'de doğrulanmış property URL'i (ör. `https://www.mystore.com`) |
 
 ---
 
@@ -1170,6 +1173,18 @@ ikas-ai-seo-agent/
 | `POST` | `/api/settings/skills/preview` | Skill prompt preview |
 | `GET` | `/api/settings/skills/item/{slug}/export` | Skill export |
 | `POST` | `/api/settings/skills/import` | Skill import |
+
+### Google Search Console
+
+| Metod | Endpoint | Açıklama |
+|---|---|---|
+| `GET` | `/api/gsc/status` | Bağlantı durumu + son senkronizasyon bilgisi |
+| `GET` | `/api/gsc/auth/start` | OAuth2 yetkilendirme URL'i döndürür |
+| `GET` | `/api/gsc/auth/callback` | OAuth2 callback — refresh token'ı saklar |
+| `GET` | `/api/gsc/properties` | Kullanıcının GSC hesabındaki property'leri listeler |
+| `GET` | `/api/gsc/data?days=30` | Önbellekli analytics verisi (24 saatten eskiyse arka planda yeniler) |
+| `POST` | `/api/gsc/sync` | Önbelleği yok say, GSC'den taze veri çek |
+| `DELETE` | `/api/gsc/cache` | Önbelleği temizle |
 
 ### Gerçek Zamanlı & MCP
 
